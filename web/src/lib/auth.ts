@@ -136,18 +136,19 @@ async function userById(id: string): Promise<User | null> {
  * that changes data.
  */
 export async function readUser(req: Request): Promise<User | NextResponse> {
-  const session = await getUser();
-  if (session) return session;
+  const unauthorized = () => NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // A request that presents a token is judged on that token alone, so a
+  // revoked device gets its 401 even if a cookie is lying around.
   if (req.headers.get("authorization")) {
     const { authenticateDevice } = await import("./devices");
     const d = await authenticateDevice(req);
-    const u = d && (await userById(d.userId));
-    if (u) return u;
+    return (d && (await userById(d.userId))) || unauthorized();
   }
+  const session = await getUser();
+  if (session) return session;
   const { EMBED_COOKIE, verifyEmbed } = await import("./embed");
   const embed = await verifyEmbed((await cookies()).get(EMBED_COOKIE)?.value);
-  const u = embed && (await userById(embed.userId));
-  return u ?? NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  return (embed && (await userById(embed.userId))) || unauthorized();
 }
 
 /** For embed pages: a browser session or a valid embed cookie. */

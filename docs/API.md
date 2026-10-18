@@ -98,17 +98,32 @@ ISO-8601 UTC; durations seconds; distances metres.
 | `GET /api/places` | `{ places: [{id, name, city, country, category, visitCount, totalTime, lastVisit}] }`; `name` may be null (unknown), `category` is an OSM value like `cafe`. |
 | `GET /api/places/:id/photos` | `{ configured, photos: [{id, thumbUrl, takenAt}] }`; `thumbUrl` is a path on the server, fetch it with the bearer header. |
 
-Same `401` rule as ingest.
+Same `401` rule as ingest: a request carrying `Authorization` is judged on that token
+only (cookies are ignored). Send API requests without cookies (`credentials: "omit"`),
+because on Android `fetch` shares the WebView's cookie jar.
+
+Details:
+- `topPlaces` and `recent` hold at most 8 entries; `hours` is fractional.
+- With no data yet, the timeline returns `day.date: ""`, `dates: []` and `minDate`/`maxDate: null`.
+- On a server error these return `500 {"error": "…"}` (`/api/places` also includes `places: []`);
+  treat that like any 5xx and retry later.
 
 ### Map in a WebView
 
 Never put the token in a URL. Instead:
 
 1. `POST /api/device/embed-ticket` with the bearer header → `{ "url": "https://…/embed/start?ticket=…" }`.
-   The URL is valid for 60 seconds.
+   The URL is valid for 60 seconds and is built from the server's configured public URL
+   (`APP_URL`), the same base URL the pairing QR code carries. A client may refuse a URL on any
+   other origin.
 2. Load that URL in the WebView. The server sets an httpOnly cookie (12 h, read-only, dies when the device
    is revoked) and redirects to `/embed/map`, a full-screen map without the web navigation.
-3. When the WebView later shows "Session expired", get a new ticket and reload.
+3. Expiry looks like this:
+   - an expired or invalid ticket → `401` plain text ("This map link has expired…");
+   - an expired or revoked map cookie → `200` HTML page saying "Session expired", and the map's
+     data requests get `401`.
+
+   In both cases, get a new ticket and reload.
 
 ## `GET /api/health`
 
