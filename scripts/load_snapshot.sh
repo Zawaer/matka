@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
-# Load the Dawarich snapshot (data/dawarich.dump) into the local matka_db PostGIS container.
-# Safe to re-run: it drops & recreates matching tables from the custom-format dump.
+# Dev helper: restore a Dawarich pg_dump (custom format) into a separate
+# `dawarich` database in the local matka_db container, then import it into
+# Matka with web/scripts/import-dawarich.mjs. Matka's own database is never
+# touched by the restore.
+#
+#   scripts/load_snapshot.sh path/to/dawarich.dump you@example.com
 set -euo pipefail
 
-DUMP="${1:-data/dawarich.dump}"
+DUMP="${1:?usage: $0 <dawarich.dump> <matka user email or sub>}"
+TO="${2:?usage: $0 <dawarich.dump> <matka user email or sub>}"
 CT=matka_db
-DB=matka
-USER=matka
 
-echo "==> ensure postgis extension"
-docker exec -e PGPASSWORD=matka "$CT" psql -U "$USER" -d "$DB" -c "CREATE EXTENSION IF NOT EXISTS postgis;" >/dev/null
+echo "==> (re)create dawarich database"
+docker exec "$CT" psql -U matka -d postgres -qc "DROP DATABASE IF EXISTS dawarich WITH (FORCE)" -c "CREATE DATABASE dawarich OWNER matka"
+docker exec "$CT" psql -U matka -d dawarich -qc "CREATE EXTENSION IF NOT EXISTS postgis"
 
-echo "==> copy dump into container"
+echo "==> restore"
 docker cp "$DUMP" "$CT":/tmp/dawarich.dump
+docker exec "$CT" pg_restore -U matka -d dawarich --no-owner --no-privileges /tmp/dawarich.dump 2>&1 |
+  grep -viE "already exists" || true
+docker exec "$CT" rm /tmp/dawarich.dump
 
-echo "==> restore (clean, no owner)"
-# --clean drops existing objects first; --if-exists avoids errors on first run.
-docker exec -e PGPASSWORD=matka "$CT" pg_restore -U "$USER" -d "$DB" \
-  --no-owner --no-privileges --clean --if-exists /tmp/dawarich.dump 2>&1 | \
-  grep -viE "does not exist, skipping|already exists" || true
-
-echo "==> row counts"
-docker exec -e PGPASSWORD=matka "$CT" psql -U "$USER" -d "$DB" -t -c \
-  "SELECT 'points', count(*) FROM points UNION ALL SELECT 'visits', count(*) FROM visits UNION ALL SELECT 'tracks', count(*) FROM tracks UNION ALL SELECT 'places', count(*) FROM places;"
-echo "==> done"
+echo "==> import into Matka"
+cd "$(dirname "$0")/../web"
+DATABASE_URL="${DATABASE_URL:-postgresql://matka:matka@localhost:5544/matka}" \
+  node scripts/import-dawarich.mjs --from postgresql://matka:matka@localhost:5544/dawarich --to "$TO"
