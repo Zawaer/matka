@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
-import { fmtDistance, fmtDuration, fmtTime, localDay } from "../format";
+import { fmtDistance, fmtDuration, fmtTime, isLikelyDrift, localDay } from "../format";
 import type { Pairing } from "../pairing";
 import { Card, EmptyState, ErrorState, Icon, Skeleton } from "../ui";
 import type { IconName } from "../ui/Icon";
@@ -13,7 +13,7 @@ import { getTimeline, type Mode, type Timeline } from "../viewer";
 
 const MODES: Record<Mode, { label: string; icon: IconName }> = {
   unknown: { label: "Move", icon: "dots-horizontal" },
-  stationary: { label: "Stop", icon: "pause-circle-outline" },
+  stationary: { label: "Stationary", icon: "pause-circle-outline" },
   walking: { label: "Walk", icon: "walk" },
   running: { label: "Run", icon: "run" },
   cycling: { label: "Cycle", icon: "bike" },
@@ -58,7 +58,12 @@ export default function TimelineScreen() {
   };
 
   const items = resp?.day.items ?? [];
-  const moves = items.flatMap((i) => (i.kind === "move" ? [i.track] : []));
+  // Stationary segments and impossible speeds are GPS drift; keep them out of the day's totals.
+  const moves = items.flatMap((i) =>
+    i.kind === "move" && i.track.mode !== "stationary" && !isLikelyDrift(i.track.mode, i.track.distance, i.track.duration)
+      ? [i.track]
+      : [],
+  );
   const visits = items.filter((i) => i.kind === "visit").length;
   const km = moves.reduce((a, m) => a + (m.distance ?? 0), 0);
   const moving = moves.reduce((a, m) => a + (m.duration ?? 0), 0);
@@ -165,7 +170,7 @@ export default function TimelineScreen() {
                     </View>
                     <Card style={s.visit}>
                       <View style={{ flex: 1, gap: 2 }}>
-                        <Text variant="headline" numberOfLines={1}>
+                        <Text variant="headline" numberOfLines={2}>
                           {named ? v.placeName : (cat ?? "Unnamed place")}
                         </Text>
                         <Text variant="caption" color="textSecondary">
@@ -183,6 +188,7 @@ export default function TimelineScreen() {
               const m = it.track;
               const meta = MODES[m.mode];
               const color = t.mode(m.mode);
+              const drift = isLikelyDrift(m.mode, m.distance, m.duration);
               return (
                 <View key={`m${m.id}-${i}`} style={s.row}>
                   <View style={s.rail}>
@@ -193,12 +199,20 @@ export default function TimelineScreen() {
                       <Icon name={meta.icon} size={19} color={color} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text variant="callout" style={{ fontWeight: "700" }}>
+                      <Text variant="callout" style={{ fontWeight: "800" }}>
                         {meta.label}
                       </Text>
                       <Text variant="caption" color="textSecondary">
-                        {fmtDistance(m.distance)} · {fmtDuration(m.duration)}
+                        {m.mode === "stationary" ? fmtDuration(m.duration) : `${fmtDistance(m.distance)} · ${fmtDuration(m.duration)}`}
                       </Text>
+                      {drift && (
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
+                          <Icon name="map-marker-alert-outline" size={13} color={t.c.accent} />
+                          <Text variant="caption" color="accent">
+                            GPS jumped around here, not counted
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </View>
                 </View>

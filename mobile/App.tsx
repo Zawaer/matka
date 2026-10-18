@@ -170,7 +170,8 @@ function Tabs({
       paddingHorizontal: th.space.xs,
     },
     tab: { flex: 1, alignItems: "center", gap: 4 },
-    pill: { width: 56, height: 32, borderRadius: th.radius.pill, alignItems: "center", justifyContent: "center" },
+    pill: { width: 56, height: 32, alignItems: "center", justifyContent: "center" },
+    pillBg: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16, backgroundColor: th.c.primarySoft },
     dot: { position: "absolute", top: 2, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: th.c.danger },
   }));
 
@@ -227,11 +228,14 @@ function Tabs({
               accessibilityState={{ selected: on }}
               accessibilityLabel={alert ? `${tab.label}, needs attention` : tab.label}
             >
-              <View style={[s.pill, on && { backgroundColor: t.c.primarySoft }]}>
+              <View style={s.pill}>
+                {/* Own layer, mounted only when active: toggling the container's background
+                    drew a square on Android. */}
+                {on && <View style={s.pillBg} />}
                 <Icon name={on ? tab.iconOn : tab.icon} size={24} color={on ? t.c.primary : t.c.textMuted} />
                 {alert ? <View style={s.dot} /> : null}
               </View>
-              <Text variant="caption" numberOfLines={1} style={{ color: on ? t.c.primary : t.c.textMuted, fontWeight: on ? "700" : "500" }}>
+              <Text variant="caption" numberOfLines={1} style={{ color: on ? t.c.primary : t.c.textMuted, fontWeight: on ? "800" : "500" }}>
                 {tab.label}
               </Text>
             </Pressable>

@@ -223,7 +223,7 @@ export default function OverviewScreen({
             {range ? (
               <View style={s.heroPill}>
                 <Icon name="calendar-blank-outline" size={14} color={t.c.onHero} />
-                <Text variant="caption" color="onHero" style={{ fontWeight: "700" }}>
+                <Text variant="caption" color="onHero" style={{ fontWeight: "800" }}>
                   {range}
                 </Text>
               </View>
@@ -320,7 +320,7 @@ export default function OverviewScreen({
                     <View key={v.id} style={s.listRow}>
                       <IconChip icon={named ? "map-marker-outline" : "help-circle-outline"} tint={named ? "violet" : "slate"} size={38} />
                       <View style={{ flex: 1 }}>
-                        <Text variant="headline" numberOfLines={1}>
+                        <Text variant="headline" numberOfLines={2}>
                           {named ?? "Unnamed place"}
                         </Text>
                         <Text variant="caption" color="textSecondary">

@@ -16,7 +16,9 @@ function placeName(p: Place) {
 export default function PlacesScreen() {
   const t = useTheme();
   const { authLost } = useSession();
-  const { data: places, error: err, reload } = useViewerQuery(getPlaces);
+  const { data, error: err, reload } = useViewerQuery(getPlaces);
+  // A renamed place keeps existing after its visits are gone; it isn't one you come back to.
+  const places = useMemo(() => data?.filter((p) => p.visitCount > 0), [data]);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
 

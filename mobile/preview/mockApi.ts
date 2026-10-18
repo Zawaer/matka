@@ -50,6 +50,7 @@ const day = (date: string) => ({
       { kind: "move", track: { id: 2, startedAt: iso(date, "08:46"), endedAt: iso(date, "09:04"), distance: 9400, duration: 1080, mode: "train" } },
       { kind: "visit", visit: { id: 3, placeName: "City library", name: null, startedAt: iso(date, "09:12"), endedAt: iso(date, "15:30"), duration: 22680 } },
       { kind: "move", track: { id: 3, startedAt: iso(date, "15:30"), endedAt: iso(date, "16:12"), distance: 22700, duration: 2520, mode: "cycling" } },
+      { kind: "move", track: { id: 9, startedAt: iso(date, "16:22"), endedAt: iso(date, "16:30"), distance: 6400, duration: 480, mode: "walking" } },
       { kind: "visit", visit: { id: 4, placeName: null, name: null, startedAt: iso(date, "16:20"), endedAt: iso(date, "16:42"), duration: 1320 } },
       { kind: "move", track: { id: 4, startedAt: iso(date, "16:42"), endedAt: iso(date, "17:30"), distance: 12400, duration: 2880, mode: "running" } },
     ],
