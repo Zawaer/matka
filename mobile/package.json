@@ -5,25 +5,50 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "expo": "~58.0.14",
+    "expo-application": "~58.1.2",
+    "expo-battery": "~58.0.3",
+    "expo-build-properties": "~58.0.11",
+    "expo-camera": "~58.0.10",
+    "expo-constants": "~58.0.12",
     "expo-dev-client": "~58.0.14",
-    "expo-file-system": "~58.0.9",
     "expo-font": "~58.0.8",
+    "expo-intent-launcher": "~58.0.3",
+    "expo-linking": "~58.0.13",
     "expo-location": "~58.0.17",
+    "expo-secure-store": "~58.0.2",
+    "expo-splash-screen": "~58.0.10",
+    "expo-sqlite": "~58.0.13",
     "expo-status-bar": "~58.0.3",
+    "expo-system-ui": "~58.0.6",
     "expo-task-manager": "~58.0.12",
     "react": "19.3.0",
     "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
     "react-native-webview": "14.0.1"
   },
   "devDependencies": {
+    "@types/jest": "30.0.0",
     "@types/react": "~19.3.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~58.0.4",
+    "jest": "~30.5.2",
+    "jest-expo": "~58.0.11",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "jest",
+    "lint": "expo lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "testMatch": [
+      "**/__tests__/**/*.test.ts?(x)"
+    ]
   },
   "private": true
 }

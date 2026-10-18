@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 
 interface Photo {
@@ -77,8 +78,11 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
         <span className="mr-1" aria-hidden>
           📷
         </span>
-        Immich isn&apos;t configured yet. Set <code>IMMICH_URL</code> and{" "}
-        <code>IMMICH_API_KEY</code> to see photos from your visits here.
+        Connect Immich in{" "}
+        <Link href="/settings" className="text-primary hover:underline">
+          Settings
+        </Link>{" "}
+        to see photos from your visits here.
       </div>
     );
   }

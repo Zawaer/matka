@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
-import { q, USER_ID } from "@/lib/db";
+import { readUser } from "@/lib/auth";
+import { q } from "@/lib/db";
+import { immichFor } from "@/lib/immich";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export interface PlacePhoto {
   id: string;
@@ -72,6 +75,7 @@ async function searchWindow(
       }),
       signal: controller.signal,
       cache: "no-store",
+      redirect: "manual",
     });
     if (!res.ok) return [];
     const data = (await res.json()) as {
@@ -105,14 +109,14 @@ async function mapLimit<T, R>(
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const base = (process.env.IMMICH_URL ?? "").trim().replace(/\/+$/, "");
-  const key = (process.env.IMMICH_API_KEY ?? "").trim();
-  if (!base || !key) {
-    return NextResponse.json({ configured: false, photos: [] });
-  }
+  const user = await readUser(req);
+  if (user instanceof NextResponse) return user;
+  const immich = await immichFor(user.id);
+  if (!immich) return NextResponse.json({ configured: false, photos: [] });
+  const { base, key } = immich;
 
   const { id } = await ctx.params;
   const placeId = Number(id);
@@ -125,9 +129,9 @@ export async function GET(
 
   try {
     const [place] = await q<PlaceRow>(
-      `SELECT ST_Y(lonlat::geometry) AS lat, ST_X(lonlat::geometry) AS lon
+      `SELECT ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon
        FROM places WHERE id = $1 AND user_id = $2`,
-      [placeId, USER_ID],
+      [placeId, user.id],
     );
     if (!place) {
       return NextResponse.json(
@@ -137,21 +141,10 @@ export async function GET(
     }
 
     const windows = await q<VisitWindow>(
-      `WITH links AS (
-         SELECT id AS visit_id FROM visits
-         WHERE deleted_at IS NULL AND place_id = $1
-         UNION
-         SELECT pv.visit_id FROM place_visits pv
-         JOIN visits v ON v.id = pv.visit_id AND v.deleted_at IS NULL
-         WHERE pv.place_id = $1
-       )
-       SELECT v.started_at, v.ended_at
-       FROM visits v
-       JOIN links l ON l.visit_id = v.id
-       WHERE v.started_at IS NOT NULL AND v.ended_at IS NOT NULL
-       ORDER BY v.started_at DESC
-       LIMIT $2`,
-      [placeId, MAX_WINDOWS],
+      `SELECT started_at, ended_at FROM visits
+       WHERE place_id = $1 AND user_id = $2
+       ORDER BY started_at DESC LIMIT $3`,
+      [placeId, user.id, MAX_WINDOWS],
     );
 
     if (windows.length === 0) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Animated, Easing, Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
 import type { Colors } from "../design/tokens";
@@ -134,7 +134,7 @@ export function SectionTitle({ title, trailing }: { title: string; trailing?: st
 /** Pulsing placeholder block for loading states. */
 export function Skeleton({ height, width, radius: r = 12, style }: { height: number; width?: number | `${number}%`; radius?: number; style?: StyleProp<ViewStyle> }) {
   const t = useTheme();
-  const v = useRef(new Animated.Value(0.55)).current;
+  const [v] = useState(() => new Animated.Value(0.55));
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([

@@ -12,3 +12,4 @@ data/*.sql
 .DS_Store
 .vercel
 coverage/
+.claude/worktrees/

@@ -117,7 +117,7 @@ body {
   border-radius: var(--mk-radius);
 }
 
-/* ---------- Embedded in the mobile app (?embed=1) ---------- */
+/* ---------- Embedded in the mobile app (/embed/ pages) ---------- */
 html.embed body > div > aside,
 html.embed body > div > header,
 html.embed body > div > nav {

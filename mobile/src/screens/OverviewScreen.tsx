@@ -1,19 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Animated, Easing, Pressable, View } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
-import { getJSON, type Overview } from "../api";
-import { cleanName, fmtCompact, fmtDuration, fmtWhen, greeting, isNamed } from "../format";
-import { flushQueue, isTracking, queuedCount, requestPermissions, startTracking, stopTracking } from "../collector";
+import { count, fmtCompact, fmtDuration, fmtWhen, greeting } from "../format";
+import { startTracking, stopTracking } from "../tracking";
 import { Button, Card, EmptyState, ErrorState, Icon, IconChip, SectionTitle, Skeleton } from "../ui";
-import { ShareBar, MonthBars } from "../ui/charts";
+import { MonthBars, ShareBar } from "../ui/charts";
 import { Screen } from "../ui/Screen";
+import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
+import type { CollectorState } from "../ui/useCollectorState";
+import { uploadNow } from "../uploader";
+import { getOverview } from "../viewer";
 
 const EARTH_KM = 40_075;
+const placeName = (n: string | null) => (n && n !== "Unknown Location" ? n : null);
 
 function PulseDot({ active }: { active: boolean }) {
   const t = useTheme();
-  const v = useRef(new Animated.Value(0)).current;
+  const [v] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (!active) return;
     const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration: 1500, easing: Easing.out(Easing.quad), useNativeDriver: true }));
@@ -41,59 +45,42 @@ function PulseDot({ active }: { active: boolean }) {
   );
 }
 
-export default function OverviewScreen() {
+export default function OverviewScreen({
+  collector,
+  refreshCollector,
+}: {
+  collector: CollectorState | null;
+  refreshCollector: () => Promise<void>;
+}) {
   const t = useTheme();
-  const [data, setData] = useState<Overview | null>(null);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const { authLost, goTab } = useSession();
+  const { data, error: loadErr, reload } = useViewerQuery(getOverview);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [tracking, setTracking] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [queued, setQueued] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoadErr(null);
-      setData(await getJSON<Overview>("/api/overview"));
-    } catch (e) {
-      setLoadErr(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
+  const tracking = !!collector?.trackingEnabled;
+  const running = tracking && !!collector?.trackingRunning;
+  const queued = collector?.queued ?? 0;
 
-  useEffect(() => {
-    load();
-    isTracking().then(setTracking);
-    // Upload anything recorded while the server was unreachable.
-    flushQueue().finally(() => setQueued(queuedCount()));
-    const id = setInterval(() => {
-      isTracking().then(setTracking);
-      setQueued(queuedCount());
-    }, 4000);
-    return () => clearInterval(id);
-  }, [load]);
-
-  const toggle = useCallback(async () => {
+  const toggle = async () => {
     setBusy(true);
     setNotice(null);
     try {
       if (tracking) {
         await stopTracking();
-        setTracking(false);
       } else {
-        const p = await requestPermissions();
-        if (p.fg !== "granted" || p.bg !== "granted") {
-          setNotice("Matka needs location set to “Allow all the time” to record in the background.");
-        } else {
-          await startTracking();
-          setTracking(true);
-        }
+        const r = await startTracking();
+        if (!r.ok) setNotice(r.error);
       }
     } catch (e) {
       setNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      await refreshCollector();
+      setBusy(false);
     }
-    setBusy(false);
-  }, [tracking]);
+  };
 
   const s = useStyles((th) => ({
     topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -111,7 +98,8 @@ export default function OverviewScreen() {
     heroPill: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.16)", borderRadius: th.radius.pill, paddingVertical: 6, paddingHorizontal: 12 },
     ring: { position: "absolute", borderWidth: 1.5, borderColor: th.c.heroRing },
     row3: { flexDirection: "row", gap: th.space.md },
-    tile: { flex: 1, gap: th.space.sm, padding: th.space.md + 2 },
+    tiles: { flexDirection: "row", flexWrap: "wrap", gap: th.space.md },
+    tile: { flexBasis: "40%", flexGrow: 1, gap: th.space.sm, padding: th.space.md + 2 },
     notice: { flexDirection: "row", gap: th.space.sm, alignItems: "flex-start", backgroundColor: th.c.dangerSoft, borderRadius: th.radius.md, padding: th.space.md },
     list: { gap: th.space.lg },
     listRow: { flexDirection: "row", alignItems: "center", gap: th.space.md },
@@ -119,12 +107,13 @@ export default function OverviewScreen() {
 
   const refresh = async () => {
     setRefreshing(true);
-    await Promise.all([load(), flushQueue()]);
-    setQueued(queuedCount());
+    await Promise.all([reload(), uploadNow("manual").catch(() => null)]);
+    await refreshCollector();
     setRefreshing(false);
   };
 
   const totals = data?.totals;
+  const km = totals ? Math.round(totals.distance / 1000) : 0;
   const months = (data?.months ?? []).map((m) => ({
     key: `${m.year}-${m.month}`,
     label: new Date(m.year, m.month - 1, 1).toLocaleDateString([], { month: "short" }),
@@ -136,19 +125,28 @@ export default function OverviewScreen() {
     totals?.first && totals?.last
       ? `${new Date(totals.first).toLocaleDateString([], { day: "numeric", month: "short" })} – ${new Date(totals.last).toLocaleDateString([], { day: "numeric", month: "short" })}`
       : "";
-  const earth = totals ? (totals.totalKm / EARTH_KM) * 100 : 0;
-  const maxCity = Math.max(1, ...(data?.cities ?? []).map((c) => c.count));
+  const earth = (km / EARTH_KM) * 100;
+  const topPlaces = (data?.topPlaces ?? []).slice(0, 5);
+  const maxHours = Math.max(0.01, ...topPlaces.map((p) => p.hours));
   const empty = totals != null && totals.points === 0;
 
   const recording = (
     <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-      <PulseDot active={tracking} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text variant="headline">{tracking ? "Recording your journey" : "Recording is off"}</Text>
-        <Text variant="caption" color="textSecondary">
-          {queued > 0 ? `${queued.toLocaleString()} points waiting to upload` : tracking ? "Collecting in the background" : "Tap Start to log new places"}
-        </Text>
-      </View>
+      <Pressable onPress={() => goTab("recorder")} accessibilityRole="button" accessibilityLabel="Open recorder" style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <PulseDot active={running} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text variant="headline">{running ? "Recording your journey" : tracking ? "Recording isn't running" : "Recording is off"}</Text>
+          <Text variant="caption" color="textSecondary">
+            {queued > 0
+              ? `${count(queued)} points waiting to upload`
+              : running
+                ? "Collecting in the background"
+                : tracking
+                  ? "Open the recorder to see why"
+                  : "Tap Start to log new places"}
+          </Text>
+        </View>
+      </Pressable>
       <Button label={tracking ? "Stop" : "Start"} icon={tracking ? "stop" : "play"} variant={tracking ? "danger" : "primary"} onPress={toggle} busy={busy} />
     </Card>
   );
@@ -170,9 +168,17 @@ export default function OverviewScreen() {
       <View style={{ gap: 2 }}>
         <Text variant="title1">{greeting()}</Text>
         <Text variant="callout" color="textSecondary">
-          {!data ? (loadErr ? "We couldn't load your journeys" : "Loading your journeys…") : totals!.days > 0 ? `${totals!.days.toLocaleString()} days of journeys so far` : "Here is where your travels will show up"}
+          {!data
+            ? loadErr
+              ? "We couldn't load your journeys"
+              : "Loading your journeys…"
+            : totals!.days > 0
+              ? `${totals!.days.toLocaleString()} days of journeys so far`
+              : "Here is where your travels will show up"}
         </Text>
       </View>
+
+      {authLost ? <PairingLost /> : null}
 
       {notice && (
         <View style={s.notice}>
@@ -183,10 +189,12 @@ export default function OverviewScreen() {
         </View>
       )}
 
-      {loadErr && !data ? (
+      {authLost && !data ? (
+        recording
+      ) : loadErr && !data ? (
         <>
           {recording}
-          <ErrorState message={loadErr} onRetry={load} />
+          <ErrorState message={loadErr} onRetry={reload} />
         </>
       ) : !data ? (
         <>
@@ -221,41 +229,44 @@ export default function OverviewScreen() {
               </View>
             ) : null}
             <View>
-            <Text variant="overline" color="onHeroMuted">
-              Total distance
-            </Text>
-            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-              <Text variant="display" color="onHero">
-                {totals!.totalKm.toLocaleString()}
+              <Text variant="overline" color="onHeroMuted">
+                Total distance
               </Text>
-              <Text variant="title2" color="onHeroMuted">
-                km
-              </Text>
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-              <Icon name="earth" size={16} color={t.c.onHeroMuted} />
-              <Text variant="callout" color="onHeroMuted">
-                {earth >= 100 ? `That is ${(earth / 100).toFixed(1)} laps around the Earth` : `That is ${Math.round(earth)}% of the way around the Earth`}
-              </Text>
-            </View>
+              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+                <Text variant="display" color="onHero">
+                  {km.toLocaleString()}
+                </Text>
+                <Text variant="title2" color="onHeroMuted">
+                  km
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
+                <Icon name="earth" size={16} color={t.c.onHeroMuted} />
+                <Text variant="callout" color="onHeroMuted">
+                  {earth >= 100 ? `That is ${(earth / 100).toFixed(1)} laps around the Earth` : `That is ${Math.round(earth)}% of the way around the Earth`}
+                </Text>
+              </View>
             </View>
           </View>
 
           {recording}
 
-          <View style={s.row3}>
-            {[
-              { icon: "map-marker-check-outline", tint: "coral", label: "Visits", value: totals!.visits },
-              { icon: "calendar-check-outline", tint: "amber", label: "Days", value: totals!.days },
-              { icon: "crosshairs-gps", tint: "mint", label: "GPS points", value: totals!.points },
-            ].map((x) => (
+          <View style={s.tiles}>
+            {(
+              [
+                { icon: "map-marker-check-outline", tint: "coral", label: "Visits", value: totals!.visits },
+                { icon: "routes", tint: "sky", label: "Trips", value: totals!.trips },
+                { icon: "calendar-check-outline", tint: "amber", label: "Days tracked", value: totals!.days },
+                { icon: "crosshairs-gps", tint: "mint", label: "GPS points", value: totals!.points },
+              ] as const
+            ).map((x) => (
               <Card key={x.label} style={s.tile}>
-                <IconChip icon={x.icon as never} tint={x.tint as never} size={34} />
+                <IconChip icon={x.icon} tint={x.tint} size={34} />
                 <View>
                   <Text variant="stat" numberOfLines={1} adjustsFontSizeToFit>
                     {fmtCompact(x.value)}
                   </Text>
-                  <Text variant="caption" color="textSecondary">
+                  <Text variant="caption" color="textSecondary" numberOfLines={1}>
                     {x.label}
                   </Text>
                 </View>
@@ -286,14 +297,16 @@ export default function OverviewScreen() {
             </Card>
           )}
 
-          {data.cities.length > 0 && (
+          {topPlaces.length > 0 && (
             <>
-              <SectionTitle title="Where you spend time" trailing="by GPS points" />
-              <Card style={s.list}>
-                {data.cities.slice(0, 5).map((c) => (
-                  <ShareBar key={c.city} label={c.city} value={c.count} max={maxCity} display={fmtCompact(c.count)} />
-                ))}
-              </Card>
+              <SectionTitle title="Where you spend time" trailing="by hours there" />
+              <Pressable onPress={() => goTab("places")} accessibilityRole="button" accessibilityLabel="Open places">
+                <Card style={s.list}>
+                  {topPlaces.map((p) => (
+                    <ShareBar key={p.id} label={placeName(p.name) ?? "Unnamed place"} value={p.hours} max={maxHours} display={fmtDuration(p.hours * 3600)} />
+                  ))}
+                </Card>
+              </Pressable>
             </>
           )}
 
@@ -302,13 +315,13 @@ export default function OverviewScreen() {
               <SectionTitle title="Recent visits" />
               <Card style={s.list}>
                 {data.recent.map((v) => {
-                  const named = isNamed(v.name);
+                  const named = placeName(v.name);
                   return (
                     <View key={v.id} style={s.listRow}>
                       <IconChip icon={named ? "map-marker-outline" : "help-circle-outline"} tint={named ? "violet" : "slate"} size={38} />
                       <View style={{ flex: 1 }}>
                         <Text variant="headline" numberOfLines={2}>
-                          {named ? cleanName(v.name) : "Unnamed place"}
+                          {named ?? "Unnamed place"}
                         </Text>
                         <Text variant="caption" color="textSecondary">
                           {fmtWhen(v.startedAt)}

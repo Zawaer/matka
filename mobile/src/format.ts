@@ -1,3 +1,33 @@
+// Display formatting (pure).
+
+// ---- collector (status / settings) -------------------------------------------
+
+/** "just now", "5 min ago", "3 h ago", "2 d ago", or "never". */
+export function ago(ms: number | null | undefined, now = Date.now()): string {
+  if (ms == null || !Number.isFinite(ms)) return "never";
+  const d = Math.max(0, now - ms);
+  if (d < 60_000) return "just now";
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)} min ago`;
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)} h ago`;
+  return `${Math.floor(d / 86_400_000)} d ago`;
+}
+
+/** "in 2 min" style, for the next retry. */
+export function inFuture(ms: number | null | undefined, now = Date.now()): string {
+  if (ms == null || !Number.isFinite(ms) || ms <= now) return "now";
+  const d = ms - now;
+  if (d < 60_000) return `in ${Math.ceil(d / 1000)} s`;
+  if (d < 3_600_000) return `in ${Math.ceil(d / 60_000)} min`;
+  return `in ${Math.ceil(d / 3_600_000)} h`;
+}
+
+export function count(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+// ---- viewer ------------------------------------------------------------------
+
 export function fmtDuration(s: number | null | undefined): string {
   if (!s || s < 0) return "—";
   const h = Math.floor(s / 3600);
@@ -50,6 +80,12 @@ export function niceMax(v: number): number {
   const n = v / pow;
   const step = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((x) => n <= x) ?? 10;
   return step * pow;
+}
+
+/** "2026-10-18" → that calendar day at local midnight (not UTC, which can show the previous day). */
+export function localDay(date: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 }
 
 /**

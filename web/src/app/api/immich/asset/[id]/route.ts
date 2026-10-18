@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { readUser } from "@/lib/auth";
+import { immichFor } from "@/lib/immich";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // Proxies an Immich asset thumbnail/preview so the API key stays server-side.
 // Client requests /api/immich/asset/<id>?size=thumbnail|preview.
@@ -8,14 +11,16 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const base = (process.env.IMMICH_URL ?? "").trim().replace(/\/+$/, "");
-  const key = (process.env.IMMICH_API_KEY ?? "").trim();
-  if (!base || !key) {
+  const user = await readUser(req);
+  if (user instanceof NextResponse) return user;
+  const immich = await immichFor(user.id);
+  if (!immich) {
     return NextResponse.json({ error: "Immich not configured" }, { status: 404 });
   }
+  const { base, key } = immich;
 
   const { id } = await ctx.params;
-  if (!/^[A-Za-z0-9-]+$/.test(id)) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
     return NextResponse.json({ error: "Bad asset id" }, { status: 400 });
   }
 
@@ -30,6 +35,7 @@ export async function GET(
       headers: { "x-api-key": key, accept: "application/octet-stream" },
       signal: controller.signal,
       cache: "no-store",
+      redirect: "manual",
     });
 
     if (!upstream.ok || !upstream.body) {
@@ -39,12 +45,18 @@ export async function GET(
       );
     }
 
-    const contentType =
-      upstream.headers.get("content-type") ?? "image/jpeg";
+    // Only ever relay images, and sandbox them, so a hostile upstream can't
+    // serve script on Matka's origin.
+    const contentType = upstream.headers.get("content-type") ?? "";
+    if (!/^image\/(jpeg|png|webp|avif|gif|heic|heif)\b/i.test(contentType)) {
+      await upstream.body.cancel().catch(() => {});
+      return NextResponse.json({ error: "Upstream error" }, { status: 502 });
+    }
     return new NextResponse(upstream.body, {
       status: 200,
       headers: {
         "content-type": contentType,
+        "content-security-policy": "sandbox; default-src 'none'",
         // These thumbnails are immutable per asset id/size.
         "cache-control": "private, max-age=86400",
       },

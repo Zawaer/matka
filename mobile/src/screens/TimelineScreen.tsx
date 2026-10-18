@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
+import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
-import { getJSON, type TimelineItem, type TimelineResp } from "../api";
-import { cleanName, fmtDistance, fmtDuration, fmtTime, isLikelyDrift, isNamed } from "../format";
+import { fmtDistance, fmtDuration, fmtTime, isLikelyDrift, localDay } from "../format";
+import type { Pairing } from "../pairing";
 import { Card, EmptyState, ErrorState, Icon, Skeleton } from "../ui";
 import type { IconName } from "../ui/Icon";
 import { Screen, ScreenHeader } from "../ui/Screen";
+import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
+import { getTimeline, type Mode, type Timeline } from "../viewer";
 
-const MODES: Record<string, { label: string; icon: IconName }> = {
+const MODES: Record<Mode, { label: string; icon: IconName }> = {
   unknown: { label: "Move", icon: "dots-horizontal" },
   stationary: { label: "Stationary", icon: "pause-circle-outline" },
   walking: { label: "Walk", icon: "walk" },
@@ -22,58 +25,52 @@ const MODES: Record<string, { label: string; icon: IconName }> = {
   motorcycle: { label: "Motorbike", icon: "motorbike" },
 };
 
-const parseDay = (iso: string) => {
-  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
-  return new Date(y, m - 1, d);
-};
-
 const RAIL = 28;
+
+function NavButton({ icon, onPress, disabled, label }: { icon: IconName; onPress: () => void; disabled: boolean; label: string }) {
+  const t = useTheme();
+  const s = useStyles((th) => ({
+    navBtn: { width: 44, height: 44, borderRadius: th.radius.pill, backgroundColor: th.c.surface, borderColor: th.c.border, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  }));
+  return (
+    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={[s.navBtn, disabled && { opacity: 0.4 }]}>
+      <Icon name={icon} size={22} color={t.c.text} />
+    </Pressable>
+  );
+}
 
 export default function TimelineScreen() {
   const t = useTheme();
-  const [date, setDate] = useState<string | null>(null);
-  const [resp, setResp] = useState<TimelineResp | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { authLost } = useSession();
+  // null = latest day with data (server default)
+  const [want, setWant] = useState<string | null>(null);
+  const fetcher = useCallback((p: Pairing) => getTimeline(p, want), [want]);
+  const { data: resp, error: err, loading, reload } = useViewerQuery<Timeline>(fetcher);
 
-  const load = useCallback(async (d: string | null) => {
-    setLoading(true);
-    try {
-      setErr(null);
-      const r = await getJSON<TimelineResp>(d ? `/api/timeline?date=${d}` : "/api/timeline");
-      setResp(r);
-      setDate(r.day.date);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-    setLoading(false);
-  }, []);
-  useEffect(() => {
-    load(null);
-  }, [load]);
-
+  const date = resp?.day.date || null;
   const dates = resp?.dates ?? [];
   const idx = date ? dates.indexOf(date) : -1;
   const canPrev = idx > 0;
   const canNext = idx >= 0 && idx < dates.length - 1;
   const go = (delta: number) => {
     const ni = idx + delta;
-    if (idx >= 0 && ni >= 0 && ni < dates.length) load(dates[ni]);
+    if (idx >= 0 && ni >= 0 && ni < dates.length) setWant(dates[ni]);
   };
 
-  const items: TimelineItem[] = resp?.day.items ?? [];
+  const items = resp?.day.items ?? [];
   // Stationary segments and impossible speeds are GPS drift; keep them out of the day's totals.
   const moves = items.flatMap((i) =>
-    i.kind === "move" && !isLikelyDrift(i.track.mode, i.track.distance, i.track.duration) && i.track.mode !== "stationary" ? [i.track] : [],
+    i.kind === "move" && i.track.mode !== "stationary" && !isLikelyDrift(i.track.mode, i.track.distance, i.track.duration)
+      ? [i.track]
+      : [],
   );
   const visits = items.filter((i) => i.kind === "visit").length;
   const km = moves.reduce((a, m) => a + (m.distance ?? 0), 0);
   const moving = moves.reduce((a, m) => a + (m.duration ?? 0), 0);
-  const day = date ? parseDay(date) : null;
+  const day = date ? localDay(date) : null;
 
   const s = useStyles((th) => ({
     nav: { flexDirection: "row", alignItems: "center", gap: th.space.md },
-    navBtn: { width: 44, height: 44, borderRadius: th.radius.pill, backgroundColor: th.c.surface, borderColor: th.c.border, borderWidth: 1, alignItems: "center", justifyContent: "center" },
     summary: { flexDirection: "row", paddingVertical: th.space.md },
     sumCell: { flex: 1, alignItems: "center", gap: 2 },
     divider: { width: 1, backgroundColor: th.c.border, marginVertical: 4 },
@@ -85,15 +82,10 @@ export default function TimelineScreen() {
     move: { flex: 1, flexDirection: "row", alignItems: "center", gap: th.space.md, paddingVertical: th.space.sm },
   }));
 
-  const NavButton = ({ icon, onPress, disabled, label }: { icon: IconName; onPress: () => void; disabled: boolean; label: string }) => (
-    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={[s.navBtn, disabled && { opacity: 0.4 }]}>
-      <Icon name={icon} size={22} color={t.c.text} />
-    </Pressable>
-  );
-
   return (
-    <Screen refreshing={false} onRefresh={() => load(date)}>
+    <Screen refreshing={false} onRefresh={reload}>
       <ScreenHeader title="Timeline" subtitle="Your day, stop by stop" />
+      {authLost ? <PairingLost /> : null}
 
       <View style={s.nav}>
         <NavButton icon="chevron-left" label="Previous day" onPress={() => go(-1)} disabled={!canPrev} />
@@ -106,9 +98,9 @@ export default function TimelineScreen() {
         <NavButton icon="chevron-right" label="Next day" onPress={() => go(1)} disabled={!canNext} />
       </View>
 
-      {err && !resp ? (
-        <ErrorState message={err} onRetry={() => load(date)} />
-      ) : loading && !resp ? (
+      {authLost && !resp ? null : err && !resp ? (
+        <ErrorState message={err} onRetry={reload} />
+      ) : !resp ? (
         <View style={{ gap: 12 }}>
           <Skeleton height={76} radius={20} />
           <Skeleton height={72} radius={20} />
@@ -117,7 +109,11 @@ export default function TimelineScreen() {
         </View>
       ) : items.length === 0 ? (
         <Card>
-          <EmptyState icon="sleep" title="A quiet day" body="Nothing was recorded on this day. Use the arrows to browse the days you were out and about." />
+          {date ? (
+            <EmptyState icon="sleep" title="A quiet day" body="Nothing was recorded on this day. Use the arrows to browse the days you were out and about." />
+          ) : (
+            <EmptyState icon="map-marker-path" title="No days yet" body="Visits and trips show up here once the server has processed what this phone recorded." />
+          )}
         </Card>
       ) : (
         <>
@@ -150,13 +146,20 @@ export default function TimelineScreen() {
             </View>
           </Card>
 
+          {err ? (
+            <Text variant="caption" style={{ color: t.c.danger }}>
+              {err}
+            </Text>
+          ) : null}
+
           <View style={{ opacity: loading ? 0.5 : 1 }}>
             {items.map((it, i) => {
               const first = i === 0;
               const last = i === items.length - 1;
               if (it.kind === "visit") {
                 const v = it.visit;
-                const named = isNamed(v.placeName);
+                const named = v.placeName && v.placeName !== "Unknown Location";
+                const cat = v.category ? categoryMeta(v.category).label : null;
                 return (
                   <View key={`v${v.id}-${i}`} style={s.row}>
                     <View style={s.rail}>
@@ -168,10 +171,11 @@ export default function TimelineScreen() {
                     <Card style={s.visit}>
                       <View style={{ flex: 1, gap: 2 }}>
                         <Text variant="headline" numberOfLines={2}>
-                          {named ? cleanName(v.placeName) : "Unnamed place"}
+                          {named ? v.placeName : (cat ?? "Unnamed place")}
                         </Text>
                         <Text variant="caption" color="textSecondary">
                           {fmtTime(v.startedAt)} – {fmtTime(v.endedAt)}
+                          {named && cat ? ` · ${cat}` : ""}
                         </Text>
                       </View>
                       <Text variant="callout" color="textSecondary" tabular>
@@ -182,7 +186,7 @@ export default function TimelineScreen() {
                 );
               }
               const m = it.track;
-              const meta = MODES[m.mode] ?? MODES.unknown;
+              const meta = MODES[m.mode];
               const color = t.mode(m.mode);
               const drift = isLikelyDrift(m.mode, m.distance, m.duration);
               return (

@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import { getPlaces } from "@/lib/places";
 import { PlaceCard } from "@/components/places/PlaceCard";
 
@@ -8,10 +9,11 @@ export const metadata = {
 };
 
 export default async function PlacesPage() {
+  const user = await requireUser();
   let places = [] as Awaited<ReturnType<typeof getPlaces>>;
   let failed = false;
   try {
-    places = await getPlaces();
+    places = await getPlaces(user.id);
   } catch (err) {
     console.error("[places] load failed:", err);
     failed = true;
@@ -53,8 +55,8 @@ function EmptyState() {
       </span>
       <h2 className="text-lg font-medium">No places yet</h2>
       <p className="max-w-md text-sm text-muted">
-        Places are being generated from your visits — reverse geocoding is still
-        running. Check back soon and your most-visited spots will appear here.
+        Places appear once Matka has spotted somewhere you stayed for a while —
+        pair your phone under Devices, or import your Dawarich history.
       </p>
     </div>
   );

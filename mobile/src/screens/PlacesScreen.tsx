@@ -1,36 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { FlatList, Pressable, RefreshControl, TextInput, View } from "react-native";
-import { useStyles, useTheme } from "../design/theme";
 import { categoryMeta } from "../design/categories";
-import { getJSON, type PlaceItem } from "../api";
-import { cleanName, fmtDuration, isNamed } from "../format";
+import { useStyles, useTheme } from "../design/theme";
+import { fmtDuration } from "../format";
 import { Card, EmptyState, ErrorState, Icon, IconChip, Pill, Skeleton } from "../ui";
 import { ScreenHeader } from "../ui/Screen";
+import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
+import { getPlaces, type Place } from "../viewer";
 
-function placeName(p: PlaceItem) {
-  return isNamed(p.name) ? cleanName(p.name)! : "Unnamed place";
+function placeName(p: Place) {
+  return p.name && p.name !== "Unknown Location" ? p.name : "Unnamed place";
 }
 
 export default function PlacesScreen() {
   const t = useTheme();
-  const [places, setPlaces] = useState<PlaceItem[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const { authLost } = useSession();
+  const { data, error: err, reload } = useViewerQuery(getPlaces);
+  // A renamed place keeps existing after its visits are gone; it isn't one you come back to.
+  const places = useMemo(() => data?.filter((p) => p.visitCount > 0), [data]);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      setErr(null);
-      // Places Dawarich created only by geocoding, never visited, are not "places you come back to".
-      setPlaces((await getJSON<{ places: PlaceItem[] }>("/api/places")).places.filter((p) => p.visitCount > 0));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const q = query.trim().toLowerCase();
   const shown = useMemo(
@@ -63,6 +53,7 @@ export default function PlacesScreen() {
   const header = (
     <View style={{ gap: 14, marginBottom: 4 }}>
       <ScreenHeader title="Places" subtitle={places ? `${places.length.toLocaleString()} places you come back to` : "Where you spend your time"} />
+      {authLost ? <PairingLost /> : null}
       <View style={s.search}>
         <Icon name="magnify" size={20} color={t.c.textMuted} />
         <TextInput
@@ -80,8 +71,8 @@ export default function PlacesScreen() {
           </Pressable>
         )}
       </View>
-      {err && !places && <ErrorState message={err} onRetry={load} />}
-      {!places && !err && (
+      {err && !places && !authLost && <ErrorState message={err} onRetry={reload} />}
+      {!places && !err && !authLost && (
         <View style={{ gap: 10 }}>
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} height={72} radius={20} />
@@ -118,7 +109,7 @@ export default function PlacesScreen() {
           progressBackgroundColor={t.c.surface}
           onRefresh={async () => {
             setRefreshing(true);
-            await load();
+            await reload();
             setRefreshing(false);
           }}
         />
