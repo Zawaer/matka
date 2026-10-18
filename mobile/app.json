@@ -44,16 +44,8 @@
           "locationAlwaysAndWhenInUsePermission": "Matka records your location in the background to build your timeline."
         }
       ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true
-          }
-        }
-      ],
       "./plugins/withLowMemoryGradle.js",
-      "./plugins/withDebugUserCerts.js"
+      "./plugins/withUserCerts.js"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

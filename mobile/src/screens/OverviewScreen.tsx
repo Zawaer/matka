@@ -11,7 +11,9 @@ import {
 import { C, fmtDuration } from "../theme";
 import { getJSON, type Overview } from "../api";
 import {
+  flushQueue,
   isTracking,
+  queuedCount,
   requestPermissions,
   startTracking,
   stopTracking,
@@ -23,6 +25,7 @@ export default function OverviewScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [tracking, setTracking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [queued, setQueued] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -36,7 +39,12 @@ export default function OverviewScreen() {
   useEffect(() => {
     load();
     isTracking().then(setTracking);
-    const id = setInterval(() => isTracking().then(setTracking), 4000);
+    // Upload anything recorded while the server was unreachable.
+    flushQueue().finally(() => setQueued(queuedCount()));
+    const id = setInterval(() => {
+      isTracking().then(setTracking);
+      setQueued(queuedCount());
+    }, 4000);
     return () => clearInterval(id);
   }, [load]);
 
@@ -81,7 +89,8 @@ export default function OverviewScreen() {
           tintColor={C.primary}
           onRefresh={async () => {
             setRefreshing(true);
-            await load();
+            await Promise.all([load(), flushQueue()]);
+            setQueued(queuedCount());
             setRefreshing(false);
           }}
         />
@@ -98,6 +107,11 @@ export default function OverviewScreen() {
             <Text style={[s.statLabel, { marginTop: 2 }]}>
               {tracking ? "Collecting in the background" : "Off"}
             </Text>
+            {queued > 0 && (
+              <Text style={[s.statLabel, { marginTop: 2 }]}>
+                {queued.toLocaleString()} points waiting to upload
+              </Text>
+            )}
           </View>
           <Pressable
             onPress={toggle}

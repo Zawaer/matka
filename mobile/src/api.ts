@@ -1,6 +1,7 @@
-// Matka API client. On-device, localhost:3000 reaches the Mac dev server via
-// `adb reverse tcp:3000 tcp:3000`. Swap for the deployed Matka URL later.
-export const API_BASE = "http://localhost:3000";
+// Matka API client: the homelab deployment, reached over Tailscale. The
+// certificate comes from the homelab's Caddy CA, which the app trusts as a
+// user-installed CA (see plugins/withUserCerts.js).
+export const API_BASE = "https://matka.lan";
 
 export async function getJSON<T>(path: string): Promise<T> {
   const r = await fetch(API_BASE + path, { headers: { Accept: "application/json" } });

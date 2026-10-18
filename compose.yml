@@ -1,0 +1,18 @@
+# Matka on the homelab: `docker compose up -d --build matka`
+# in ~/matka. Secrets come from ~/matka/.env (gitignored).
+services:
+  matka:
+    build: ./web
+    container_name: matka
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      - proxy_net        # Caddy reaches matka:3000 by name
+      - dawarich_dawarich  # dawarich_db (read-only role) and dawarich_app (ingest)
+    mem_limit: 512m
+
+networks:
+  proxy_net:
+    external: true
+  dawarich_dawarich:
+    external: true

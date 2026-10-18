@@ -1,29 +1,25 @@
-// Debug builds trust user-installed CAs, so the dev client can load Metro
-// over the homelab's private-CA HTTPS preview URLs (*.preview.lan).
-// <debug-overrides> only applies when the app is debuggable, so release
-// builds keep Android's default (system CAs only).
+// The app talks to homelab services (matka.lan, and Metro on
+// *.preview.lan in development) whose certificates come from the
+// homelab's Caddy CA. That CA is installed on the phone as a user CA, which
+// Android apps ignore unless their network security config opts in.
+// This is a personal app for the homelab, so all builds trust user CAs.
+// Plain HTTP stays off.
 const fs = require("fs");
 const path = require("path");
 const { withAndroidManifest, withDangerousMod } = require("expo/config-plugins");
 
 const XML = `<?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-  <!-- Overrides usesCleartextTraffic once this file exists; the API is http:// for now. -->
-  <base-config cleartextTrafficPermitted="true">
-    <trust-anchors>
-      <certificates src="system" />
-    </trust-anchors>
-  </base-config>
-  <debug-overrides>
+  <base-config cleartextTrafficPermitted="false">
     <trust-anchors>
       <certificates src="system" />
       <certificates src="user" />
     </trust-anchors>
-  </debug-overrides>
+  </base-config>
 </network-security-config>
 `;
 
-module.exports = function withDebugUserCerts(config) {
+module.exports = function withUserCerts(config) {
   config = withDangerousMod(config, [
     "android",
     async (cfg) => {
