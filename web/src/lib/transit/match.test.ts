@@ -97,3 +97,21 @@ describe("feed helpers", () => {
     }
   });
 });
+
+describe("ferry detection", async () => {
+  const { isWater } = await import("../water");
+  const { isFerry } = await import("../processing/ferry");
+  it("knows land from sea around Helsinki", () => {
+    expect(isWater(60.1709, 24.9419)).toBe(false); // Rautatientori
+    expect(isWater(59.8, 24.9)).toBe(true); // Gulf of Finland
+    expect(isWater(52.52, 13.4)).toBeNull(); // outside the mask
+  });
+  it("calls a Helsinki-Tallinn crossing a ferry, not a flight or a coastal drive", () => {
+    const sea: [number, number][] = Array.from({ length: 20 }, (_, i) => [24.95 - i * 0.01, 60.12 - i * 0.034]);
+    const t0 = 1_760_000_000;
+    expect(isFerry({ path: sea, distance: 80_000, start: t0, end: t0 + 2.5 * 3600 })).toBe(true);
+    expect(isFerry({ path: sea, distance: 80_000, start: t0, end: t0 + 0.3 * 3600 })).toBe(false); // 267 km/h
+    const city: [number, number][] = Array.from({ length: 20 }, (_, i) => [24.74 + i * 0.01, 60.165]);
+    expect(isFerry({ path: city, distance: 11_000, start: t0, end: t0 + 1200 })).toBe(false);
+  });
+});

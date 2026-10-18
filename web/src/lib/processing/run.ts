@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { Detector, STAY_RADIUS_M, type DPoint, type Output } from "./detect";
+import { isFerry } from "./ferry";
 
 // Incremental processing for one user. Everything from processing_state.dirty_from
 // onward is rebuilt: we rewind to the start of the last visit that began before
@@ -144,7 +145,7 @@ async function write(c: PoolClient, userId: string, out: Output[]) {
           t.start,
           t.end,
           t.distance,
-          t.mode,
+          isFerry(t) ? "boat" : t.mode,
           JSON.stringify({ type: "LineString", coordinates: t.path }),
           t.count,
         ],

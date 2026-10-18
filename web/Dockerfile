@@ -27,6 +27,7 @@ COPY --from=build --chown=matka:matka /app/.next/static ./.next/static
 COPY --from=build --chown=matka:matka /app/public ./public
 COPY --chown=matka:matka migrations ./migrations
 COPY --chown=matka:matka scripts ./scripts
+COPY --chown=matka:matka data ./data
 USER 1001
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
