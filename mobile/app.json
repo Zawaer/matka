@@ -1,24 +1,25 @@
 {
   "expo": {
     "name": "Matka",
-    "slug": "mobile",
+    "slug": "matka",
+    "scheme": "matka",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b1020",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "fi.otamaps.matka",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Matka records your location to build your timeline.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Matka records your location in the background to build your timeline.",
-        "UIBackgroundModes": [
-          "location"
-        ]
+        "NSLocationWhenInUseUsageDescription": "Matka records your location to build your timeline on your own Matka server.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "fi.otamaps.matka",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#0b1020",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -32,7 +33,15 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
     "plugins": [
@@ -41,12 +50,45 @@
         {
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true,
-          "locationAlwaysAndWhenInUsePermission": "Matka records your location in the background to build your timeline."
+          "isIosBackgroundLocationEnabled": true,
+          "locationAlwaysAndWhenInUsePermission": "Matka records your location in the background, all day, to build your timeline on your own Matka server.",
+          "locationWhenInUsePermission": "Matka records your location to build your timeline on your own Matka server.",
+          "locationAlwaysPermission": "Matka records your location in the background, all day, to build your timeline on your own Matka server."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Matka uses the camera only to scan the pairing QR code from your Matka server.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
         }
       ],
       "expo-sqlite",
-      "expo-secure-store",
-      "expo-build-properties"
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": false
+          }
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "backgroundColor": "#0b1020"
+        }
+      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png"
