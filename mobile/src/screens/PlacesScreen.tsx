@@ -129,7 +129,7 @@ export default function PlacesScreen() {
           <Card style={s.row}>
             <IconChip icon={meta.icon} tint={meta.tint} size={44} />
             <View style={{ flex: 1, gap: 3 }}>
-              <Text variant="headline" numberOfLines={1}>
+              <Text variant="headline" numberOfLines={2}>
                 {placeName(p)}
               </Text>
               <Text variant="caption" color="textSecondary" numberOfLines={1}>

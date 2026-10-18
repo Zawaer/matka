@@ -134,28 +134,28 @@ html.embed .map-shell {
   margin-bottom: 0 !important;
 }
 
-/* ---------- MapLibre chrome follows the theme tokens ---------- */
-.maplibregl-ctrl-group {
-  background: var(--mk-surface);
-  border: 1px solid var(--mk-border);
-  border-radius: 14px;
-  box-shadow: var(--mk-shadow);
+/* ---------- MapLibre chrome follows the theme tokens ----------
+   MapLibre's own stylesheet loads after this one, so these are !important. */
+.maplibregl-ctrl.maplibregl-ctrl-group {
+  background: var(--mk-surface) !important;
+  border: 1px solid var(--mk-border) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--mk-shadow) !important;
   overflow: hidden;
 }
 .maplibregl-ctrl-group button + button {
-  border-top: 1px solid var(--mk-border);
+  border-top: 1px solid var(--mk-border) !important;
 }
 .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: var(--mk-icon-filter, none);
 }
-.maplibregl-ctrl-attrib.maplibregl-compact,
-.maplibregl-ctrl-attrib {
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
   background: color-mix(in srgb, var(--mk-surface) 88%, transparent) !important;
-  color: var(--mk-muted);
-  border-radius: 12px;
+  color: var(--mk-muted) !important;
+  border-radius: 12px !important;
 }
-.maplibregl-ctrl-attrib a {
-  color: var(--mk-muted);
+.maplibregl-ctrl.maplibregl-ctrl-attrib a {
+  color: var(--mk-muted) !important;
 }
 .maplibregl-ctrl-attrib-button {
   filter: var(--mk-icon-filter, none);
