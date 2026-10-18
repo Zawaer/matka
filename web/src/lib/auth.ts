@@ -91,3 +91,38 @@ export async function requireUser(): Promise<User> {
 export async function apiUser(): Promise<User | NextResponse> {
   return (await getUser()) ?? NextResponse.json({ error: "unauthorized" }, { status: 401 });
 }
+
+async function userById(id: string): Promise<User | null> {
+  const [u] = await q<User>(`SELECT ${USER_COLS} FROM users u WHERE u.id = $1`, [id]);
+  return u ?? null;
+}
+
+/**
+ * For the read-only GET routes the phone app's viewer uses (docs/API.md):
+ * a browser session, a paired device's bearer token, or the map embed cookie
+ * the app's WebView gets from an embed ticket. Never use this for anything
+ * that changes data.
+ */
+export async function readUser(req: Request): Promise<User | NextResponse> {
+  const session = await getUser();
+  if (session) return session;
+  if (req.headers.get("authorization")) {
+    const { authenticateDevice } = await import("./devices");
+    const d = await authenticateDevice(req);
+    const u = d && (await userById(d.userId));
+    if (u) return u;
+  }
+  const { EMBED_COOKIE, verifyEmbed } = await import("./embed");
+  const embed = await verifyEmbed((await cookies()).get(EMBED_COOKIE)?.value);
+  const u = embed && (await userById(embed.userId));
+  return u ?? NextResponse.json({ error: "unauthorized" }, { status: 401 });
+}
+
+/** For embed pages: a browser session or a valid embed cookie. */
+export async function viewerUser(): Promise<User | null> {
+  const session = await getUser();
+  if (session) return session;
+  const { EMBED_COOKIE, verifyEmbed } = await import("./embed");
+  const embed = await verifyEmbed((await cookies()).get(EMBED_COOKIE)?.value);
+  return embed ? userById(embed.userId) : null;
+}

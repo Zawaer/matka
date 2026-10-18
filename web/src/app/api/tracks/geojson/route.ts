@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { apiUser } from "@/lib/auth";
+import { readUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ type Row = {
  * { id, mode, distance (m), duration (s) }. Optional from/to (epoch seconds).
  */
 export async function GET(req: Request) {
-  const user = await apiUser();
+  const user = await readUser(req);
   if (user instanceof NextResponse) return user;
   const url = new URL(req.url);
   const from = numParam(url.searchParams.get("from"));

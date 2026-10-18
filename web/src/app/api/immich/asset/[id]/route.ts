@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { apiUser } from "@/lib/auth";
+import { readUser } from "@/lib/auth";
 import { immichFor } from "@/lib/immich";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const user = await apiUser();
+  const user = await readUser(req);
   if (user instanceof NextResponse) return user;
   const immich = await immichFor(user.id);
   if (!immich) {

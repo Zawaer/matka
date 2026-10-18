@@ -15,7 +15,16 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* /embed/ pages (the phone app's WebView) hide the web chrome
+            before first paint, so the app's own tab bar is the only nav. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if(location.pathname.startsWith("/embed/"))document.documentElement.classList.add("embed")`,
+          }}
+        />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <div className="min-h-screen md:flex">
           <Nav />

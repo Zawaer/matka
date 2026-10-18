@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { apiUser } from "@/lib/auth";
+import { readUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ type Row = { lon: number; lat: number; id: string; t: number };
  * Downsamples via modulo-on-id so the payload stays under MAX_POINTS.
  */
 export async function GET(req: Request) {
-  const user = await apiUser();
+  const user = await readUser(req);
   if (user instanceof NextResponse) return user;
   const url = new URL(req.url);
 

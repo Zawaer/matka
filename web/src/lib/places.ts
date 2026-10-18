@@ -38,6 +38,11 @@ export async function getPlaces(userId: string): Promise<PlaceListItem[]> {
      FROM places p
      LEFT JOIN visits v ON v.place_id = p.id
      WHERE p.user_id = $1
+       -- Roads, cycleways and transit platforms are where you pass through,
+       -- not places you spend time; Photon often snaps short stops to them.
+       AND COALESCE(p.geodata->>'osm_key', '') <> 'highway'
+       AND COALESCE(p.category, '') NOT IN
+         ('platform', 'stop_position', 'stop', 'halt', 'tram_stop', 'bus_stop')
      GROUP BY p.id
      ORDER BY visit_count DESC, last_visit DESC NULLS LAST, name ASC`,
     [userId],

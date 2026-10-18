@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { apiUser } from "@/lib/auth";
+import { readUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { immichFor } from "@/lib/immich";
 
@@ -108,10 +108,10 @@ async function mapLimit<T, R>(
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const user = await apiUser();
+  const user = await readUser(req);
   if (user instanceof NextResponse) return user;
   const immich = await immichFor(user.id);
   if (!immich) return NextResponse.json({ configured: false, photos: [] });

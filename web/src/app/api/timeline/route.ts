@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { apiUser } from "@/lib/auth";
+import { readUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { isModeKey } from "@/lib/modes";
 import { PLACE_NAME_SQL } from "@/lib/places";
@@ -37,7 +37,7 @@ const secs = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 1000
  * latest day with data), plus every day that has data for navigation.
  */
 export async function GET(req: Request) {
-  const user = await apiUser();
+  const user = await readUser(req);
   if (user instanceof NextResponse) return user;
   const tz = user.timezone;
   const dateParam = new URL(req.url).searchParams.get("date");

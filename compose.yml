@@ -1,0 +1,52 @@
+# Matka on the homelab: `docker compose up -d --build matka`
+# in ~/matka. Secrets come from ~/matka/.env (gitignored); every
+# variable is documented in web/.env.example. See docs/DEPLOY.md.
+#
+# Matka keeps its own PostGIS (matka_db, not published). It still joins Dawarich's
+# network for Photon (PHOTON_URL=http://photon:2322) and the one-time history import:
+#   docker compose exec matka node scripts/import-dawarich.mjs \
+#     --from postgresql://postgres:<pw>@dawarich_db:5432/dawarich_development --to <you>
+services:
+  matka:
+    build: ./web
+    container_name: matka
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://matka:${MATKA_DB_PASSWORD:?set MATKA_DB_PASSWORD in .env}@matka_db:5432/matka
+    depends_on:
+      matka_db:
+        condition: service_healthy
+    networks:
+      - proxy_net        # Caddy reaches matka:3000 by name
+      - matka_internal
+      - dawarich_dawarich  # photon, and dawarich_db for the one-time import
+    mem_limit: 768m
+
+  matka_db:
+    image: postgis/postgis:17-3.5
+    container_name: matka_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: matka
+      POSTGRES_PASSWORD: ${MATKA_DB_PASSWORD:?set MATKA_DB_PASSWORD in .env}
+      POSTGRES_DB: matka
+    volumes:
+      - matka_db_data:/var/lib/postgresql/data
+    networks:
+      - matka_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matka -d matka"]
+      interval: 10s
+      retries: 10
+      timeout: 5s
+
+volumes:
+  matka_db_data:
+
+networks:
+  matka_internal: {}
+  proxy_net:
+    external: true
+  dawarich_dawarich:
+    external: true

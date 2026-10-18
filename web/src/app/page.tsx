@@ -1,71 +1,22 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { q } from "@/lib/db";
 import { formatDateShort, formatDistance, formatDuration, formatTime } from "@/lib/format";
-import { PLACE_NAME_SQL } from "@/lib/places";
+import { getOverview } from "@/lib/overview";
 
 export const dynamic = "force-dynamic";
-
-type Totals = {
-  points: string;
-  visits: string;
-  days: string;
-  distance: number | null;
-  first: Date | null;
-  last: Date | null;
-};
 
 export default async function Overview() {
   const user = await requireUser();
   const tz = user.timezone;
+  const { totals, months, topPlaces, recent } = await getOverview(user.id, tz);
 
-  const [[totals], months, topPlaces, recent] = await Promise.all([
-    q<Totals>(
-      `SELECT
-         (SELECT count(*) FROM points WHERE user_id = $1) AS points,
-         (SELECT count(*) FROM visits WHERE user_id = $1) AS visits,
-         (SELECT count(DISTINCT (ts AT TIME ZONE $2)::date) FROM points WHERE user_id = $1) AS days,
-         (SELECT sum(distance_m)::float8 FROM trips WHERE user_id = $1) AS distance,
-         (SELECT min(ts) FROM points WHERE user_id = $1) AS first,
-         (SELECT max(ts) FROM points WHERE user_id = $1) AS last`,
-      [user.id, tz],
-    ),
-    // Last 12 months of travelled distance.
-    q<{ year: number; month: number; distance: number }>(
-      `SELECT extract(year FROM m)::int AS year, extract(month FROM m)::int AS month,
-              COALESCE(sum(t.distance_m), 0)::float8 AS distance
-       FROM generate_series(date_trunc('month', now() AT TIME ZONE $2) - interval '11 months',
-                            date_trunc('month', now() AT TIME ZONE $2), interval '1 month') AS m
-       LEFT JOIN trips t ON t.user_id = $1
-             AND date_trunc('month', t.started_at AT TIME ZONE $2) = m
-       GROUP BY m ORDER BY m`,
-      [user.id, tz],
-    ),
-    q<{ id: string; name: string | null; hours: number }>(
-      `SELECT p.id, ${PLACE_NAME_SQL} AS name,
-              sum(extract(epoch FROM v.ended_at - v.started_at))::float8 / 3600 AS hours
-       FROM visits v JOIN places p ON p.id = v.place_id
-       WHERE v.user_id = $1
-       GROUP BY p.id ORDER BY hours DESC LIMIT 8`,
-      [user.id],
-    ),
-    q<{ id: string; place_id: string; name: string | null; started_at: Date; duration: number }>(
-      `SELECT v.id, v.place_id, ${PLACE_NAME_SQL} AS name, v.started_at,
-              extract(epoch FROM v.ended_at - v.started_at)::int AS duration
-       FROM visits v JOIN places p ON p.id = v.place_id
-       WHERE v.user_id = $1
-       ORDER BY v.started_at DESC LIMIT 8`,
-      [user.id],
-    ),
-  ]);
-
-  const totalKm = (totals?.distance ?? 0) / 1000;
+  const totalKm = totals.distance / 1000;
   const maxMonth = Math.max(1, ...months.map((m) => m.distance));
   const fmtMonth = (y: number, m: number) =>
     new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" });
 
   const range =
-    totals?.first && totals?.last
+    totals.first && totals.last
       ? `${formatDateShort(totals.first, tz)} – ${formatDateShort(totals.last, tz)}`
       : "No data yet — pair your phone under Devices to start.";
 
@@ -77,9 +28,9 @@ export default async function Overview() {
       </header>
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Points" value={Number(totals?.points ?? 0).toLocaleString()} />
-        <Stat label="Days tracked" value={Number(totals?.days ?? 0).toLocaleString()} />
-        <Stat label="Visits" value={Number(totals?.visits ?? 0).toLocaleString()} />
+        <Stat label="Points" value={totals.points.toLocaleString()} />
+        <Stat label="Days tracked" value={totals.days.toLocaleString()} />
+        <Stat label="Visits" value={totals.visits.toLocaleString()} />
         <Stat
           label="Total distance"
           value={`${Math.round(totalKm).toLocaleString()} km`}
@@ -153,7 +104,7 @@ export default async function Overview() {
           {recent.map((v) => (
             <li key={v.id}>
               <Link
-                href={`/places/${v.place_id}`}
+                href={`/places/${v.placeId}`}
                 className="flex items-center justify-between px-5 py-3 hover:bg-surface-2"
               >
                 <div className="min-w-0">
@@ -161,7 +112,7 @@ export default async function Overview() {
                     {v.name ?? <span className="text-muted">Unknown place</span>}
                   </p>
                   <p className="text-xs text-muted">
-                    {formatDateShort(v.started_at, tz)} · {formatTime(v.started_at, tz)}
+                    {formatDateShort(v.startedAt, tz)} · {formatTime(v.startedAt, tz)}
                   </p>
                 </div>
                 <span className="shrink-0 text-sm text-muted">{formatDuration(v.duration)}</span>
