@@ -143,4 +143,54 @@ d("ingest + processing", () => {
     expect(Number(c.visits)).toBe(3);
     expect(Number(c.trips)).toBe(2);
   });
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("doesn't lose a backlog that lands while processing waits for the ingest lock", async () => {
+    await points.insertPoints(userId, day(T0 + 86400), { source: "device" });
+    await run.processUser(userId);
+    await points.insertPoints(userId, [fix(T0 + 86400 + 20000, HOME.lat, HOME.lon)], { source: "device" });
+
+    // An upload of the previous day (offline backlog) is mid-transaction.
+    const x = await db.pool().connect();
+    await x.query("BEGIN");
+    await x.query(`SELECT pg_advisory_xact_lock_shared(hashtext('matka_ingest'), $1::int)`, [userId]);
+    const p = run.processUser(userId);
+    await sleep(300);
+    await points.insertPoints(userId, day(T0), { source: "device", client: x });
+    await x.query("COMMIT");
+    x.release();
+    await p;
+
+    const [v] = await db.q<{ n: string }>(
+      `SELECT count(*) n FROM visits WHERE started_at < to_timestamp($1)`,
+      [T0 + 86400],
+    );
+    expect(Number(v.n)).toBeGreaterThan(0);
+  });
+
+  it("keeps the dirty mark of an upload that commits while processing finishes", async () => {
+    await points.insertPoints(userId, dwell(T0, 3600, HOME), { source: "device" });
+    await run.processUser(userId);
+    await points.insertPoints(userId, [fix(T0 + 4000, HOME.lat, HOME.lon)], { source: "device" });
+
+    // Stall processing at its first DELETE, after the high-water mark is fixed.
+    const y = await db.pool().connect();
+    await y.query("BEGIN");
+    await y.query("SELECT 1 FROM visits FOR UPDATE");
+    const p = run.processUser(userId);
+    await sleep(300);
+    // A new upload lands meanwhile and is still open when processing ends.
+    const x = await db.pool().connect();
+    await x.query("BEGIN");
+    await points.insertPoints(userId, [fix(T0 + 9000, WORK.lat, WORK.lon)], { source: "device", client: x });
+    await y.query("COMMIT");
+    y.release();
+    await sleep(300);
+    await x.query("COMMIT");
+    x.release();
+    await p;
+
+    expect((await counts()).dirty).not.toBeNull();
+  });
 });

@@ -27,22 +27,23 @@ type PointRow = {
 export async function processUser(userId: string): Promise<number> {
   const c = await pool().connect();
   try {
-    const [state] = (
-      await c.query<{ dirty_from: Date | null }>(
-        `SELECT dirty_from FROM processing_state WHERE user_id = $1`,
-        [userId],
-      )
-    ).rows;
-    if (!state?.dirty_from) return 0;
-
-    // Wait for in-flight inserts (they hold the shared lock), then fix the
-    // high-water mark: points above it are left dirty for the next run.
+    // Wait for in-flight inserts (they hold the shared lock), then read the
+    // dirty mark and fix the high-water mark under that same lock, so no
+    // insert can slip between the two. Points above maxId are left dirty for
+    // the next run.
     await c.query("BEGIN");
     await c.query(`SELECT pg_advisory_xact_lock(hashtext($1), $2::int)`, [INGEST_LOCK, userId]);
-    const maxId = (await c.query<{ m: string | null }>(`SELECT max(id) m FROM points WHERE user_id = $1`, [userId]))
-      .rows[0].m;
+    const snap = (
+      await c.query<{ dirty_from: Date | null; max_id: string | null }>(
+        `SELECT (SELECT dirty_from FROM processing_state WHERE user_id = $1) AS dirty_from,
+                (SELECT max(id) FROM points WHERE user_id = $1) AS max_id`,
+        [userId],
+      )
+    ).rows[0];
     await c.query("COMMIT");
-    if (maxId == null) return 0;
+    const dirtyFrom = snap.dirty_from;
+    const maxId = snap.max_id;
+    if (!dirtyFrom || maxId == null) return 0;
 
     await c.query("BEGIN");
     const from = (
@@ -50,7 +51,7 @@ export async function processUser(userId: string): Promise<number> {
         `SELECT COALESCE(
            (SELECT max(started_at) FROM visits WHERE user_id = $1 AND started_at <= $2),
            (SELECT min(ts) FROM points WHERE user_id = $1)) AS "from"`,
-        [userId, state.dirty_from],
+        [userId, dirtyFrom],
       )
     ).rows[0].from;
 
@@ -89,6 +90,9 @@ export async function processUser(userId: string): Promise<number> {
       [userId],
     );
     // Only points that arrived after our high-water mark are still dirty.
+    // Re-take the ingest lock so uploads in flight commit first and their
+    // points (and dirty marks) are visible to this statement.
+    await c.query(`SELECT pg_advisory_xact_lock(hashtext($1), $2::int)`, [INGEST_LOCK, userId]);
     await c.query(
       `UPDATE processing_state
           SET dirty_from = (SELECT min(ts) FROM points WHERE user_id = $1 AND id > $2),

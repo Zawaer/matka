@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { geocodePending } from "./geocode";
 import { processUser } from "./run";
@@ -14,9 +15,10 @@ let running = false;
 export async function tick(): Promise<void> {
   if (running) return;
   running = true;
-  const c = await pool().connect();
+  let c: PoolClient | null = null;
   let locked = false;
   try {
+    c = await pool().connect();
     locked = (
       await c.query<{ ok: boolean }>(`SELECT pg_try_advisory_lock(hashtext($1)) ok`, [WORKER_LOCK])
     ).rows[0].ok;
@@ -41,8 +43,10 @@ export async function tick(): Promise<void> {
   } catch (err) {
     console.error("[worker] tick failed:", err);
   } finally {
-    if (locked) await c.query(`SELECT pg_advisory_unlock(hashtext($1))`, [WORKER_LOCK]).catch(() => {});
-    c.release();
+    if (c) {
+      if (locked) await c.query(`SELECT pg_advisory_unlock(hashtext($1))`, [WORKER_LOCK]).catch(() => {});
+      c.release();
+    }
     running = false;
   }
 }
