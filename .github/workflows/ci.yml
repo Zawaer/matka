@@ -69,7 +69,9 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: web
-          platforms: linux/amd64,linux/arm64
+          # PRs only prove the image builds; arm64 under QEMU is slow, so it's
+          # built only for what gets published.
+          platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
