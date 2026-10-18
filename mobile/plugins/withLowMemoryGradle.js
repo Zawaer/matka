@@ -4,9 +4,9 @@
 const { withGradleProperties } = require("expo/config-plugins");
 
 const PROPS = {
-  "org.gradle.jvmargs": "-Xmx3g -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8",
+  "org.gradle.jvmargs": "-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8",
   "org.gradle.parallel": "false",
-  "org.gradle.workers.max": "2",
+  "org.gradle.workers.max": "1",
   // Compile Kotlin inside the Gradle daemon instead of a second large JVM.
   "kotlin.compiler.execution.strategy": "in-process",
 };
