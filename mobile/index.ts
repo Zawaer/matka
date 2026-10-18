@@ -1,8 +1,9 @@
-import { registerRootComponent } from 'expo';
+// Defines the background-location task at module scope. This must run before
+// anything else so a headless launch (app killed, OS delivers locations) finds it.
+import "./src/tracking";
 
-import App from './App';
+import { registerRootComponent } from "expo";
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
+import App from "./App";
+
 registerRootComponent(App);
