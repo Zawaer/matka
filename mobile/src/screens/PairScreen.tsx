@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { getStatus } from "../api";
 import { savePairing } from "../credentials";
@@ -18,23 +18,15 @@ type Props = {
 };
 
 export default function PairScreen({ initialLink, currentServer, onDone, onCancel }: Props) {
+  // App remounts this screen (key) for every new deep link, so the link only
+  // needs to be read once, here.
+  const [initial] = useState(() => (initialLink ? parsePairingUrl(initialLink) : null));
   const [mode, setMode] = useState<"scan" | "manual">("scan");
-  const [candidate, setCandidate] = useState<Pairing | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [candidate, setCandidate] = useState<Pairing | null>(initial?.ok ? initial.value : null);
+  const [error, setError] = useState<string | null>(initial && !initial.ok ? initial.error : null);
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState("");
   const [token, setToken] = useState("");
-
-  useEffect(() => {
-    if (!initialLink) return;
-    const r = parsePairingUrl(initialLink);
-    if (r.ok) {
-      setCandidate(r.value);
-      setError(null);
-    } else {
-      setError(r.error);
-    }
-  }, [initialLink]);
 
   const fromManual = () => {
     // Accept a whole pasted matka://pair link in the server field too.

@@ -65,6 +65,7 @@ export default function App() {
         <StatusBar style="light" />
         {screen === "pair" ? (
           <PairScreen
+            key={pairLink ?? "manual"}
             initialLink={pairLink}
             currentServer={state?.pairing?.server ?? null}
             onDone={goStatus}

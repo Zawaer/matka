@@ -93,9 +93,12 @@ export function useCollectorState(intervalMs = 3000) {
     }
   }, []);
   useEffect(() => {
-    refresh();
+    const first = setTimeout(refresh, 0);
     const id = setInterval(refresh, intervalMs);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
   }, [refresh, intervalMs]);
   return { state, refresh };
 }
