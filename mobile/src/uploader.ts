@@ -93,11 +93,19 @@ export async function refreshServerStatus(): Promise<api.StatusResult | null> {
     await db.setKv("server_status", JSON.stringify(r.status));
     await db.setNum("server_status_at", Date.now());
   } else if (r.unauthorized) {
-    await db.setKv("auth_lost", "1");
-    await db.setKv("last_error", "Pairing lost: the server no longer accepts this device's token (401).");
-    await db.setNum("last_error_at", Date.now());
+    await markPairingLost();
   }
   return r;
+}
+
+/**
+ * Any 401 (ingest, status or a viewer request) means the token is revoked or
+ * invalid: stop uploading, keep the queue, show "pairing lost".
+ */
+export async function markPairingLost(): Promise<void> {
+  await db.setKv("auth_lost", "1");
+  await db.setKv("last_error", "Pairing lost: the server no longer accepts this device's token (401).");
+  await db.setNum("last_error_at", Date.now());
 }
 
 /** Resets upload state after (re)pairing. The queue itself is kept. */
