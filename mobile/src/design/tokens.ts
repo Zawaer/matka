@@ -161,7 +161,8 @@ export const type = {
   title2: { fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 },
   title3: { fontSize: 18, lineHeight: 24, fontWeight: "700", letterSpacing: -0.2 },
   stat: { fontSize: 26, lineHeight: 30, fontWeight: "800", letterSpacing: -0.6 },
-  headline: { fontSize: 16, lineHeight: 22, fontWeight: "600" },
+  // 700, not 600: Android's Roboto has no semibold and renders 600 as regular.
+  headline: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
   body: { fontSize: 15, lineHeight: 22, fontWeight: "400" },
   callout: { fontSize: 14, lineHeight: 20, fontWeight: "500" },
   caption: { fontSize: 12, lineHeight: 16, fontWeight: "500" },

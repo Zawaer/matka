@@ -22,7 +22,8 @@ export default function PlacesScreen() {
   const load = useCallback(async () => {
     try {
       setErr(null);
-      setPlaces((await getJSON<{ places: PlaceItem[] }>("/api/places")).places);
+      // Places Dawarich created only by geocoding, never visited, are not "places you come back to".
+      setPlaces((await getJSON<{ places: PlaceItem[] }>("/api/places")).places.filter((p) => p.visitCount > 0));
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }

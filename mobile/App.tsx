@@ -28,7 +28,9 @@ function Shell() {
     root: { flex: 1, backgroundColor: th.c.bg },
     bar: { flexDirection: "row", backgroundColor: th.c.tabBar, borderTopWidth: 1, borderTopColor: th.c.border, paddingTop: th.space.sm, paddingBottom: th.space.lg + 4, paddingHorizontal: th.space.sm },
     tab: { flex: 1, alignItems: "center", gap: 4 },
-    pill: { width: 60, height: 32, borderRadius: th.radius.pill, alignItems: "center", justifyContent: "center" },
+    // Fixed radius (half the height) and an always-present background: on Android a
+    // background added after mount dropped an oversized radius and drew a square.
+    pill: { width: 60, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
   }));
   return (
     <View style={s.root}>
