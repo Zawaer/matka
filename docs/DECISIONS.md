@@ -37,4 +37,24 @@ A self-hosted **location-history web app** — a rebranded, lightweight alternat
 
 ## Reference apps to borrow from
 - **Reitti**: interactive timeline, transport-mode classification, per-place Immich galleries.
-- **Dawarich**: the engine + import pipeline (keep).
+- **Dawarich**: the engine + import pipeline (reference; being superseded — see independence goal).
+
+## Update 2026-10-18 (later) — independence + own mobile app
+- **Goal: Matka becomes fully standalone, independent of Dawarich.** Not using Dawarich's
+  endpoints or runtime. Dawarich's DB was used once to **seed** historical data; from here,
+  Matka owns ingestion, storage, and (eventually) processing.
+- **Own ingestion:** `POST /api/ingest` inserts points straight into `matka_db` (Matka's own DB).
+  `GET /api/ingest` = health/count. No Dawarich involvement.
+- **Own mobile app (Expo / React Native), one app for everything** — like the Dawarich app does
+  collection today, Matka's app will collect in the background AND be the viewer. Scaffold in
+  `mobile/`. Needs a **development build** (not Expo Go) for background location.
+  - Background location: `expo-location` + `expo-task-manager` (`startLocationUpdatesAsync`,
+    Android foreground service, iOS `Always` + `UIBackgroundModes: location`).
+  - Collector POSTs batches to Matka `/api/ingest`. For on-device dev testing, the phone reaches
+    the Mac dev server via `adb reverse tcp:3000 tcp:3000` → `http://localhost:3000/api/ingest`.
+  - First milestone = **background-location feasibility spike** on the user's real Android
+    (USB debugging on): prove Expo collects in the background and points land
+    in Matka's DB. If solid, Expo is the path and OwnTracks is dropped.
+- **Still TODO for true independence (future):** reimplement the processing Dawarich does today —
+  visit detection, track/segment generation, transport-mode classification, reverse geocoding
+  (point Matka's own geocoder at the self-hosted Photon already running on the homelab).
