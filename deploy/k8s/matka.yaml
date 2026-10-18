@@ -1,0 +1,183 @@
+# Example manifests for k3s with ingress-nginx. Adjust the host, image tag,
+# storage and secrets; see docs/DEPLOY.md. Apply with: kubectl apply -f deploy/k8s/
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: matka
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: matka
+  namespace: matka
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: change-me                # openssl rand -base64 24
+  DATABASE_URL: postgresql://matka:change-me@matka-db:5432/matka
+  MATKA_SECRET: change-me-at-least-32-chars   # openssl rand -base64 48
+  OIDC_CLIENT_SECRET: change-me
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matka
+  namespace: matka
+data:
+  APP_URL: https://matka.example.com
+  OIDC_ISSUER: https://auth.example.com/application/o/matka/
+  OIDC_CLIENT_ID: matka
+  MATKA_ALLOWED_USERS: "<your Authentik sub>"
+  MATKA_DEFAULT_TIMEZONE: Europe/Helsinki
+  # PHOTON_URL: http://photon.photon.svc:2322
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: matka-db
+  namespace: matka
+spec:
+  serviceName: matka-db
+  replicas: 1
+  selector:
+    matchLabels: { app: matka-db }
+  template:
+    metadata:
+      labels: { app: matka-db }
+    spec:
+      containers:
+        - name: postgres
+          image: postgis/postgis:17-3.5   # arm64: imresamu/postgis:17-3.5-alpine
+          env:
+            - { name: POSTGRES_USER, value: matka }
+            - { name: POSTGRES_DB, value: matka }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: matka, key: POSTGRES_PASSWORD } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ containerPort: 5432 }]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "matka", "-d", "matka"] }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 10Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matka-db
+  namespace: matka
+spec:
+  selector: { app: matka-db }
+  ports: [{ port: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matka
+  namespace: matka
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: matka }
+  template:
+    metadata:
+      labels: { app: matka }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: matka
+          image: ghcr.io/zawaer/matka:main
+          envFrom:
+            - configMapRef: { name: matka }
+            - secretRef: { name: matka }
+          ports: [{ containerPort: 3000 }]
+          readinessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests: { cpu: 50m, memory: 192Mi }
+            limits: { memory: 768Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matka
+  namespace: matka
+spec:
+  selector: { app: matka }
+  ports: [{ port: 80, targetPort: 3000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: matka
+  namespace: matka
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 2m   # ingest batches are ≤ 1 MB
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [matka.example.com]
+      secretName: matka-tls
+  rules:
+    - host: matka.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: matka, port: { number: 80 } }
+---
+# Nightly logical backup kept on a PVC (copy it off the node too).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matka-backups
+  namespace: matka
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 10Gi } }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: matka-backup
+  namespace: matka
+spec:
+  schedule: "30 3 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-dump
+              image: postgis/postgis:17-3.5
+              env:
+                - name: DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: matka, key: DATABASE_URL } }
+              command:
+                - sh
+                - -c
+                - >
+                  pg_dump -Fc "$DATABASE_URL" -f /backups/matka-$(date +%F).dump &&
+                  find /backups -name 'matka-*.dump' -mtime +14 -delete
+              volumeMounts:
+                - { name: backups, mountPath: /backups }
+          volumes:
+            - name: backups
+              persistentVolumeClaim: { claimName: matka-backups }

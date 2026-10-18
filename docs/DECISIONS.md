@@ -59,17 +59,34 @@ A self-hosted **location-history web app** — a rebranded, lightweight alternat
   visit detection, track/segment generation, transport-mode classification, reverse geocoding
   (point Matka's own geocoder at the self-hosted Photon already running on the homelab).
 
-## Update 2026-10-18 (hardening) — auth
-- **Web login = Authentik via OIDC** (`openid-client`, auth-code + PKCE). No user table: the
-  session is a signed HS256 cookie (`SESSION_SECRET`, 30 days). `src/proxy.ts` gates every page
-  and `/api/*` route; server actions re-check with `requireSession()`.
-- **Allowlist is mandatory** (`MATKA_ALLOWED_USERS`, OIDC `sub`s or emails; empty = nobody).
-  Authentik admits any of its users to an app without policy bindings, and users can edit their
-  own email by default, so prefer `sub` entries.
-- **Devices authenticate with bearer tokens**, not the session: `mtk_` + 32 random bytes, only the
-  SHA-256 stored in `matka_devices` (migration `db/migrations/001_devices.sql`, applied with
-  `scripts/migrate.sh`). Paired/revoked from the **Devices** page. Contract: `docs/API.md`.
-- **Ingest dedupe** is on `(user_id, timestamp)` with a per-user advisory lock instead of a unique
-  index, because the seeded Dawarich points may already contain same-second duplicates.
-- Public, unauthenticated: `/api/ingest` (own token check), `/api/health`, `/auth/*`.
+## Update 2026-10-18 (hardening) — production readiness
+Decided with the owner: Authentik OIDC (no VPN), feature branch + PR, Matka computes visits/trips
+itself, phones pair with a token, ship a standalone Docker image (k3s + nginx ingress later).
+
+- **Own schema** (`web/migrations/`, applied by `web/scripts/migrate.mjs` on every container start).
+  Matka no longer reads Dawarich tables at runtime; history is copied once with
+  `web/scripts/import-dawarich.mjs`. See `docs/SCHEMA.md`.
+- **Users come from OIDC**: created on first login, keyed by `sub`. Every query is scoped to the
+  signed-in user (several people can share an instance).
+- **Allowlist is mandatory** (`MATKA_ALLOWED_USERS`: `sub`s or emails, `*` = trust Authentik's
+  policy bindings; empty = nobody). Authentik admits any of its users to an app without bindings,
+  and users can edit their own email by default, so prefer `sub`.
+- **Sessions are server-side**: random cookie token, SHA-256 stored in `sessions`, sliding 30 days,
+  revocable (sign out / sign out everywhere else). `src/proxy.ts` checks the session for every
+  page and `/api/*` route; pages, routes and server actions resolve the user again themselves.
+- **One server secret** `MATKA_SECRET`: signs the 10-minute OIDC login-state cookie and encrypts
+  stored Immich API keys (AES-256-GCM, HKDF-separated keys). Rotating it invalidates stored
+  Immich keys (re-enter them), nothing else.
+- **Devices authenticate with bearer tokens**: `mtk_` + 32 random bytes, SHA-256 stored. Contract
+  in `docs/API.md`. Dedupe = `UNIQUE (user_id, ts)` at one-second resolution.
+- **Processing** (`web/src/lib/processing/`): a streaming stay-point detector (100 m radius,
+  5 min minimum, tolerant of silent distance-filtered phones and single GPS blips), trips between
+  stays with mode from 80th-percentile speed (walk/cycle/drive/fly — bus/train are reported as
+  driving), incremental rebuild from `processing_state.dirty_from`. Runs in-process every 30 s
+  from `instrumentation.ts`; a Postgres advisory lock makes only one replica work at a time.
+- **Places persist** across rebuilds (they hold renames); unnamed places with no visits are pruned.
+  Reverse geocoding via self-hosted Photon (`PHOTON_URL`), optional.
+- **Immich per user**, configured in Settings (verified before saving).
+- **Timezone per user** (default `MATKA_DEFAULT_TIMEZONE`, else Europe/Helsinki) decides day
+  boundaries on the timeline and server-rendered times.
 - Dev without an IdP: `MATKA_AUTH_DISABLED=1` (ignored when `NODE_ENV=production`).

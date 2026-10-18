@@ -1,3 +1,4 @@
+# Local development database. Not for production: see docs/DEPLOY.md.
 services:
   matka_db:
     image: imresamu/postgis:17-3.5-alpine  # arm64-compatible PostGIS (Apple Silicon); homelab uses postgis/postgis on x86
@@ -7,7 +8,7 @@ services:
       POSTGRES_PASSWORD: matka
       POSTGRES_DB: matka
     ports:
-      - "5544:5432"
+      - "127.0.0.1:5544:5432"  # dev only: local port, throwaway credentials
     volumes:
       - matka_db_data:/var/lib/postgresql/data
     restart: unless-stopped
