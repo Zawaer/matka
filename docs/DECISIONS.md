@@ -58,3 +58,18 @@ A self-hosted **location-history web app** — a rebranded, lightweight alternat
 - **Still TODO for true independence (future):** reimplement the processing Dawarich does today —
   visit detection, track/segment generation, transport-mode classification, reverse geocoding
   (point Matka's own geocoder at the self-hosted Photon already running on the homelab).
+
+## Update 2026-10-18 (hardening) — auth
+- **Web login = Authentik via OIDC** (`openid-client`, auth-code + PKCE). No user table: the
+  session is a signed HS256 cookie (`SESSION_SECRET`, 30 days). `src/proxy.ts` gates every page
+  and `/api/*` route; server actions re-check with `requireSession()`.
+- **Allowlist is mandatory** (`MATKA_ALLOWED_USERS`, OIDC `sub`s or emails; empty = nobody).
+  Authentik admits any of its users to an app without policy bindings, and users can edit their
+  own email by default, so prefer `sub` entries.
+- **Devices authenticate with bearer tokens**, not the session: `mtk_` + 32 random bytes, only the
+  SHA-256 stored in `matka_devices` (migration `db/migrations/001_devices.sql`, applied with
+  `scripts/migrate.sh`). Paired/revoked from the **Devices** page. Contract: `docs/API.md`.
+- **Ingest dedupe** is on `(user_id, timestamp)` with a per-user advisory lock instead of a unique
+  index, because the seeded Dawarich points may already contain same-second duplicates.
+- Public, unauthenticated: `/api/ingest` (own token check), `/api/health`, `/auth/*`.
+- Dev without an IdP: `MATKA_AUTH_DISABLED=1` (ignored when `NODE_ENV=production`).
