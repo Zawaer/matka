@@ -315,7 +315,7 @@ function MoveRow({ track }: { track: TrackSummary }) {
           return (
             <div key={i} className="flex flex-wrap items-center gap-2 pl-9 text-sm">
               <span
-                className="rounded-md px-2 py-0.5 text-xs font-bold tracking-wide"
+                className="rounded-md px-2 py-0.5 text-xs font-bold"
                 style={{ backgroundColor: c.bg, color: c.fg }}
                 title={l.lines.length > 1 ? `Could also be ${l.lines.slice(1).join(", ")}` : undefined}
               >
