@@ -45,7 +45,8 @@
         }
       ],
       "./plugins/withLowMemoryGradle.js",
-      "./plugins/withUserCerts.js"
+      "./plugins/withUserCerts.js",
+      "expo-font"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

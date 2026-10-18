@@ -1,38 +1,63 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  RefreshControl,
-  ActivityIndicator,
-} from "react-native";
-import { C, fmtDuration } from "../theme";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Animated, Easing, View } from "react-native";
+import { useStyles, useTheme } from "../design/theme";
 import { getJSON, type Overview } from "../api";
-import {
-  flushQueue,
-  isTracking,
-  queuedCount,
-  requestPermissions,
-  startTracking,
-  stopTracking,
-} from "../collector";
+import { fmtCompact, fmtDuration, fmtWhen, greeting } from "../format";
+import { flushQueue, isTracking, queuedCount, requestPermissions, startTracking, stopTracking } from "../collector";
+import { Button, Card, EmptyState, ErrorState, Icon, IconChip, SectionTitle, Skeleton } from "../ui";
+import { ShareBar, MonthBars } from "../ui/charts";
+import { Screen } from "../ui/Screen";
+import { Text } from "../ui/Text";
+
+const EARTH_KM = 40_075;
+
+function PulseDot({ active }: { active: boolean }) {
+  const t = useTheme();
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!active) return;
+    const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration: 1500, easing: Easing.out(Easing.quad), useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [active, v]);
+  const color = active ? t.c.accent : t.c.textMuted;
+  return (
+    <View style={{ width: 20, height: 20, alignItems: "center", justifyContent: "center" }}>
+      {active && (
+        <Animated.View
+          style={{
+            position: "absolute",
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            backgroundColor: color,
+            opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] }),
+            transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1.5] }) }],
+          }}
+        />
+      )}
+      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />
+    </View>
+  );
+}
 
 export default function OverviewScreen() {
+  const t = useTheme();
   const [data, setData] = useState<Overview | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [tracking, setTracking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [queued, setQueued] = useState(0);
+  const [picked, setPicked] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setErr(null);
+      setLoadErr(null);
       setData(await getJSON<Overview>("/api/overview"));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setLoadErr(e instanceof Error ? e.message : String(e));
     }
   }, []);
 
@@ -50,6 +75,7 @@ export default function OverviewScreen() {
 
   const toggle = useCallback(async () => {
     setBusy(true);
+    setNotice(null);
     try {
       if (tracking) {
         await stopTracking();
@@ -57,192 +83,248 @@ export default function OverviewScreen() {
       } else {
         const p = await requestPermissions();
         if (p.fg !== "granted" || p.bg !== "granted") {
-          setErr("Location needs 'Allow all the time' for background tracking.");
-          setBusy(false);
-          return;
+          setNotice("Matka needs location set to “Allow all the time” to record in the background.");
+        } else {
+          await startTracking();
+          setTracking(true);
         }
-        await startTracking();
-        setTracking(true);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setNotice(e instanceof Error ? e.message : String(e));
     }
     setBusy(false);
   }, [tracking]);
 
-  const t = data?.totals;
-  const maxMonth = Math.max(1, ...(data?.months.map((m) => m.distance) ?? [1]));
+  const s = useStyles((th) => ({
+    topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+    brand: { flexDirection: "row", alignItems: "center", gap: 10 },
+    logo: { width: 34, height: 34, borderRadius: 11, backgroundColor: th.c.primary, alignItems: "center", justifyContent: "center" },
+    hero: {
+      backgroundColor: th.c.hero,
+      borderRadius: th.radius.xl,
+      padding: th.space.xl,
+      overflow: "hidden",
+      minHeight: 208,
+      justifyContent: "space-between",
+      boxShadow: th.elev.glow,
+    },
+    heroPill: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.16)", borderRadius: th.radius.pill, paddingVertical: 6, paddingHorizontal: 12 },
+    ring: { position: "absolute", borderWidth: 1.5, borderColor: th.c.heroRing },
+    row3: { flexDirection: "row", gap: th.space.md },
+    tile: { flex: 1, gap: th.space.sm, padding: th.space.md + 2 },
+    notice: { flexDirection: "row", gap: th.space.sm, alignItems: "flex-start", backgroundColor: th.c.dangerSoft, borderRadius: th.radius.md, padding: th.space.md },
+    list: { gap: th.space.lg },
+    listRow: { flexDirection: "row", alignItems: "center", gap: th.space.md },
+  }));
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await Promise.all([load(), flushQueue()]);
+    setQueued(queuedCount());
+    setRefreshing(false);
+  };
+
+  const totals = data?.totals;
+  const months = (data?.months ?? []).map((m) => ({
+    key: `${m.year}-${m.month}`,
+    label: new Date(m.year, m.month - 1, 1).toLocaleDateString([], { month: "short" }),
+    value: Math.round(m.distance / 1000),
+  }));
+  const peak = months.reduce((b, m) => (m.value > b.value ? m : b), months[0] ?? { key: "", label: "", value: 0 });
+  const chosen = picked != null ? months[picked] : peak;
   const range =
-    t?.first && t?.last
-      ? `${new Date(t.first).toLocaleDateString()} – ${new Date(
-          t.last,
-        ).toLocaleDateString()}`
-      : "—";
+    totals?.first && totals?.last
+      ? `${new Date(totals.first).toLocaleDateString([], { day: "numeric", month: "short" })} – ${new Date(totals.last).toLocaleDateString([], { day: "numeric", month: "short" })}`
+      : "";
+  const earth = totals ? (totals.totalKm / EARTH_KM) * 100 : 0;
+  const maxCity = Math.max(1, ...(data?.cities ?? []).map((c) => c.count));
+  const empty = totals != null && totals.points === 0;
+
+  const recording = (
+    <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <PulseDot active={tracking} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text variant="headline">{tracking ? "Recording your journey" : "Recording is off"}</Text>
+        <Text variant="caption" color="textSecondary">
+          {queued > 0 ? `${queued.toLocaleString()} points waiting to upload` : tracking ? "Collecting in the background" : "Tap Start to log new places"}
+        </Text>
+      </View>
+      <Button label={tracking ? "Stop" : "Start"} icon={tracking ? "stop" : "play"} variant={tracking ? "danger" : "primary"} onPress={toggle} busy={busy} />
+    </Card>
+  );
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: C.bg }}
-      contentContainerStyle={s.container}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          tintColor={C.primary}
-          onRefresh={async () => {
-            setRefreshing(true);
-            await Promise.all([load(), flushQueue()]);
-            setQueued(queuedCount());
-            setRefreshing(false);
-          }}
-        />
-      }
-    >
-      <Text style={s.h1}>Overview</Text>
-      <Text style={s.sub}>{range}</Text>
-
-      {/* Tracking control */}
-      <View style={s.card}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <View>
-            <Text style={s.cardTitle}>Recording</Text>
-            <Text style={[s.statLabel, { marginTop: 2 }]}>
-              {tracking ? "Collecting in the background" : "Off"}
-            </Text>
-            {queued > 0 && (
-              <Text style={[s.statLabel, { marginTop: 2 }]}>
-                {queued.toLocaleString()} points waiting to upload
-              </Text>
-            )}
+    <Screen refreshing={refreshing} onRefresh={refresh}>
+      <View style={s.topBar}>
+        <View style={s.brand}>
+          <View style={s.logo}>
+            <Icon name="compass-outline" size={20} color={t.c.onPrimary} />
           </View>
-          <Pressable
-            onPress={toggle}
-            disabled={busy}
-            style={[s.btn, tracking ? s.btnStop : s.btnStart, busy && { opacity: 0.6 }]}
-          >
-            <Text style={[s.btnText, { color: tracking ? "#fff" : "#02110f" }]}>
-              {busy ? "…" : tracking ? "Stop" : "Start"}
-            </Text>
-          </Pressable>
+          <Text variant="title3">Matka</Text>
         </View>
+        <Text variant="callout" color="textSecondary">
+          {new Date().toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}
+        </Text>
       </View>
 
-      {err && <Text style={s.err}>{err}</Text>}
+      <View style={{ gap: 2 }}>
+        <Text variant="title1">{greeting()}</Text>
+        <Text variant="callout" color="textSecondary">
+          {!data ? (loadErr ? "We couldn't load your journeys" : "Loading your journeys…") : totals!.days > 0 ? `${totals!.days.toLocaleString()} days of journeys so far` : "Here is where your travels will show up"}
+        </Text>
+      </View>
 
-      {!data && !err && (
-        <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
+      {notice && (
+        <View style={s.notice}>
+          <Icon name="alert-circle-outline" size={20} color={t.c.danger} />
+          <Text variant="callout" style={{ flex: 1, color: t.c.danger }}>
+            {notice}
+          </Text>
+        </View>
       )}
 
-      {t && (
+      {loadErr && !data ? (
         <>
-          <View style={s.grid}>
-            <Stat label="Points" value={t.points.toLocaleString()} />
-            <Stat label="Days" value={t.days.toLocaleString()} />
-            <Stat label="Visits" value={t.visits.toLocaleString()} />
-            <Stat label="Distance" value={`${t.totalKm.toLocaleString()} km`} accent />
+          {recording}
+          <ErrorState message={loadErr} onRetry={load} />
+        </>
+      ) : !data ? (
+        <>
+          <Skeleton height={208} radius={28} />
+          <Skeleton height={76} radius={20} />
+          <View style={s.row3}>
+            <Skeleton height={112} radius={20} style={{ flex: 1, width: undefined }} />
+            <Skeleton height={112} radius={20} style={{ flex: 1, width: undefined }} />
+            <Skeleton height={112} radius={20} style={{ flex: 1, width: undefined }} />
           </View>
-
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Distance by month</Text>
-            <View style={s.bars}>
-              {data!.months.map((m) => (
-                <View key={`${m.year}-${m.month}`} style={s.barCol}>
-                  <View style={s.barTrack}>
-                    <View
-                      style={[
-                        s.bar,
-                        { height: `${Math.max(3, (m.distance / maxMonth) * 100)}%` },
-                      ]}
-                    />
-                  </View>
-                  <Text style={s.barLabel}>
-                    {new Date(m.year, m.month - 1, 1).toLocaleDateString([], {
-                      month: "short",
-                    })}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-
-          {data!.cities.length > 0 && (
-            <View style={s.card}>
-              <Text style={s.cardTitle}>Top places</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                {data!.cities.map((c) => (
-                  <View key={c.city} style={s.chip}>
-                    <Text style={{ color: C.text, fontSize: 13 }}>
-                      {c.city} <Text style={{ color: C.muted }}>{c.count}</Text>
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          <Text style={s.cardTitle}>Recent visits</Text>
-          <View style={s.card}>
-            {data!.recent.map((v, i) => (
-              <View
-                key={v.id}
-                style={[s.row, i < data!.recent.length - 1 && s.rowBorder]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: C.text, fontWeight: "600" }} numberOfLines={1}>
-                    {v.name && v.name !== "Unknown Location" ? v.name : "Unknown location"}
-                  </Text>
-                  <Text style={{ color: C.muted, fontSize: 12 }}>
-                    {new Date(v.startedAt).toLocaleString()}
-                  </Text>
-                </View>
-                <Text style={{ color: C.muted, fontSize: 13 }}>
-                  {fmtDuration(v.duration)}
+          <Skeleton height={250} radius={20} />
+        </>
+      ) : empty ? (
+        <>
+          {recording}
+          <Card>
+            <EmptyState icon="map-marker-path" title="Your journey starts here" body="Turn on recording and go for a walk. Places, routes and trips will appear as you move." />
+          </Card>
+        </>
+      ) : (
+        <>
+          <View style={s.hero}>
+            {[300, 210, 130].map((d, i) => (
+              <View key={d} style={[s.ring, { width: d, height: d, borderRadius: d, right: -d / 3.2, top: -d / 2.6, opacity: 1 - i * 0.2 }]} />
+            ))}
+            {range ? (
+              <View style={s.heroPill}>
+                <Icon name="calendar-blank-outline" size={14} color={t.c.onHero} />
+                <Text variant="caption" color="onHero" style={{ fontWeight: "700" }}>
+                  {range}
                 </Text>
               </View>
+            ) : null}
+            <View>
+            <Text variant="overline" color="onHeroMuted">
+              Total distance
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+              <Text variant="display" color="onHero">
+                {totals!.totalKm.toLocaleString()}
+              </Text>
+              <Text variant="title2" color="onHeroMuted">
+                km
+              </Text>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
+              <Icon name="earth" size={16} color={t.c.onHeroMuted} />
+              <Text variant="callout" color="onHeroMuted">
+                {earth >= 100 ? `That is ${(earth / 100).toFixed(1)} laps around the Earth` : `That is ${Math.round(earth)}% of the way around the Earth`}
+              </Text>
+            </View>
+            </View>
+          </View>
+
+          {recording}
+
+          <View style={s.row3}>
+            {[
+              { icon: "map-marker-check-outline", tint: "coral", label: "Visits", value: totals!.visits },
+              { icon: "calendar-check-outline", tint: "amber", label: "Days tracked", value: totals!.days },
+              { icon: "crosshairs-gps", tint: "mint", label: "GPS points", value: totals!.points },
+            ].map((x) => (
+              <Card key={x.label} style={s.tile}>
+                <IconChip icon={x.icon as never} tint={x.tint as never} size={34} />
+                <View>
+                  <Text variant="stat" numberOfLines={1} adjustsFontSizeToFit>
+                    {fmtCompact(x.value)}
+                  </Text>
+                  <Text variant="caption" color="textSecondary">
+                    {x.label}
+                  </Text>
+                </View>
+              </Card>
             ))}
           </View>
+
+          {months.length > 0 && (
+            <Card style={{ gap: 14 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <View>
+                  <Text variant="title3">Distance by month</Text>
+                  <Text variant="caption" color="textSecondary">
+                    Tap a bar for the exact distance
+                  </Text>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text variant="stat" style={{ fontSize: 22, lineHeight: 26 }}>
+                    {chosen.value.toLocaleString()} km
+                  </Text>
+                  <Text variant="caption" color="textSecondary">
+                    {chosen.label}
+                    {chosen === peak ? " · best month" : ""}
+                  </Text>
+                </View>
+              </View>
+              <MonthBars data={months} unit="km" onSelect={setPicked} />
+            </Card>
+          )}
+
+          {data.cities.length > 0 && (
+            <>
+              <SectionTitle title="Where you spend time" trailing="by GPS points" />
+              <Card style={s.list}>
+                {data.cities.slice(0, 5).map((c) => (
+                  <ShareBar key={c.city} label={c.city} value={c.count} max={maxCity} display={fmtCompact(c.count)} />
+                ))}
+              </Card>
+            </>
+          )}
+
+          {data.recent.length > 0 && (
+            <>
+              <SectionTitle title="Recent visits" />
+              <Card style={s.list}>
+                {data.recent.map((v) => {
+                  const named = v.name && v.name !== "Unknown Location";
+                  return (
+                    <View key={v.id} style={s.listRow}>
+                      <IconChip icon={named ? "map-marker-outline" : "help-circle-outline"} tint={named ? "violet" : "slate"} size={38} />
+                      <View style={{ flex: 1 }}>
+                        <Text variant="headline" numberOfLines={1}>
+                          {named ? v.name : "Unnamed place"}
+                        </Text>
+                        <Text variant="caption" color="textSecondary">
+                          {fmtWhen(v.startedAt)}
+                        </Text>
+                      </View>
+                      <Text variant="callout" color="textSecondary" tabular>
+                        {fmtDuration(v.duration)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </Card>
+            </>
+          )}
         </>
       )}
-    </ScrollView>
+    </Screen>
   );
 }
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <View style={s.stat}>
-      <Text style={[s.statValue, accent && { color: C.primary }]}>{value}</Text>
-      <Text style={s.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-const s = StyleSheet.create({
-  container: { padding: 20, paddingTop: 24, paddingBottom: 100, gap: 14 },
-  h1: { color: C.text, fontSize: 30, fontWeight: "700" },
-  sub: { color: C.muted, marginTop: -4 },
-  card: { backgroundColor: C.surface, borderColor: C.border, borderWidth: 1, borderRadius: 14, padding: 16 },
-  cardTitle: { color: C.muted, fontSize: 13, fontWeight: "600" },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  stat: {
-    backgroundColor: C.surface,
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    width: "47%",
-    flexGrow: 1,
-  },
-  statValue: { color: C.text, fontSize: 24, fontWeight: "700" },
-  statLabel: { color: C.muted, fontSize: 12, marginTop: 2 },
-  bars: { flexDirection: "row", alignItems: "flex-end", gap: 6, height: 130, marginTop: 12 },
-  barCol: { flex: 1, alignItems: "center", gap: 6 },
-  barTrack: { flex: 1, width: "100%", justifyContent: "flex-end" },
-  bar: { width: "100%", backgroundColor: C.primaryStrong, borderTopLeftRadius: 5, borderTopRightRadius: 5 },
-  barLabel: { color: C.muted, fontSize: 9 },
-  chip: { backgroundColor: C.surface2, borderColor: C.border, borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 10 },
-  rowBorder: { borderBottomColor: C.border, borderBottomWidth: 1 },
-  btn: { borderRadius: 12, paddingHorizontal: 22, paddingVertical: 12 },
-  btnStart: { backgroundColor: C.primaryStrong },
-  btnStop: { backgroundColor: C.danger },
-  btnText: { fontSize: 15, fontWeight: "700" },
-  err: { color: C.accent, fontSize: 13 },
-});

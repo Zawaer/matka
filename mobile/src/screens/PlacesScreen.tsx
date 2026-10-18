@@ -1,141 +1,154 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  ActivityIndicator,
-  RefreshControl,
-} from "react-native";
-import { C, fmtDuration } from "../theme";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { FlatList, Pressable, RefreshControl, TextInput, View } from "react-native";
+import { useStyles, useTheme } from "../design/theme";
+import { categoryMeta } from "../design/categories";
 import { getJSON, type PlaceItem } from "../api";
+import { fmtDuration } from "../format";
+import { Card, EmptyState, ErrorState, Icon, IconChip, Pill, Skeleton } from "../ui";
+import { ScreenHeader } from "../ui/Screen";
+import { Text } from "../ui/Text";
 
-function categoryIcon(cat: string | null): string {
-  switch (cat) {
-    case "cafe": return "☕";
-    case "school":
-    case "university":
-    case "college": return "🏫";
-    case "library": return "📚";
-    case "restaurant":
-    case "fast_food": return "🍽️";
-    case "bar":
-    case "pub": return "🍺";
-    case "supermarket":
-    case "convenience": return "🛒";
-    case "station": return "🚉";
-    case "platform": return "🚏";
-    case "apartments":
-    case "house":
-    case "residential": return "🏠";
-    case "park": return "🌳";
-    case "gym":
-    case "sports_centre": return "🏋️";
-    default: return "📍";
-  }
-}
-
-function label(cat: string | null): string {
-  if (!cat || cat === "yes") return "Place";
-  return cat.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function placeName(p: PlaceItem) {
+  return p.name && p.name !== "Unknown Location" ? p.name : "Unnamed place";
 }
 
 export default function PlacesScreen() {
+  const t = useTheme();
   const [places, setPlaces] = useState<PlaceItem[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     try {
       setErr(null);
-      const r = await getJSON<{ places: PlaceItem[] }>("/api/places");
-      setPlaces(r.places);
+      setPlaces((await getJSON<{ places: PlaceItem[] }>("/api/places")).places);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
   }, []);
-
   useEffect(() => {
     load();
   }, [load]);
 
-  return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <FlatList
-        data={places ?? []}
-        keyExtractor={(p) => String(p.id)}
-        contentContainerStyle={ps.container}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={C.primary}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await load();
-              setRefreshing(false);
-            }}
-          />
-        }
-        ListHeaderComponent={
-          <>
-            <Text style={ps.h1}>Places</Text>
-            <Text style={ps.sub}>Where you spend your time</Text>
-            {err && <Text style={ps.err}>{err}</Text>}
-            {!places && !err && (
-              <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
-            )}
-            {places && places.length === 0 && (
-              <View style={ps.empty}>
-                <Text style={{ color: C.muted, textAlign: "center" }}>
-                  No places yet — they are generated from your visits.
-                </Text>
-              </View>
-            )}
-          </>
-        }
-        renderItem={({ item: p }) => {
-          const name =
-            p.name && p.name !== "Unknown Location" ? p.name : label(p.category);
-          const locale = [p.city, p.country].filter(Boolean).join(", ");
-          return (
-            <View style={ps.card}>
-              <Text style={ps.icon}>{categoryIcon(p.category)}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={ps.name} numberOfLines={1}>{name}</Text>
-                <Text style={ps.meta} numberOfLines={1}>
-                  {label(p.category)}{locale ? ` · ${locale}` : ""}
-                </Text>
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text style={ps.count}>{p.visitCount}×</Text>
-                <Text style={ps.meta}>{fmtDuration(p.totalTime)}</Text>
-              </View>
-            </View>
-          );
-        }}
-      />
+  const q = query.trim().toLowerCase();
+  const shown = useMemo(
+    () =>
+      (places ?? []).filter(
+        (p) => !q || [placeName(p), p.city ?? "", categoryMeta(p.category).label].some((x) => x.toLowerCase().includes(q)),
+      ),
+    [places, q],
+  );
+
+  const s = useStyles((th) => ({
+    root: { flex: 1, backgroundColor: th.c.bg },
+    content: { paddingHorizontal: th.layout.gutter, paddingTop: th.space.md, paddingBottom: th.space.xxxl, gap: th.space.md },
+    search: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: th.space.sm,
+      backgroundColor: th.c.surface,
+      borderColor: th.c.border,
+      borderWidth: 1,
+      borderRadius: th.radius.pill,
+      paddingHorizontal: th.space.lg,
+      height: 48,
+      marginBottom: th.space.xs,
+    },
+    input: { flex: 1, color: th.c.text, fontSize: 15, padding: 0, outlineStyle: "none" as never },
+    row: { flexDirection: "row", alignItems: "center", gap: th.space.md, paddingVertical: th.space.md, paddingHorizontal: th.space.md },
+  }));
+
+  const header = (
+    <View style={{ gap: 14, marginBottom: 4 }}>
+      <ScreenHeader title="Places" subtitle={places ? `${places.length.toLocaleString()} places you come back to` : "Where you spend your time"} />
+      <View style={s.search}>
+        <Icon name="magnify" size={20} color={t.c.textMuted} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search places, cities, types"
+          placeholderTextColor={t.c.textMuted}
+          style={s.input}
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+        {query.length > 0 && (
+          <Pressable onPress={() => setQuery("")} hitSlop={10} accessibilityLabel="Clear search">
+            <Icon name="close-circle" size={18} color={t.c.textMuted} />
+          </Pressable>
+        )}
+      </View>
+      {err && !places && <ErrorState message={err} onRetry={load} />}
+      {!places && !err && (
+        <View style={{ gap: 10 }}>
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} height={72} radius={20} />
+          ))}
+        </View>
+      )}
+      {places && places.length === 0 && (
+        <Card>
+          <EmptyState icon="map-marker-multiple-outline" title="No places yet" body="Places appear once you have spent a few minutes somewhere. Keep Matka recording and check back soon." />
+        </Card>
+      )}
+      {places && places.length > 0 && shown.length === 0 && (
+        <Card>
+          <EmptyState icon="magnify" title="Nothing matches" body={`No place found for “${query.trim()}”. Try a city or a type like “library”.`} />
+        </Card>
+      )}
     </View>
   );
-}
 
-const ps = StyleSheet.create({
-  container: { padding: 20, paddingTop: 24, paddingBottom: 100, gap: 10 },
-  h1: { color: C.text, fontSize: 30, fontWeight: "700" },
-  sub: { color: C.muted, marginTop: -4, marginBottom: 10 },
-  err: { color: C.accent, marginTop: 16 },
-  empty: { backgroundColor: C.surface, borderColor: C.border, borderWidth: 1, borderRadius: 14, padding: 24, marginTop: 20 },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: C.surface,
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-  },
-  icon: { fontSize: 22, width: 40, height: 40, textAlign: "center", lineHeight: 40, backgroundColor: C.surface2, borderRadius: 10, overflow: "hidden" },
-  name: { color: C.text, fontSize: 15, fontWeight: "600" },
-  meta: { color: C.muted, fontSize: 12, marginTop: 2 },
-  count: { color: C.primary, fontSize: 15, fontWeight: "700" },
-});
+  return (
+    <FlatList
+      style={s.root}
+      contentContainerStyle={s.content}
+      data={shown}
+      keyExtractor={(p) => String(p.id)}
+      ListHeaderComponent={header}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          tintColor={t.c.primary}
+          colors={[t.c.primary]}
+          progressBackgroundColor={t.c.surface}
+          onRefresh={async () => {
+            setRefreshing(true);
+            await load();
+            setRefreshing(false);
+          }}
+        />
+      }
+      renderItem={({ item: p, index }) => {
+        const meta = categoryMeta(p.category);
+        const locale = [p.city, p.country === "Finland" ? null : p.country].filter(Boolean).join(", ");
+        return (
+          <Card style={s.row}>
+            <IconChip icon={meta.icon} tint={meta.tint} size={44} />
+            <View style={{ flex: 1, gap: 3 }}>
+              <Text variant="headline" numberOfLines={1}>
+                {placeName(p)}
+              </Text>
+              <Text variant="caption" color="textSecondary" numberOfLines={1}>
+                {meta.label}
+                {locale ? ` · ${locale}` : ""}
+              </Text>
+              {index === 0 && !q && <Pill label="Most visited" icon="star-four-points-outline" tint="amber" />}
+            </View>
+            <View style={{ alignItems: "flex-end", gap: 2 }}>
+              <Text variant="headline" color="primary">
+                {p.visitCount.toLocaleString()} {p.visitCount === 1 ? "visit" : "visits"}
+              </Text>
+              <Text variant="caption" color="textSecondary" tabular>
+                {fmtDuration(p.totalTime)}
+              </Text>
+            </View>
+          </Card>
+        );
+      }}
+    />
+  );
+}

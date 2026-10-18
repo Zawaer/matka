@@ -18,10 +18,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         {/* ?embed=1 (used by the mobile app's WebView) hides the web chrome
-            before first paint, so the app's own tab bar is the only nav. */}
+            before first paint, so the app's own tab bar is the only nav. ?theme= makes
+            the page follow the app's light/dark choice. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `if(/[?&]embed=1\\b/.test(location.search))document.documentElement.classList.add("embed")`,
+            __html: `(function(){var q=location.search,d=document.documentElement;if(/[?&]embed=1\\b/.test(q))d.classList.add("embed");var m=/[?&]theme=(light|dark)\\b/.exec(q);if(m)d.dataset.theme=m[1]})()`,
           }}
         />
       </head>
