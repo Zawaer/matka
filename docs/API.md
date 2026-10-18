@@ -116,7 +116,8 @@ Never put the token in a URL. Instead:
    The URL is valid for 60 seconds and is built from the server's configured public URL
    (`APP_URL`), the same base URL the pairing QR code carries. A client may refuse a URL on any
    other origin.
-2. Load that URL in the WebView. The server sets an httpOnly cookie (12 h, read-only, dies when the device
+2. Load that URL in the WebView, optionally with `&theme=light` or `&theme=dark` appended so the map
+   matches the app's appearance. The server sets an httpOnly cookie (12 h, read-only, dies when the device
    is revoked) and redirects to `/embed/map`, a full-screen map without the web navigation.
 3. Expiry looks like this:
    - an expired or invalid ticket → `401` plain text ("This map link has expired…");

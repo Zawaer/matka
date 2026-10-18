@@ -45,6 +45,18 @@ export function decideNavigation(url: string, server: string): NavDecision {
   return "block";
 }
 
+/**
+ * Adds `theme=light|dark` to the ticket URL; /embed/start forwards it to
+ * /embed/map so the web map matches the app's appearance.
+ */
+export function withTheme(url: string, scheme: "light" | "dark"): string {
+  const hash = url.indexOf("#");
+  const base = hash < 0 ? url : url.slice(0, hash);
+  const frag = hash < 0 ? "" : url.slice(hash);
+  const clean = base.replace(/([?&])theme=[^&]*(&|$)/, (_m, pre: string, post: string) => (post ? pre : ""));
+  return `${clean}${clean.includes("?") ? "&" : "?"}theme=${scheme}${frag}`;
+}
+
 /** ms until the current WebView session should be renewed. */
 export function renewDelay(loadedAt: number, now: number): number {
   return Math.max(0, loadedAt + TICKET_RENEW_MS - now);

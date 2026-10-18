@@ -1,42 +1,80 @@
 @import "tailwindcss";
 
-/* ---------- Matka design tokens ---------- */
+/* ---------- Matka design tokens ----------
+   Mirrors mobile/src/design/tokens.ts ("birch & aurora"). Keep the two in sync.
+   Dark is the default; light follows the OS, or ?theme=light|dark (set on <html>
+   as data-theme by the layout script, used by the mobile app's embedded map). */
 :root {
-  --mk-bg: #0b1020;
-  --mk-surface: #121829;
-  --mk-surface-2: #1b2338;
-  --mk-border: #273149;
-  --mk-text: #e8edf7;
-  --mk-muted: #8b96ad;
-  --mk-primary: #2dd4bf;
-  --mk-primary-strong: #14b8a6;
-  --mk-accent: #fbbf24;
-  --mk-route: #38bdf8;
+  --mk-bg: #0e0f1c;
+  --mk-surface: #171a2b;
+  --mk-surface-2: #1f2338;
+  --mk-border: #2a2f4a;
+  --mk-text: #f2f1fa;
+  --mk-muted: #a0a3be;
+  --mk-primary: #9c8fff;
+  --mk-primary-strong: #b3a9ff;
+  --mk-accent: #ff8a75;
+  --mk-route: #3987e5;
 
-  /* transport modes */
-  --mk-walk: #34d399;
-  --mk-bike: #f472b6;
-  --mk-car: #60a5fa;
-  --mk-transit: #c084fc;
+  /* travel modes: dataviz categorical slots (validated, fixed order) */
+  --mk-car: #3987e5;
+  --mk-bike: #d95926;
+  --mk-walk: #199e70;
+  --mk-bus: #c98500;
+  --mk-run: #d55181;
+  --mk-boat: #008300;
+  --mk-transit: #9085e9;
+  --mk-fly: #e66767;
 
-  --mk-radius: 14px;
-  --mk-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  --mk-radius: 20px;
+  --mk-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.65);
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --mk-bg: #f5f7fc;
+    --mk-bg: #f7f5f0;
     --mk-surface: #ffffff;
-    --mk-surface-2: #eef2f9;
-    --mk-border: #dce3ee;
-    --mk-text: #0f172a;
-    --mk-muted: #5a6880;
-    --mk-primary: #0d9488;
-    --mk-primary-strong: #0f766e;
-    --mk-accent: #d97706;
-    --mk-route: #0284c7;
-    --mk-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+    --mk-surface-2: #f0ede6;
+    --mk-border: #e8e3d9;
+    --mk-text: #16161f;
+    --mk-muted: #62627a;
+    --mk-primary: #5144e8;
+    --mk-primary-strong: #4034c9;
+    --mk-accent: #e5483a;
+    --mk-route: #2a78d6;
+    --mk-car: #2a78d6;
+    --mk-bike: #eb6834;
+    --mk-walk: #1baf7a;
+    --mk-bus: #eda100;
+    --mk-run: #e87ba4;
+    --mk-boat: #008300;
+    --mk-transit: #6250d6;
+    --mk-fly: #e34948;
+    --mk-shadow: 0 10px 28px -8px rgba(40, 34, 20, 0.14);
   }
+}
+
+/* Explicit light override (wins over an OS-dark default). */
+:root[data-theme="light"] {
+  --mk-bg: #f7f5f0;
+  --mk-surface: #ffffff;
+  --mk-surface-2: #f0ede6;
+  --mk-border: #e8e3d9;
+  --mk-text: #16161f;
+  --mk-muted: #62627a;
+  --mk-primary: #5144e8;
+  --mk-primary-strong: #4034c9;
+  --mk-accent: #e5483a;
+  --mk-route: #2a78d6;
+  --mk-car: #2a78d6;
+  --mk-bike: #eb6834;
+  --mk-walk: #1baf7a;
+  --mk-bus: #eda100;
+  --mk-run: #e87ba4;
+  --mk-boat: #008300;
+  --mk-transit: #6250d6;
+  --mk-fly: #e34948;
+  --mk-shadow: 0 10px 28px -8px rgba(40, 34, 20, 0.14);
 }
 
 /* expose tokens as Tailwind color/radius utilities */
@@ -88,7 +126,45 @@ html.embed body > div > nav {
 html.embed main {
   padding-bottom: 0 !important;
 }
+html.embed body {
+  background: var(--mk-surface);
+}
 html.embed .map-shell {
   height: 100dvh !important;
   margin-bottom: 0 !important;
+}
+
+/* ---------- MapLibre chrome follows the theme tokens ----------
+   MapLibre's own stylesheet loads after this one, so these are !important. */
+.maplibregl-ctrl.maplibregl-ctrl-group {
+  background: var(--mk-surface) !important;
+  border: 1px solid var(--mk-border) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--mk-shadow) !important;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--mk-border) !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: var(--mk-icon-filter, none);
+}
+.maplibregl-ctrl.maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--mk-surface) 88%, transparent) !important;
+  color: var(--mk-muted) !important;
+  border-radius: 12px !important;
+}
+.maplibregl-ctrl.maplibregl-ctrl-attrib a {
+  color: var(--mk-muted) !important;
+}
+.maplibregl-ctrl-attrib-button {
+  filter: var(--mk-icon-filter, none);
+}
+:root:not([data-theme="light"]) {
+  --mk-icon-filter: invert(1) brightness(1.1);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --mk-icon-filter: none;
+  }
 }

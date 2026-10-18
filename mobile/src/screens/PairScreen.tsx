@@ -1,12 +1,15 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
 import { useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { getStatus } from "../api";
 import { savePairing } from "../credentials";
 import * as db from "../db";
+import { useStyles, useTheme } from "../design/theme";
 import { displayServer, parsePairingUrl, validatePairing, type Pairing } from "../pairing";
-import { Banner, Button, Card, s } from "../ui/components";
-import { C, RADIUS } from "../ui/theme";
+import { Button, Icon, PingRings } from "../ui";
+import { Banner, Field, Panel } from "../ui/components";
+import { Screen, ScreenHeader } from "../ui/Screen";
+import { Text } from "../ui/Text";
 import { resetUploadState, uploadNow } from "../uploader";
 
 type Props = {
@@ -18,6 +21,7 @@ type Props = {
 };
 
 export default function PairScreen({ initialLink, currentServer, onDone, onCancel }: Props) {
+  const t = useTheme();
   // App remounts this screen (key) for every new deep link, so the link only
   // needs to be read once, here.
   const [initial] = useState(() => (initialLink ? parsePairingUrl(initialLink) : null));
@@ -27,6 +31,12 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState("");
   const [token, setToken] = useState("");
+
+  const s = useStyles((th) => ({
+    tabs: { flexDirection: "row", gap: th.space.xs, backgroundColor: th.c.surfaceAlt, borderRadius: th.radius.pill, padding: th.space.xs },
+    tab: { flex: 1, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", paddingVertical: th.space.sm + 2, borderRadius: th.radius.pill },
+    tabOn: { backgroundColor: th.c.surface, boxShadow: th.elev.e1 },
+  }));
 
   const fromManual = () => {
     // Accept a whole pasted matka://pair link in the server field too.
@@ -71,61 +81,68 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
   if (candidate) {
     const switching = currentServer != null && currentServer !== candidate.server;
     return (
-      <ScrollView contentContainerStyle={st.pad}>
-        <Text style={s.h1}>Pair device</Text>
-        <Card title="Confirm server">
-          <Text style={[s.body, { fontSize: 18, fontWeight: "700" }]}>{displayServer(candidate.server)}</Text>
-          <Text style={s.body}>
+      <Screen>
+        <ScreenHeader title="Pair device" subtitle="Check the server before you continue" />
+        <Panel title="Confirm server">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm }}>
+            <Icon name={candidate.server.startsWith("https://") ? "lock-outline" : "lock-open-alert-outline"} size={20} color={t.c.primary} />
+            <Text variant="title3" style={{ flex: 1 }}>
+              {displayServer(candidate.server)}
+            </Text>
+          </View>
+          <Text variant="callout" color="textSecondary">
             Only continue if this is your own Matka server. Every location point recorded on this phone will be sent
             there.
           </Text>
           {candidate.server.startsWith("http://") ? (
-            <Text style={[s.body, { color: C.accent }]}>
-              This is an unencrypted development URL. Release builds block plain HTTP.
-            </Text>
+            <Banner tone="warn" message="This is an unencrypted development URL. Release builds block plain HTTP." />
           ) : null}
           {switching ? (
-            <Text style={[s.body, { color: C.accent }]}>
-              This replaces the current pairing with {displayServer(currentServer)}. Points still queued on the phone
-              will be uploaded to the new server.
-            </Text>
+            <Banner
+              tone="warn"
+              message={`This replaces the current pairing with ${displayServer(currentServer)}. Points still queued on the phone will be uploaded to the new server.`}
+            />
           ) : null}
-        </Card>
-        {error ? <Banner tone="bad">{error}</Banner> : null}
-        <Button title="Verify and pair" onPress={confirm} busy={busy} />
+        </Panel>
+        {error ? <Banner tone="bad" message={error} /> : null}
+        <Button label="Verify and pair" icon="check" onPress={confirm} busy={busy} />
         <Button
-          title="Back"
-          kind="ghost"
+          label="Back"
+          variant="secondary"
           onPress={() => {
             setCandidate(null);
             setError(null);
           }}
         />
-      </ScrollView>
+      </Screen>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={st.pad} keyboardShouldPersistTaps="handled">
-      <Text style={s.h1}>Pair device</Text>
-      <Text style={s.sub}>
-        In the Matka web app open Devices → Pair a device, then scan the QR code it shows.
-      </Text>
+    <Screen>
+      <ScreenHeader title="Pair device" subtitle="In the Matka web app open Devices → Pair a device, then scan the QR code it shows." />
 
-      <View style={st.tabs}>
-        {(["scan", "manual"] as const).map((m) => (
-          <Text
-            key={m}
-            onPress={() => {
-              setMode(m);
-              setError(null);
-            }}
-            style={[st.tab, mode === m && st.tabOn]}
-            accessibilityRole="button"
-          >
-            {m === "scan" ? "Scan QR" : "Enter manually"}
-          </Text>
-        ))}
+      <View style={s.tabs} accessibilityRole="tablist">
+        {(["scan", "manual"] as const).map((m) => {
+          const on = mode === m;
+          return (
+            <Pressable
+              key={m}
+              onPress={() => {
+                setMode(m);
+                setError(null);
+              }}
+              style={[s.tab, on && s.tabOn]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+            >
+              <Icon name={m === "scan" ? "qrcode-scan" : "keyboard-outline"} size={18} color={on ? t.c.primary : t.c.textMuted} />
+              <Text variant="callout" style={{ fontWeight: "700", color: on ? t.c.text : t.c.textMuted }}>
+                {m === "scan" ? "Scan QR" : "Enter manually"}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {mode === "scan" ? (
@@ -142,59 +159,80 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
           }}
         />
       ) : (
-        <Card>
-          <Text style={s.label}>Server URL</Text>
-          <TextInput
-            style={s.input}
+        <Panel>
+          <Text variant="caption" color="textSecondary" style={{ fontWeight: "700" }}>
+            Server URL
+          </Text>
+          <Field
             value={server}
             onChangeText={setServer}
             placeholder="https://matka.example.com"
-            placeholderTextColor={C.faint}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
             textContentType="URL"
           />
-          <Text style={s.label}>Device token</Text>
-          <TextInput
-            style={s.input}
+          <Text variant="caption" color="textSecondary" style={{ fontWeight: "700" }}>
+            Device token
+          </Text>
+          <Field
             value={token}
             onChangeText={setToken}
             placeholder="mtk_…"
-            placeholderTextColor={C.faint}
             autoCapitalize="none"
             autoCorrect={false}
             secureTextEntry
           />
-          <Text style={s.hint}>You can also paste the whole matka://pair?… link into the server field.</Text>
-          <Button title="Continue" onPress={fromManual} />
-        </Card>
+          <Text variant="caption" color="textMuted">
+            You can also paste the whole matka://pair?… link into the server field.
+          </Text>
+          <Button label="Continue" onPress={fromManual} />
+        </Panel>
       )}
 
-      {error ? <Banner tone="bad">{error}</Banner> : null}
-      <Button title="Cancel" kind="ghost" onPress={onCancel} />
-    </ScrollView>
+      {error ? <Banner tone="bad" message={error} /> : null}
+      <Button label="Cancel" variant="secondary" onPress={onCancel} />
+    </Screen>
   );
 }
 
 function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
+  const t = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   // Barcode callbacks fire many times per second; handle one at a time and
   // ignore repeats of a code we already rejected.
   const lastRejected = useRef<string | null>(null);
   const done = useRef(false);
+  const s = useStyles((th) => ({
+    camera: {
+      aspectRatio: 1,
+      width: "100%",
+      borderRadius: th.radius.xl,
+      overflow: "hidden",
+      backgroundColor: "#000",
+      borderWidth: 1,
+      borderColor: th.c.border,
+    },
+  }));
 
-  if (!permission) return <View style={st.camera} />;
+  if (!permission) return <View style={s.camera} />;
   if (!permission.granted) {
     return (
-      <Card>
-        <Text style={s.body}>Matka needs the camera only to read the pairing QR code.</Text>
+      <Panel style={{ alignItems: "center" }}>
+        <PingRings size={110} color={t.c.primary}>
+          <Icon name="camera-outline" size={30} color={t.c.primary} />
+        </PingRings>
+        <Text variant="callout" color="textSecondary" style={{ textAlign: "center" }}>
+          Matka needs the camera only to read the pairing QR code.
+        </Text>
         {permission.canAskAgain ? (
-          <Button title="Allow camera" onPress={requestPermission} />
+          <Button label="Allow camera" icon="camera-outline" onPress={requestPermission} />
         ) : (
-          <Text style={s.hint}>Camera access was denied. Enable it in system settings, or enter the code manually.</Text>
+          <Text variant="caption" color="textMuted" style={{ textAlign: "center" }}>
+            Camera access was denied. Enable it in system settings, or enter the code manually.
+          </Text>
         )}
-      </Card>
+      </Panel>
     );
   }
 
@@ -205,7 +243,7 @@ function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
   };
 
   return (
-    <View style={st.camera}>
+    <View style={s.camera}>
       <CameraView
         style={StyleSheet.absoluteFill}
         facing="back"
@@ -215,29 +253,3 @@ function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
     </View>
   );
 }
-
-const st = StyleSheet.create({
-  pad: { padding: 20, gap: 14, paddingBottom: 40 },
-  tabs: { flexDirection: "row", gap: 8 },
-  tab: {
-    flex: 1,
-    textAlign: "center",
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: C.border,
-    color: C.muted,
-    fontWeight: "600",
-    overflow: "hidden",
-  },
-  tabOn: { backgroundColor: C.surface2, color: C.text, borderColor: C.primaryStrong },
-  camera: {
-    aspectRatio: 1,
-    width: "100%",
-    borderRadius: RADIUS,
-    overflow: "hidden",
-    backgroundColor: "#000",
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-});

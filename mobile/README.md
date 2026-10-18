@@ -23,8 +23,15 @@ a bottom tab bar:
 | **Map** | the web app's map, full screen, in a WebView | embed ticket, see below |
 | **Recorder** | the collector status screen; **Settings** (presets, battery, pairing, queue) from its header | local state + `GET /api/ingest` |
 
-Pull down on Overview / Timeline / Places to reload. The tab label of
-**Recorder** turns red when pairing is lost or tracking is on but not running.
+Pull down on Overview / Timeline / Places / Recorder to reload. The
+**Recorder** tab icon gets a red dot when pairing is lost or tracking is on but
+not running. Overview also has a Start/Stop control for recording.
+
+**Look**: the design system lives in `src/design/` (tokens, light and dark
+palettes, `useTheme`/`useStyles`, place categories) and `src/ui/` (Text, Icon
+with Material Community icons, Card, Button, charts…). The app follows the
+system light/dark setting (`userInterfaceStyle: automatic`); every screen,
+including the recorder, settings and pairing, is built from these parts.
 
 **Pairing lost**: any `401` (upload, status check, a viewer request or the map
 ticket) marks the pairing as lost, exactly as the collector always did: uploads
@@ -46,8 +53,9 @@ WebView*):
 1. The app calls `POST /api/device/embed-ticket` with the bearer header and gets
    a URL valid for 60 s. It must be on the paired server's origin, otherwise the
    app refuses to load it (check the server's public URL setting if you see that error).
-2. The WebView opens that URL; the server sets a 12 h httpOnly cookie and
-   redirects to `/embed/map`.
+2. The WebView opens that URL with `&theme=light|dark` appended; the server sets
+   a 12 h httpOnly cookie and redirects to `/embed/map?theme=…`, so the web map
+   matches the app. Switching the system theme fetches a fresh ticket.
 3. The app fetches a new ticket and reloads after **11 h** (timer, plus a check
    whenever the app returns to the foreground), when the page shows
    *Session expired* (detected by a small injected script that reports the page
@@ -251,7 +259,10 @@ Code map:
 | `src/uploader.ts` | runs uploads, records status, backoff, marks pairing lost |
 | `src/tracking.ts` | background task, presets, start/stop/resume, permissions |
 | `src/system.ts` | battery optimisation / app settings intents |
-| `src/theme.ts` | viewer colours (transport modes) and formatting; base tokens in `src/ui/theme.ts` |
+| `src/design/*` | design tokens, light/dark theme provider, place categories |
+| `src/ui/*` | design-system components; `components.tsx` has the recorder's Panel/Row/Banner |
+| `src/format.ts` | display formatting (pure, tested) |
+| `preview/`, `metro.config.js` | browser preview with mock data (`MATKA_PREVIEW=1`); see `preview/README.md` — not yet adapted to pairing / the recorder |
 | `src/ui/session.tsx` | viewer context (pairing, 401 handling), `useViewerQuery` |
 | `src/screens/*` | Overview, Timeline, Places, Map; Status, Pair (QR / manual), Settings |
 | `plugins/*` | config plugins, see *Config plugins* |

@@ -2,10 +2,12 @@
 // "Map in a WebView"). The device token never goes into a URL or the WebView:
 // the app trades it for a one-minute ticket URL, the server swaps that for a
 // 12 h httpOnly cookie, and we renew the session after 11 h, when the page
-// shows "Session expired", or on a top-level 401.
+// shows "Session expired", or on a top-level 401. The ticket URL carries
+// &theme=light|dark so the web map matches the app's appearance; switching
+// the system theme fetches a fresh ticket.
 
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
-import { ActivityIndicator, AppState, Linking, StyleSheet, Text, View } from "react-native";
+import { AppState, Linking, View } from "react-native";
 import { WebView } from "react-native-webview";
 import type {
   ShouldStartLoadRequest,
@@ -13,6 +15,7 @@ import type {
   WebViewMessageEvent,
   WebViewOpenWindowEvent,
 } from "react-native-webview/lib/WebViewTypes";
+import { useStyles, useTheme } from "../design/theme";
 import {
   INJECTED_JS,
   TICKET_RENEW_MS,
@@ -21,15 +24,18 @@ import {
   pageMessageExpired,
   renewDelay,
   sameOrigin,
+  withTheme,
 } from "../embed-logic";
-import { C } from "../theme";
-import { Button, s as ui } from "../ui/components";
+import { Button, Icon, PingRings } from "../ui";
 import { PairingLost, useSession } from "../ui/session";
+import { Text } from "../ui/Text";
 import { getEmbedTicket } from "../viewer";
 
 type Phase = { kind: "ticket" } | { kind: "web"; url: string; at: number; n: number } | { kind: "error"; error: string };
 
 export default function MapScreen() {
+  const t = useTheme();
+  const scheme = t.scheme;
   const { pairing, authLost, onUnauthorized } = useSession();
   const server = pairing.server;
   const [phase, setPhase] = useState<Phase>({ kind: "ticket" });
@@ -59,13 +65,13 @@ export default function MapScreen() {
         setPhase({ kind: "error", error: r.error });
         return;
       }
-      setPhase({ kind: "web", url: r.data, at: Date.now(), n });
+      setPhase({ kind: "web", url: withTheme(r.data, scheme), at: Date.now(), n });
     },
-    [pairing, onUnauthorized],
+    [pairing, onUnauthorized, scheme],
   );
 
-  // First ticket on mount (and again after re-pairing); deferred a tick so the
-  // effect itself doesn't set state.
+  // First ticket on mount, after re-pairing and when the theme flips;
+  // deferred a tick so the effect itself doesn't set state.
   useEffect(() => {
     if (authLost) return;
     const id = setTimeout(() => renew(false), 0);
@@ -124,65 +130,69 @@ export default function MapScreen() {
     [server, renew],
   );
 
+  const s = useStyles((th) => ({
+    root: { flex: 1, backgroundColor: th.c.bg, paddingHorizontal: th.space.md, paddingTop: th.space.md, paddingBottom: th.space.md },
+    frame: { flex: 1, borderRadius: th.radius.xl, overflow: "hidden", borderWidth: 1, borderColor: th.c.border, backgroundColor: th.c.surface, boxShadow: th.elev.e2 },
+    overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, alignItems: "center", justifyContent: "center", backgroundColor: th.c.surface, gap: th.space.sm, padding: th.space.xxl },
+  }));
+
   if (authLost) {
     return (
-      <View style={[st.fill, { padding: 20 }]}>
+      <View style={[s.root, { paddingHorizontal: t.layout.gutter }]}>
         <PairingLost />
       </View>
     );
   }
 
   return (
-    <View style={st.fill}>
-      {phase.kind === "web" ? (
-        <WebView
-          ref={web}
-          key={phase.n}
-          source={{ uri: phase.url }}
-          style={st.fill}
-          originWhitelist={["*"]} // every navigation goes through onShouldStart (the default would open other schemes itself)
-          onShouldStartLoadWithRequest={onShouldStart}
-          onOpenWindow={onOpenWindow}
-          onHttpError={onHttpError}
-          onMessage={onMessage}
-          injectedJavaScript={INJECTED_JS}
-          onLoadEnd={() => setLoading(false)}
-          onError={(e) => {
-            setLoading(false);
-            setPhase({ kind: "error", error: `Couldn't load the map: ${e.nativeEvent.description}` });
-          }}
-          javaScriptEnabled
-          domStorageEnabled
-          allowFileAccess={false}
-          allowsLinkPreview={false}
-          mixedContentMode="never"
-          webviewDebuggingEnabled={__DEV__}
-        />
-      ) : null}
-      {phase.kind === "error" ? (
-        <View style={[st.overlay, { padding: 24, gap: 14 }]}>
-          <Text style={[ui.body, { color: C.muted, textAlign: "center" }]}>{phase.error}</Text>
-          <Button title="Try again" kind="ghost" onPress={() => renew(false)} />
-        </View>
-      ) : loading ? (
-        <View style={st.overlay}>
-          <ActivityIndicator color={C.primary} />
-        </View>
-      ) : null}
+    <View style={s.root}>
+      <View style={s.frame}>
+        {phase.kind === "web" ? (
+          <WebView
+            ref={web}
+            key={phase.n}
+            source={{ uri: phase.url }}
+            style={{ flex: 1, backgroundColor: t.c.surface }}
+            originWhitelist={["*"]} // every navigation goes through onShouldStart (the default would open other schemes itself)
+            onShouldStartLoadWithRequest={onShouldStart}
+            onOpenWindow={onOpenWindow}
+            onHttpError={onHttpError}
+            onMessage={onMessage}
+            injectedJavaScript={INJECTED_JS}
+            onLoadEnd={() => setLoading(false)}
+            onError={(e) => {
+              setLoading(false);
+              setPhase({ kind: "error", error: `Couldn't load the map: ${e.nativeEvent.description}` });
+            }}
+            javaScriptEnabled
+            domStorageEnabled
+            allowFileAccess={false}
+            allowsLinkPreview={false}
+            mixedContentMode="never"
+            overScrollMode="never"
+            webviewDebuggingEnabled={__DEV__}
+          />
+        ) : null}
+        {phase.kind === "error" ? (
+          <View style={s.overlay}>
+            <Icon name="map-search-outline" size={40} color={t.c.textMuted} />
+            <Text variant="title3">The map didn&apos;t load</Text>
+            <Text variant="callout" color="textSecondary" style={{ textAlign: "center", marginBottom: 8 }}>
+              {phase.error}
+            </Text>
+            <Button label="Try again" icon="refresh" onPress={() => renew(false)} />
+          </View>
+        ) : loading ? (
+          <View style={s.overlay} pointerEvents="none">
+            <PingRings size={120} color={t.c.primary}>
+              <Icon name="map-marker-path" size={32} color={t.c.primary} />
+            </PingRings>
+            <Text variant="callout" color="textSecondary">
+              Drawing your journeys…
+            </Text>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
-
-const st = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: C.bg },
-  overlay: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: C.bg,
-  },
-});

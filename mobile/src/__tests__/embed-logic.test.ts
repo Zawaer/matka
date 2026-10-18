@@ -10,6 +10,7 @@ import {
   pageMessageExpired,
   renewDelay,
   sameOrigin,
+  withTheme,
 } from "../embed-logic";
 
 const SERVER = "https://matka.example.com/prefix";
@@ -59,6 +60,22 @@ describe("decideNavigation", () => {
     ["data:text/html,hi", "block"],
     ["matka://pair?server=x&token=y", "block"],
   ])("%s → %s", (url, d) => expect(decideNavigation(url, SERVER)).toBe(d));
+});
+
+describe("withTheme", () => {
+  it.each([
+    ["https://m.example.com/embed/start?ticket=abc", "dark", "https://m.example.com/embed/start?ticket=abc&theme=dark"],
+    ["https://m.example.com/embed/start?ticket=abc", "light", "https://m.example.com/embed/start?ticket=abc&theme=light"],
+    ["https://m.example.com/embed/start", "dark", "https://m.example.com/embed/start?theme=dark"],
+    ["https://m.example.com/embed/start?ticket=a&theme=light", "dark", "https://m.example.com/embed/start?ticket=a&theme=dark"],
+    ["https://m.example.com/embed/start?theme=light&ticket=a", "dark", "https://m.example.com/embed/start?ticket=a&theme=dark"],
+    ["https://m.example.com/embed/start?ticket=a#x", "dark", "https://m.example.com/embed/start?ticket=a&theme=dark#x"],
+  ] as const)("%s + %s", (url, scheme, out) => expect(withTheme(url, scheme)).toBe(out));
+
+  it("keeps the URL on the same origin", () => {
+    const u = withTheme("https://m.example.com/embed/start?ticket=abc", "dark");
+    expect(decideNavigation(u, "https://m.example.com")).toBe("allow");
+  });
 });
 
 describe("ticket renewal", () => {

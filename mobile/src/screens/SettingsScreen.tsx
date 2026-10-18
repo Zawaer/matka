@@ -1,14 +1,17 @@
 import * as Application from "expo-application";
 import { useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Platform, Pressable, View } from "react-native";
 import { clearPairing } from "../credentials";
 import * as db from "../db";
+import { useTheme } from "../design/theme";
 import { count } from "../format";
 import { displayServer } from "../pairing";
 import { openAppSettings, requestIgnoreBatteryOptimizations } from "../system";
 import { PRESETS, setPreset, type PresetKey } from "../tracking";
-import { Button, Card, Row, s } from "../ui/components";
-import { C, RADIUS } from "../ui/theme";
+import { Button, Icon } from "../ui";
+import { LinkText, Panel, Row } from "../ui/components";
+import { Screen, ScreenHeader } from "../ui/Screen";
+import { Text } from "../ui/Text";
 import type { CollectorState } from "../ui/useCollectorState";
 import { resetUploadState } from "../uploader";
 
@@ -20,6 +23,7 @@ type Props = {
 };
 
 export default function SettingsScreen({ state, refresh, onPair, onBack }: Props) {
+  const t = useTheme();
   const [busy, setBusy] = useState(false);
 
   const choose = async (key: PresetKey) => {
@@ -70,15 +74,10 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
     );
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: 40 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <Text style={s.h1}>Settings</Text>
-        <Text style={s.link} onPress={onBack} accessibilityRole="button">
-          Done
-        </Text>
-      </View>
+    <Screen>
+      <ScreenHeader title="Settings" right={<LinkText label="Done" onPress={onBack} />} />
 
-      <Card title="Recording preset">
+      <Panel title="Recording preset">
         {(Object.keys(PRESETS) as PresetKey[]).map((k) => {
           const p = PRESETS[k];
           const on = state?.preset === k;
@@ -90,29 +89,38 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
               style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: t.space.md,
                 borderWidth: 1,
-                borderColor: on ? C.primaryStrong : C.border,
-                backgroundColor: on ? C.surface2 : "transparent",
-                borderRadius: RADIUS,
-                padding: 12,
-                gap: 4,
+                borderColor: on ? t.c.primary : t.c.border,
+                backgroundColor: on ? t.c.primarySoft : "transparent",
+                borderRadius: t.radius.md,
+                padding: t.space.md,
               }}
             >
-              <Text style={[s.body, { fontWeight: "700", color: on ? C.primary : C.text }]}>{p.label}</Text>
-              <Text style={s.hint}>{p.description}</Text>
+              <Icon name={on ? "radiobox-marked" : "radiobox-blank"} size={22} color={on ? t.c.primary : t.c.textMuted} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text variant="headline" color={on ? "primary" : "text"}>
+                  {p.label}
+                </Text>
+                <Text variant="caption" color="textSecondary">
+                  {p.description}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
-        <Text style={s.hint}>
+        <Text variant="caption" color="textMuted">
           Fixes are only recorded when you move at least the given distance, and are delivered to the app in batches
           to save battery. Changing the preset restarts recording.
         </Text>
-      </Card>
+      </Panel>
 
-      <Card title="Keep it running">
+      <Panel title="Keep it running">
         {Platform.OS === "android" ? (
           <>
-            <Text style={s.body}>
+            <Text variant="callout" color="textSecondary">
               Android&apos;s battery optimisation can stop or delay background apps. For an always-on collector, let
               Matka run unrestricted. Some phones (Samsung, Xiaomi, Huawei, OnePlus…) have an extra vendor setting —
               see dontkillmyapp.com.
@@ -122,41 +130,41 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               value={state?.batteryOptimized == null ? "unknown" : state.batteryOptimized ? "on (restricted)" : "off"}
               tone={state?.batteryOptimized ? "warn" : "ok"}
             />
-            <Button title="Disable battery optimisation" kind="ghost" onPress={requestIgnoreBatteryOptimizations} />
+            <Button label="Disable battery optimisation" variant="secondary" onPress={requestIgnoreBatteryOptimizations} />
           </>
         ) : (
-          <Text style={s.body}>
+          <Text variant="callout" color="textSecondary">
             Set Location to &quot;Always&quot; with Precise Location on, and keep Background App Refresh enabled.
           </Text>
         )}
-        <Button title="Open app settings" kind="ghost" onPress={openAppSettings} />
-      </Card>
+        <Button label="Open app settings" icon="cog-outline" variant="secondary" onPress={openAppSettings} />
+      </Panel>
 
-      <Card title="Pairing">
+      <Panel title="Pairing">
         {state?.pairing ? (
           <>
             <Row label="Server" value={displayServer(state.pairing.server)} />
             <Row label="Device" value={state.server?.device ?? "—"} />
-            <Button title="Pair again" kind="ghost" onPress={onPair} />
-            <Button title="Unpair" kind="danger" onPress={unpair} />
+            <Button label="Pair again" icon="qrcode-scan" variant="secondary" onPress={onPair} />
+            <Button label="Unpair" icon="link-variant-off" variant="danger" onPress={unpair} />
           </>
         ) : (
-          <Button title="Pair with server" onPress={onPair} />
+          <Button label="Pair with server" icon="qrcode-scan" onPress={onPair} />
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Queue">
+      <Panel title="Queue">
         <Row label="Queued points" value={count(state?.queued)} />
-        <Text style={s.hint}>
+        <Text variant="caption" color="textMuted">
           Points are stored on the phone until the server confirms them. Beyond {count(db.QUEUE_CAP)} queued points the
           oldest are discarded.
         </Text>
-        <Button title="Delete queued points" kind="ghost" onPress={clearQueue} disabled={!state?.queued} />
-      </Card>
+        <Button label="Delete queued points" icon="delete-outline" variant="secondary" onPress={clearQueue} disabled={!state?.queued} />
+      </Panel>
 
-      <Text style={[s.hint, { textAlign: "center" }]}>
+      <Text variant="caption" color="textMuted" style={{ textAlign: "center" }}>
         Matka {Application.nativeApplicationVersion ?? "?"} ({Application.nativeBuildVersion ?? "?"}) · {Platform.OS}
       </Text>
-    </ScrollView>
+    </Screen>
   );
 }

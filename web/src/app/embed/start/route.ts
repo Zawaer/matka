@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const claims = await verifyTicket(new URL(req.url).searchParams.get("ticket") ?? undefined);
+  const params = new URL(req.url).searchParams;
+  const claims = await verifyTicket(params.get("ticket") ?? undefined);
   if (!claims) {
     return new NextResponse("This map link has expired. Go back and open the map again.\n", {
       status: 401,
@@ -15,7 +16,10 @@ export async function GET(req: Request) {
     });
   }
   // Redirect so the ticket doesn't stay in the WebView's URL/history.
-  const res = NextResponse.redirect(`${appUrl()}/embed/map`, 303);
+  // The app may append &theme=light|dark to match its own appearance.
+  const theme = params.get("theme");
+  const query = theme === "light" || theme === "dark" ? `?theme=${theme}` : "";
+  const res = NextResponse.redirect(`${appUrl()}/embed/map${query}`, 303);
   res.cookies.set(EMBED_COOKIE, await signEmbed(claims), cookieOptions(EMBED_MAX_AGE));
   res.headers.set("referrer-policy", "no-referrer");
   return res;

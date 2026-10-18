@@ -1,26 +1,54 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { C, MODE_META, categoryLabel, fmtDistance, fmtDuration, fmtTime } from "../theme";
-import { PairingLost, useSession, useViewerQuery } from "../ui/session";
-import { getTimeline, type Timeline } from "../viewer";
+import { Pressable, View } from "react-native";
+import { categoryMeta } from "../design/categories";
+import { useStyles, useTheme } from "../design/theme";
+import { fmtDistance, fmtDuration, fmtTime, localDay } from "../format";
 import type { Pairing } from "../pairing";
+import { Card, EmptyState, ErrorState, Icon, Skeleton } from "../ui";
+import type { IconName } from "../ui/Icon";
+import { Screen, ScreenHeader } from "../ui/Screen";
+import { PairingLost, useSession, useViewerQuery } from "../ui/session";
+import { Text } from "../ui/Text";
+import { getTimeline, type Mode, type Timeline } from "../viewer";
 
-/** "2026-10-18" → that calendar day at local midnight (not UTC, which can show the previous day). */
-function localDay(date: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+const MODES: Record<Mode, { label: string; icon: IconName }> = {
+  unknown: { label: "Move", icon: "dots-horizontal" },
+  stationary: { label: "Stop", icon: "pause-circle-outline" },
+  walking: { label: "Walk", icon: "walk" },
+  running: { label: "Run", icon: "run" },
+  cycling: { label: "Cycle", icon: "bike" },
+  driving: { label: "Drive", icon: "car" },
+  bus: { label: "Bus", icon: "bus" },
+  train: { label: "Train", icon: "train" },
+  flying: { label: "Flight", icon: "airplane" },
+  boat: { label: "Boat", icon: "ferry" },
+  motorcycle: { label: "Motorbike", icon: "motorbike" },
+};
+
+const RAIL = 28;
+
+function NavButton({ icon, onPress, disabled, label }: { icon: IconName; onPress: () => void; disabled: boolean; label: string }) {
+  const t = useTheme();
+  const s = useStyles((th) => ({
+    navBtn: { width: 44, height: 44, borderRadius: th.radius.pill, backgroundColor: th.c.surface, borderColor: th.c.border, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  }));
+  return (
+    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={[s.navBtn, disabled && { opacity: 0.4 }]}>
+      <Icon name={icon} size={22} color={t.c.text} />
+    </Pressable>
+  );
 }
 
 export default function TimelineScreen() {
+  const t = useTheme();
   const { authLost } = useSession();
   // null = latest day with data (server default)
   const [want, setWant] = useState<string | null>(null);
   const fetcher = useCallback((p: Pairing) => getTimeline(p, want), [want]);
-  const { data, error, loading, reload } = useViewerQuery<Timeline>(fetcher);
-  const [refreshing, setRefreshing] = useState(false);
+  const { data: resp, error: err, loading, reload } = useViewerQuery<Timeline>(fetcher);
 
-  const date = data?.day.date || null;
-  const dates = data?.dates ?? [];
+  const date = resp?.day.date || null;
+  const dates = resp?.dates ?? [];
   const idx = date ? dates.indexOf(date) : -1;
   const canPrev = idx > 0;
   const canNext = idx >= 0 && idx < dates.length - 1;
@@ -28,141 +56,157 @@ export default function TimelineScreen() {
     const ni = idx + delta;
     if (idx >= 0 && ni >= 0 && ni < dates.length) setWant(dates[ni]);
   };
-  const items = data?.day.items ?? [];
+
+  const items = resp?.day.items ?? [];
+  const moves = items.flatMap((i) => (i.kind === "move" ? [i.track] : []));
+  const visits = items.filter((i) => i.kind === "visit").length;
+  const km = moves.reduce((a, m) => a + (m.distance ?? 0), 0);
+  const moving = moves.reduce((a, m) => a + (m.duration ?? 0), 0);
   const day = date ? localDay(date) : null;
 
+  const s = useStyles((th) => ({
+    nav: { flexDirection: "row", alignItems: "center", gap: th.space.md },
+    summary: { flexDirection: "row", paddingVertical: th.space.md },
+    sumCell: { flex: 1, alignItems: "center", gap: 2 },
+    divider: { width: 1, backgroundColor: th.c.border, marginVertical: 4 },
+    row: { flexDirection: "row", gap: th.space.md },
+    rail: { width: RAIL, alignItems: "center" },
+    line: { position: "absolute", width: 2, backgroundColor: th.c.borderStrong, borderRadius: 1 },
+    node: { width: 16, height: 16, borderRadius: 8, backgroundColor: th.c.primary, borderWidth: 3, borderColor: th.c.bg, boxShadow: `0 0 0 2px ${th.c.primary}` },
+    visit: { flex: 1, marginVertical: 5, flexDirection: "row", alignItems: "center", gap: th.space.md, padding: th.space.md + 2 },
+    move: { flex: 1, flexDirection: "row", alignItems: "center", gap: th.space.md, paddingVertical: th.space.sm },
+  }));
+
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView
-        contentContainerStyle={st.container}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={C.primary}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await reload();
-              setRefreshing(false);
-            }}
-          />
-        }
-      >
-        <Text style={st.h1}>Timeline</Text>
-        {authLost ? <PairingLost /> : null}
+    <Screen refreshing={false} onRefresh={reload}>
+      <ScreenHeader title="Timeline" subtitle="Your day, stop by stop" />
+      {authLost ? <PairingLost /> : null}
 
-        <View style={st.navRow}>
-          <Pressable
-            onPress={() => go(-1)}
-            disabled={!canPrev}
-            accessibilityLabel="Previous day"
-            style={[st.navBtn, !canPrev && { opacity: 0.4 }]}
-          >
-            <Text style={st.navBtnText}>‹</Text>
-          </Pressable>
-          <Text style={st.dateText}>
-            {day ? day.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "—"}
+      <View style={s.nav}>
+        <NavButton icon="chevron-left" label="Previous day" onPress={() => go(-1)} disabled={!canPrev} />
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <Text variant="overline" color="primary">
+            {day ? day.toLocaleDateString([], { weekday: "long" }) : "—"}
           </Text>
-          <Pressable
-            onPress={() => go(1)}
-            disabled={!canNext}
-            accessibilityLabel="Next day"
-            style={[st.navBtn, !canNext && { opacity: 0.4 }]}
-          >
-            <Text style={st.navBtnText}>›</Text>
-          </Pressable>
+          <Text variant="title2">{day ? day.toLocaleDateString([], { day: "numeric", month: "long" }) : "…"}</Text>
         </View>
+        <NavButton icon="chevron-right" label="Next day" onPress={() => go(1)} disabled={!canNext} />
+      </View>
 
-        {loading && !refreshing ? <ActivityIndicator color={C.primary} style={{ marginTop: 30 }} /> : null}
-        {error && !authLost ? <Text style={st.err}>{error}</Text> : null}
-        {data && !loading && items.length === 0 && !error ? (
-          <View style={st.empty}>
-            <Text style={{ color: C.muted }}>{date ? "No activity this day." : "No visits or trips yet."}</Text>
-          </View>
-        ) : null}
+      {authLost && !resp ? null : err && !resp ? (
+        <ErrorState message={err} onRetry={reload} />
+      ) : !resp ? (
+        <View style={{ gap: 12 }}>
+          <Skeleton height={76} radius={20} />
+          <Skeleton height={72} radius={20} />
+          <Skeleton height={44} radius={14} />
+          <Skeleton height={72} radius={20} />
+        </View>
+      ) : items.length === 0 ? (
+        <Card>
+          {date ? (
+            <EmptyState icon="sleep" title="A quiet day" body="Nothing was recorded on this day. Use the arrows to browse the days you were out and about." />
+          ) : (
+            <EmptyState icon="map-marker-path" title="No days yet" body="Visits and trips show up here once the server has processed what this phone recorded." />
+          )}
+        </Card>
+      ) : (
+        <>
+          <Card style={s.summary}>
+            <View style={s.sumCell}>
+              <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
+                {fmtDistance(km)}
+              </Text>
+              <Text variant="caption" color="textSecondary">
+                Travelled
+              </Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.sumCell}>
+              <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
+                {fmtDuration(moving)}
+              </Text>
+              <Text variant="caption" color="textSecondary">
+                On the move
+              </Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.sumCell}>
+              <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
+                {visits}
+              </Text>
+              <Text variant="caption" color="textSecondary">
+                {visits === 1 ? "Stop" : "Stops"}
+              </Text>
+            </View>
+          </Card>
 
-        <View style={{ marginTop: 10 }}>
-          {items.map((it, i) => {
-            if (it.kind === "visit") {
-              const v = it.visit;
-              const cat = categoryLabel(v.category);
+          {err ? (
+            <Text variant="caption" style={{ color: t.c.danger }}>
+              {err}
+            </Text>
+          ) : null}
+
+          <View style={{ opacity: loading ? 0.5 : 1 }}>
+            {items.map((it, i) => {
+              const first = i === 0;
+              const last = i === items.length - 1;
+              if (it.kind === "visit") {
+                const v = it.visit;
+                const named = v.placeName && v.placeName !== "Unknown Location";
+                const cat = v.category ? categoryMeta(v.category).label : null;
+                return (
+                  <View key={`v${v.id}-${i}`} style={s.row}>
+                    <View style={s.rail}>
+                      <View style={[s.line, { top: first ? 26 : 0, bottom: last ? undefined : 0, height: last ? 26 : undefined }]} />
+                      <View style={{ marginTop: 18 }}>
+                        <View style={s.node} />
+                      </View>
+                    </View>
+                    <Card style={s.visit}>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text variant="headline" numberOfLines={1}>
+                          {named ? v.placeName : (cat ?? "Unnamed place")}
+                        </Text>
+                        <Text variant="caption" color="textSecondary">
+                          {fmtTime(v.startedAt)} – {fmtTime(v.endedAt)}
+                          {named && cat ? ` · ${cat}` : ""}
+                        </Text>
+                      </View>
+                      <Text variant="callout" color="textSecondary" tabular>
+                        {fmtDuration(v.duration)}
+                      </Text>
+                    </Card>
+                  </View>
+                );
+              }
+              const m = it.track;
+              const meta = MODES[m.mode];
+              const color = t.mode(m.mode);
               return (
-                <View key={`v${v.id}-${i}`} style={st.visitRow}>
-                  <View style={st.dot} />
-                  <View style={st.visitCard}>
-                    <Text style={st.visitName} numberOfLines={1}>
-                      {v.placeName ?? (v.category ? cat : "Unknown location")}
-                    </Text>
-                    <Text style={st.visitMeta}>
-                      {fmtTime(v.startedAt)} – {fmtTime(v.endedAt)} · {fmtDuration(v.duration)}
-                      {v.placeName && v.category ? ` · ${cat}` : ""}
-                    </Text>
+                <View key={`m${m.id}-${i}`} style={s.row}>
+                  <View style={s.rail}>
+                    <View style={[s.line, { top: 0, bottom: 0, width: 5, backgroundColor: color, borderRadius: 3 }]} />
+                  </View>
+                  <View style={s.move}>
+                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${color}26`, alignItems: "center", justifyContent: "center" }}>
+                      <Icon name={meta.icon} size={19} color={color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text variant="callout" style={{ fontWeight: "700" }}>
+                        {meta.label}
+                      </Text>
+                      <Text variant="caption" color="textSecondary">
+                        {fmtDistance(m.distance)} · {fmtDuration(m.duration)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               );
-            }
-            const t = it.track;
-            const meta = MODE_META[t.mode];
-            return (
-              <View key={`m${t.id}-${i}`} style={st.moveRow}>
-                <View style={[st.moveLine, { backgroundColor: meta.color }]} />
-                <Text style={st.moveText}>
-                  {meta.icon} {meta.label} · {fmtDistance(t.distance)} · {fmtDuration(t.duration)}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </ScrollView>
-    </View>
+            })}
+          </View>
+        </>
+      )}
+    </Screen>
   );
 }
-
-const st = StyleSheet.create({
-  container: { padding: 20, paddingTop: 24, paddingBottom: 40, gap: 0 },
-  h1: { color: C.text, fontSize: 30, fontWeight: "700", marginBottom: 12 },
-  navRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 4 },
-  navBtn: {
-    backgroundColor: C.surface,
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-  },
-  navBtnText: { color: C.text, fontSize: 20, fontWeight: "700" },
-  dateText: { color: C.text, fontSize: 15, fontWeight: "600", flex: 1, textAlign: "center" },
-  err: { color: C.accent, marginTop: 16 },
-  empty: {
-    backgroundColor: C.surface,
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 24,
-    alignItems: "center",
-    marginTop: 20,
-  },
-  visitRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: C.primary,
-    marginTop: 18,
-    borderWidth: 2,
-    borderColor: C.bg,
-  },
-  visitCard: {
-    flex: 1,
-    backgroundColor: C.surface,
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginVertical: 4,
-  },
-  visitName: { color: C.text, fontSize: 15, fontWeight: "600" },
-  visitMeta: { color: C.muted, fontSize: 12, marginTop: 3 },
-  moveRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 3, marginVertical: 2 },
-  moveLine: { width: 6, height: 26, borderRadius: 3, marginLeft: 3 },
-  moveText: { color: C.muted, fontSize: 13 },
-});

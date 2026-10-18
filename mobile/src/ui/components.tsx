@@ -1,29 +1,58 @@
-import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
-import { C, RADIUS } from "./theme";
+// Collector building blocks (Recorder, Settings, Pairing) on top of the design
+// system in src/design + src/ui/primitives.
 
-export function Card({ title, children, style }: { title?: string; children: ReactNode; style?: ViewStyle }) {
+import type { ReactNode } from "react";
+import { TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
+import { useStyles, useTheme, type Theme } from "../design/theme";
+import { Icon, type IconName } from "./Icon";
+import { Button, Card } from "./primitives";
+import { Text } from "./Text";
+
+export type Tone = "ok" | "warn" | "bad" | "dim";
+
+export function toneColor(t: Theme, tone?: Tone): string {
+  switch (tone) {
+    case "ok":
+      return t.c.success;
+    case "warn":
+      return t.c.tint.amber.fg;
+    case "bad":
+      return t.c.danger;
+    case "dim":
+      return t.c.textMuted;
+    default:
+      return t.c.text;
+  }
+}
+
+/** A card with an overline title; children are stacked with a gap. */
+export function Panel({ title, children, style }: { title?: string; children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const t = useTheme();
   return (
-    <View style={[s.card, style]}>
-      {title ? <Text style={s.cardTitle}>{title}</Text> : null}
+    <Card style={[{ gap: t.space.md }, style]}>
+      {title ? (
+        <Text variant="overline" color="textMuted">
+          {title}
+        </Text>
+      ) : null}
       {children}
-    </View>
+    </Card>
   );
 }
 
-export function Row({ label, value, tone }: { label: string; value: string; tone?: "ok" | "warn" | "bad" | "dim" }) {
+/** Label on the left, value on the right. */
+export function Row({ label, value, tone }: { label: string; value: string; tone?: Tone }) {
+  const t = useTheme();
   return (
-    <View style={s.row}>
-      <Text style={s.rowLabel}>{label}</Text>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", gap: t.space.md }}>
+      <Text variant="callout" color="textSecondary">
+        {label}
+      </Text>
       <Text
-        style={[
-          s.rowValue,
-          tone === "ok" && { color: C.primary },
-          tone === "warn" && { color: C.accent },
-          tone === "bad" && { color: C.danger },
-          tone === "dim" && { color: C.faint },
-        ]}
+        variant="callout"
+        tabular
         numberOfLines={2}
+        style={{ fontWeight: "700", flexShrink: 1, textAlign: "right", color: toneColor(t, tone) }}
       >
         {value}
       </Text>
@@ -31,49 +60,35 @@ export function Row({ label, value, tone }: { label: string; value: string; tone
   );
 }
 
-export function Button({
-  title,
-  onPress,
-  kind = "primary",
-  busy,
-  disabled,
+/** Tinted notice with an icon, a message and optional actions underneath. */
+export function Banner({
+  tone,
+  icon,
+  message,
+  children,
 }: {
-  title: string;
-  onPress: () => void;
-  kind?: "primary" | "danger" | "ghost";
-  busy?: boolean;
-  disabled?: boolean;
+  tone: "warn" | "bad" | "info";
+  icon?: IconName;
+  message: string;
+  children?: ReactNode;
 }) {
-  const off = disabled || busy;
+  const t = useTheme();
+  const { fg, bg } =
+    tone === "bad"
+      ? { fg: t.c.danger, bg: t.c.dangerSoft }
+      : tone === "warn"
+        ? t.c.tint.amber
+        : { fg: t.c.primary, bg: t.c.primarySoft };
+  const glyph = icon ?? (tone === "info" ? "information-outline" : "alert-circle-outline");
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      disabled={off}
-      style={({ pressed }) => [
-        s.btn,
-        kind === "primary" && { backgroundColor: C.primaryStrong },
-        kind === "danger" && { backgroundColor: C.danger },
-        kind === "ghost" && s.btnGhost,
-        (pressed || off) && { opacity: 0.6 },
-      ]}
-    >
-      {busy ? (
-        <ActivityIndicator color={kind === "ghost" ? C.muted : C.onPrimary} />
-      ) : (
-        <Text style={[s.btnText, kind === "ghost" && { color: C.text }, kind === "danger" && { color: "#fff" }]}>
-          {title}
+    <View style={{ backgroundColor: bg, borderRadius: t.radius.md, padding: t.space.md, gap: t.space.md }}>
+      <View style={{ flexDirection: "row", gap: t.space.sm, alignItems: "flex-start" }}>
+        <Icon name={glyph} size={20} color={fg} />
+        <Text variant="callout" style={{ flex: 1, color: fg, fontWeight: "600" }}>
+          {message}
         </Text>
-      )}
-    </Pressable>
-  );
-}
-
-export function Banner({ tone, children }: { tone: "warn" | "bad" | "info"; children: ReactNode }) {
-  const color = tone === "bad" ? C.danger : tone === "warn" ? C.accent : C.primary;
-  return (
-    <View style={[s.banner, { borderColor: color }]}>
-      {typeof children === "string" ? <Text style={[s.bannerText, { color }]}>{children}</Text> : children}
+      </View>
+      {children}
     </View>
   );
 }
@@ -81,48 +96,39 @@ export function Banner({ tone, children }: { tone: "warn" | "bad" | "info"; chil
 /** Shown on every tab after a 401: the token was revoked or is invalid. */
 export function PairingLostBanner({ onPair }: { onPair: () => void }) {
   return (
-    <Banner tone="bad">
-      <Text style={[s.bannerText, { color: C.danger }]}>
-        Pairing lost — the server rejected this device&apos;s token (revoked?). Uploads are paused; queued points are
-        kept. Pair again from the web app&apos;s Devices page.
-      </Text>
-      <Button title="Re-pair" kind="danger" onPress={onPair} />
+    <Banner
+      tone="bad"
+      icon="link-variant-off"
+      message="Pairing lost — the server rejected this device's token (revoked?). Uploads are paused; queued points are kept. Pair again from the web app's Devices page."
+    >
+      <Button label="Re-pair" icon="qrcode-scan" variant="danger" onPress={onPair} />
     </Banner>
   );
 }
 
-export const s = StyleSheet.create({
-  card: {
-    backgroundColor: C.surface,
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: RADIUS,
-    padding: 16,
-    gap: 10,
-  },
-  cardTitle: { color: C.muted, fontSize: 13, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 },
-  row: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
-  rowLabel: { color: C.muted, fontSize: 14 },
-  rowValue: { color: C.text, fontSize: 14, fontWeight: "600", flexShrink: 1, textAlign: "right" },
-  btn: { borderRadius: RADIUS, paddingVertical: 15, paddingHorizontal: 16, alignItems: "center" },
-  btnGhost: { borderWidth: 1, borderColor: C.border, backgroundColor: C.surface2 },
-  btnText: { color: C.onPrimary, fontSize: 16, fontWeight: "700" },
-  banner: { borderWidth: 1, borderRadius: RADIUS, padding: 12, gap: 8, backgroundColor: C.surface },
-  bannerText: { fontSize: 14, fontWeight: "600" },
-  h1: { color: C.text, fontSize: 30, fontWeight: "700" },
-  sub: { color: C.muted, fontSize: 14 },
-  body: { color: C.text, fontSize: 14, lineHeight: 20 },
-  hint: { color: C.faint, fontSize: 12, lineHeight: 17 },
-  input: {
-    backgroundColor: C.surface2,
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 10,
-    color: C.text,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-  label: { color: C.muted, fontSize: 13, fontWeight: "600" },
-  link: { color: C.primary, fontSize: 14, fontWeight: "600" },
-});
+/** Themed single-line text input. */
+export function Field(props: TextInputProps) {
+  const t = useTheme();
+  const s = useStyles((th) => ({
+    input: {
+      backgroundColor: th.c.surfaceAlt,
+      borderColor: th.c.border,
+      borderWidth: 1,
+      borderRadius: th.radius.sm,
+      color: th.c.text,
+      paddingHorizontal: th.space.md,
+      paddingVertical: th.space.sm + 2,
+      fontSize: 15,
+    },
+  }));
+  return <TextInput placeholderTextColor={t.c.textMuted} {...props} style={[s.input, props.style]} />;
+}
+
+/** Text link (header actions like "Settings" / "Done"). */
+export function LinkText({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Text variant="callout" color="primary" style={{ fontWeight: "700" }} onPress={onPress} accessibilityRole="button" suppressHighlighting>
+      {label}
+    </Text>
+  );
+}
