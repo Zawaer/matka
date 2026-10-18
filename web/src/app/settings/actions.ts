@@ -21,6 +21,17 @@ export async function saveTimezone(_prev: FormResult, form: FormData): Promise<F
   return { ok: true, message: "Saved." };
 }
 
+export async function saveTransit(_prev: FormResult, form: FormData): Promise<FormResult> {
+  const user = await requireUser();
+  const on = form.get("transit_lines") === "on";
+  await q(`UPDATE users SET transit_lines = $2 WHERE id = $1`, [user.id, on]);
+  revalidatePath("/", "layout");
+  return {
+    ok: true,
+    message: on ? "On. Trips are matched in the background over the next minutes." : "Off. Lines are hidden.",
+  };
+}
+
 export async function saveImmich(_prev: FormResult, form: FormData): Promise<FormResult> {
   const user = await requireUser();
   if (form.get("disconnect")) {

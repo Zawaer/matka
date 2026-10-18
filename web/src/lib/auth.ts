@@ -19,10 +19,12 @@ export type User = {
   name: string;
   email: string | null;
   timezone: string;
+  /** Show public transport lines (Settings); see lib/transit. */
+  transitLines: boolean;
 };
 
 const USER_COLS = `u.id, COALESCE(u.name, u.email, u.oidc_sub) AS name, u.email, u.timezone,
-  u.oidc_sub, u.email_verified`;
+  u.transit_lines AS "transitLines", u.oidc_sub, u.email_verified`;
 
 type UserRow = User & { oidc_sub: string; email_verified: boolean };
 
@@ -40,7 +42,7 @@ function allowed(u: UserRow | undefined): User | null {
         : isAllowedUser({ sub: u.oidc_sub, email: u.email, email_verified: u.email_verified });
     if (!ok) return null;
   }
-  return { id: u.id, name: u.name, email: u.email, timezone: u.timezone };
+  return { id: u.id, name: u.name, email: u.email, timezone: u.timezone, transitLines: u.transitLines };
 }
 
 /** Creates or refreshes the user for an OIDC identity. */

@@ -3,6 +3,7 @@ import { readUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { isModeKey } from "@/lib/modes";
 import { PLACE_NAME_SQL } from "@/lib/places";
+import { displayMode, legsByTrip } from "@/lib/transit/run";
 import type { TimelineDay, TimelineItem } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -90,6 +91,8 @@ export async function GET(req: Request) {
     ),
   ]);
 
+  const legs = user.transitLines ? await legsByTrip(trips.map((t) => t.id)) : new Map();
+
   const items: { at: number; item: TimelineItem }[] = [
     ...visits.map((r) => ({
       at: r.started_at.getTime(),
@@ -108,20 +111,37 @@ export async function GET(req: Request) {
         },
       },
     })),
-    ...trips.map((r) => ({
-      at: r.started_at.getTime(),
-      item: {
-        kind: "move" as const,
-        track: {
-          id: Number(r.id),
-          startedAt: r.started_at.toISOString(),
-          endedAt: r.ended_at.toISOString(),
-          distance: Math.round(r.distance_m),
-          duration: secs(r.started_at, r.ended_at),
-          mode: isModeKey(r.mode) ? r.mode : ("unknown" as const),
+    ...trips.map((r) => {
+      const tl = legs.get(String(r.id)) ?? [];
+      const mode = displayMode(r.mode, r.distance_m, tl);
+      return {
+        at: r.started_at.getTime(),
+        item: {
+          kind: "move" as const,
+          track: {
+            id: Number(r.id),
+            startedAt: r.started_at.toISOString(),
+            endedAt: r.ended_at.toISOString(),
+            distance: Math.round(r.distance_m),
+            duration: secs(r.started_at, r.ended_at),
+            mode: isModeKey(mode) ? mode : ("unknown" as const),
+            ...(tl.length
+              ? {
+                  legs: tl.map((l: (typeof tl)[number]) => ({
+                    kind: l.kind,
+                    lines: l.lines,
+                    fromStop: l.from_stop,
+                    toStop: l.to_stop,
+                    startedAt: l.started_at.toISOString(),
+                    endedAt: l.ended_at.toISOString(),
+                    distance: Math.round(l.distance_m),
+                  })),
+                }
+              : {}),
+          },
         },
-      },
-    })),
+      };
+    }),
   ];
   items.sort((a, b) => a.at - b.at);
 

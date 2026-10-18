@@ -8,6 +8,8 @@ export type ModeKey =
   | "cycling"
   | "driving"
   | "bus"
+  | "tram"
+  | "metro"
   | "train"
   | "flying"
   | "boat"
@@ -28,8 +30,10 @@ export const MODE_META: Record<
   cycling: { label: "Cycle", icon: "🚲", color: "var(--mk-bike)" },
   driving: { label: "Drive", icon: "🚗", color: "var(--mk-car)" },
   bus: { label: "Bus", icon: "🚌", color: "var(--mk-bus)" },
+  tram: { label: "Tram", icon: "🚋", color: "var(--mk-tram)" },
+  metro: { label: "Metro", icon: "🚇", color: "var(--mk-metro)" },
   train: { label: "Train", icon: "🚆", color: "var(--mk-transit)" },
   flying: { label: "Flight", icon: "✈️", color: "var(--mk-fly)" },
-  boat: { label: "Boat", icon: "⛴️", color: "var(--mk-boat)" },
+  boat: { label: "Ferry", icon: "⛴️", color: "var(--mk-boat)" },
   motorcycle: { label: "Motorbike", icon: "🏍️", color: "var(--mk-car)" },
 };

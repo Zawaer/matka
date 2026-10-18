@@ -35,6 +35,8 @@ export const MODES = [
   "cycling",
   "driving",
   "bus",
+  "tram",
+  "metro",
   "train",
   "flying",
   "boat",
@@ -56,6 +58,18 @@ export type Visit = {
   lon: number | null;
 };
 
+export const LEG_KINDS = ["bus", "tram", "metro", "train", "boat"] as const;
+export type LegKind = (typeof LEG_KINDS)[number];
+
+/** One ride on a public transport line within a move (server: lib/transit). */
+export type Leg = {
+  kind: LegKind;
+  /** Best match first; several on a shared corridor. */
+  lines: string[];
+  fromStop: string | null;
+  toStop: string | null;
+};
+
 export type Move = {
   id: number;
   startedAt: string;
@@ -63,6 +77,7 @@ export type Move = {
   distance: number | null;
   duration: number | null;
   mode: Mode;
+  legs: Leg[];
 };
 
 export type TimelineItem = { kind: "visit"; visit: Visit } | { kind: "move"; track: Move };
@@ -128,6 +143,14 @@ export function parseOverview(body: unknown): Overview | null {
   };
 }
 
+function parseLegs(raw: unknown): Leg[] {
+  return objs(raw).flatMap((l) => {
+    const lines = arr(l.lines).filter((x): x is string => typeof x === "string" && x.length > 0);
+    if (!(LEG_KINDS as readonly string[]).includes(l.kind as string) || lines.length === 0) return [];
+    return [{ kind: l.kind as LegKind, lines, fromStop: str(l.fromStop), toStop: str(l.toStop) }];
+  });
+}
+
 function parseItem(it: Obj): TimelineItem | null {
   if (it.kind === "visit" && isObj(it.visit)) {
     const v = it.visit;
@@ -160,6 +183,7 @@ function parseItem(it: Obj): TimelineItem | null {
         distance: numOrNull(t.distance),
         duration: numOrNull(t.duration),
         mode,
+        legs: parseLegs(t.legs),
       },
     };
   }

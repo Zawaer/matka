@@ -25,24 +25,31 @@ export async function GET(req: Request) {
   const from = numParam(url.searchParams.get("from"));
   const to = numParam(url.searchParams.get("to"));
 
-  const where: string[] = ["user_id = $1", "path IS NOT NULL"];
-  const params: unknown[] = [user.id];
+  const where: string[] = ["t.user_id = $1", "t.path IS NOT NULL"];
+  const params: unknown[] = [user.id, user.transitLines];
   if (from != null) {
     params.push(from);
-    where.push(`ended_at >= to_timestamp($${params.length})`);
+    where.push(`t.ended_at >= to_timestamp($${params.length})`);
   }
   if (to != null) {
     params.push(to);
-    where.push(`started_at <= to_timestamp($${params.length})`);
+    where.push(`t.started_at <= to_timestamp($${params.length})`);
   }
 
   // Simplify to ~5 m so years of trips stay a reasonable payload.
   const rows = await q<Row>(
-    `SELECT id, ST_AsGeoJSON(ST_Simplify(path::geometry, 0.00005), 6) AS geom, mode,
-            distance_m AS distance, extract(epoch FROM ended_at - started_at)::int AS duration
-     FROM trips
+    // With line matching on, a trip mostly covered by transit legs is drawn as
+    // that kind (same rule as lib/transit/run.ts displayMode).
+    `SELECT t.id, ST_AsGeoJSON(ST_Simplify(t.path::geometry, 0.00005), 6) AS geom,
+            CASE WHEN $2 AND l.covered >= 0.5 * t.distance_m THEN l.kind ELSE t.mode END AS mode,
+            t.distance_m AS distance, extract(epoch FROM t.ended_at - t.started_at)::int AS duration
+     FROM trips t
+     LEFT JOIN LATERAL (
+       SELECT sum(distance_m) AS covered, (array_agg(kind ORDER BY distance_m DESC))[1] AS kind
+       FROM trip_legs WHERE trip_id = t.id
+     ) l ON true
      WHERE ${where.join(" AND ")}
-     ORDER BY started_at`,
+     ORDER BY t.started_at`,
     params,
   );
 

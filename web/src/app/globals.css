@@ -168,3 +168,10 @@ html.embed .map-shell {
     --mk-icon-filter: none;
   }
 }
+
+/* Tram shares the bus slot and metro the rail slot: the mode palette stays within
+   its 8 validated colours; timeline rows and line badges carry the name. */
+:root {
+  --mk-tram: var(--mk-bus);
+  --mk-metro: var(--mk-transit);
+}

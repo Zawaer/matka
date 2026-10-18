@@ -1,6 +1,8 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { importDawarichIfNeeded } from "../dawarichImport";
+import { refreshFeeds } from "../transit/feed";
+import { matchPendingTrips } from "../transit/run";
 import { geocodePending } from "./geocode";
 import { processUser } from "./run";
 
@@ -47,6 +49,14 @@ export async function tick(): Promise<void> {
     await c.query(`DELETE FROM sessions WHERE expires_at < now()`);
     // Drain the geocoding backlog a batch at a time.
     while ((await geocodePending()) > 0) {}
+    // Public transport lines: refresh feeds when due (daily check), then match
+    // new trips. A bounded number per tick keeps a big backlog from hogging it.
+    try {
+      await refreshFeeds();
+      for (let n = 0; n < 10 && (await matchPendingTrips(200)) > 0; n++) {}
+    } catch (err) {
+      console.error("[transit] failed, will retry:", err instanceof Error ? err.message : err);
+    }
   } catch (err) {
     console.error("[worker] tick failed:", err);
   } finally {

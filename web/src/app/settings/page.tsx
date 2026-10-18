@@ -1,4 +1,5 @@
-import { ImmichForm, TimezoneForm } from "@/components/settings/Forms";
+import { ImmichForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
+import { configuredFeeds } from "@/lib/transit/feed";
 import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { signOutOthers } from "./actions";
@@ -37,6 +38,10 @@ export default async function SettingsPage() {
       <div className="flex flex-col gap-5">
         <Section title="Timeline">
           <TimezoneForm current={user.timezone} zones={zones} />
+        </Section>
+
+        <Section title="Public transport">
+          <TransitForm on={user.transitLines} available={configuredFeeds().length > 0} />
         </Section>
 
         <Section title="Immich photos">

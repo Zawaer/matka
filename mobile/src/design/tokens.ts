@@ -137,7 +137,9 @@ export type ModeKey =
   | "unknown";
 
 export function modeColor(mode: string, scheme: Scheme, mutedFallback: string): string {
-  const key = mode === "motorcycle" ? "driving" : mode;
+  // 11 modes, 8 validated slots: these share a slot with their closest mode; the
+  // timeline row's icon, label and line badge tell them apart.
+  const key = mode === "motorcycle" ? "driving" : mode === "tram" ? "bus" : mode === "metro" ? "train" : mode;
   const i = (MODE_ORDER as readonly string[]).indexOf(key);
   return i >= 0 ? MODE_SLOTS[scheme][i] : mutedFallback;
 }

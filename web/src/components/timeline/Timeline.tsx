@@ -5,6 +5,7 @@ import { useState } from "react";
 import { categoryLabel } from "@/components/places/category";
 import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
+import { KIND_LABEL, badgeColors } from "@/lib/transit/colors";
 import {
   formatDuration,
   formatDistance,
@@ -292,20 +293,39 @@ function MoveRow({ track }: { track: TrackSummary }) {
         />
       </div>
 
-      <div className="flex flex-1 items-center gap-2 py-2">
-        <span
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm"
-          style={{ backgroundColor: `${meta.color}22` }}
-          aria-hidden
-        >
-          {meta.icon}
-        </span>
-        <span className="text-sm font-medium" style={{ color: meta.color }}>
-          {meta.label}
-        </span>
-        {parts.length > 0 && (
-          <span className="text-sm text-muted">· {parts.join(" · ")}</span>
-        )}
+      <div className="flex flex-1 flex-col gap-1.5 py-2">
+        <div className="flex items-center gap-2">
+          <span
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm"
+            style={{ backgroundColor: `${meta.color}22` }}
+            aria-hidden
+          >
+            {meta.icon}
+          </span>
+          <span className="text-sm font-medium" style={{ color: meta.color }}>
+            {meta.label}
+          </span>
+          {parts.length > 0 && (
+            <span className="text-sm text-muted">· {parts.join(" · ")}</span>
+          )}
+        </div>
+        {track.legs?.map((l, i) => {
+          const c = badgeColors(l.kind);
+          const route = [l.fromStop, l.toStop].filter(Boolean).join(" → ");
+          return (
+            <div key={i} className="flex flex-wrap items-center gap-2 pl-9 text-sm">
+              <span
+                className="rounded-md px-2 py-0.5 text-xs font-bold tracking-wide"
+                style={{ backgroundColor: c.bg, color: c.fg }}
+                title={l.lines.length > 1 ? `Could also be ${l.lines.slice(1).join(", ")}` : undefined}
+              >
+                {KIND_LABEL[l.kind]} {l.lines[0]}
+                {l.lines.length > 1 ? ` +${l.lines.length - 1}` : ""}
+              </span>
+              {route && <span className="text-muted">{route}</span>}
+            </div>
+          );
+        })}
       </div>
     </li>
   );

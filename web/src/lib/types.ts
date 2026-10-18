@@ -16,6 +16,19 @@ export interface Visit {
   lon: number;
 }
 
+/** One ride on a public transport line within a trip (lib/transit). */
+export interface TransitLeg {
+  kind: "bus" | "tram" | "metro" | "train" | "boat";
+  /** Line names, best match first; several on a shared corridor. */
+  lines: string[];
+  fromStop: string | null;
+  toStop: string | null;
+  startedAt: string;
+  endedAt: string;
+  /** Meters. */
+  distance: number;
+}
+
 export interface TrackSummary {
   id: number;
   startedAt: string;
@@ -23,6 +36,8 @@ export interface TrackSummary {
   distance: number;
   duration: number;
   mode: ModeKey;
+  /** Matched public transport legs, when the user has line matching on. */
+  legs?: TransitLeg[];
 }
 
 /** One ordered day on the timeline: visits + the moves between them. */

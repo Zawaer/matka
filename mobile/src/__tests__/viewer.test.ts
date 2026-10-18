@@ -177,11 +177,52 @@ describe("parsing", () => {
     expect(t.day.date).toBe("2026-10-18");
     expect(t.day.items).toHaveLength(3);
     expect(t.day.items[0]).toEqual(TIMELINE.day.items[0]);
-    expect(t.day.items[1]).toEqual(TIMELINE.day.items[1]);
+    const move = TIMELINE.day.items[1] as { kind: "move"; track: object };
+    expect(t.day.items[1]).toEqual({ ...move, track: { ...move.track, legs: [] } });
     expect(t.day.items[2]).toMatchObject({ kind: "move", track: { id: 3, mode: "unknown" } });
     expect(t.dates).toEqual(["2026-10-17", "2026-10-18"]);
     expect(t.minDate).toBe("2026-10-17");
     expect(t.maxDate).toBe("2026-10-18");
+  });
+
+  it("timeline: public transport legs, dropping malformed ones", () => {
+    const t = parseTimeline({
+      day: {
+        date: "2026-08-19",
+        items: [
+          {
+            kind: "move",
+            track: {
+              id: 9,
+              startedAt: "2026-08-19T04:47:00Z",
+              endedAt: "2026-08-19T05:05:00Z",
+              distance: 7900,
+              duration: 1080,
+              mode: "bus",
+              legs: [
+                { kind: "bus", lines: ["159"], fromStop: "Leppävaara", toStop: "Matinkylä (M)", startedAt: "x", endedAt: "y", distance: 7700 },
+                { kind: "metro", lines: ["M2", "M1"], fromStop: null, toStop: "Aalto-yliopisto" },
+                { kind: "zeppelin", lines: ["Z1"] },
+                { kind: "tram", lines: [] },
+              ],
+            },
+          },
+        ],
+      },
+      dates: ["2026-08-19"],
+      minDate: "2026-08-19",
+      maxDate: "2026-08-19",
+    })!;
+    expect(t.day.items[0]).toMatchObject({
+      kind: "move",
+      track: {
+        mode: "bus",
+        legs: [
+          { kind: "bus", lines: ["159"], fromStop: "Leppävaara", toStop: "Matinkylä (M)" },
+          { kind: "metro", lines: ["M2", "M1"], fromStop: null, toStop: "Aalto-yliopisto" },
+        ],
+      },
+    });
   });
 
   it("timeline: empty account (no date, null min/max)", () => {

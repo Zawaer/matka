@@ -9,7 +9,8 @@ import type { IconName } from "../ui/Icon";
 import { Screen, ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
-import { getTimeline, type Mode, type Timeline } from "../viewer";
+import { getTimeline, type Leg, type Mode, type Timeline } from "../viewer";
+import { LEG_BADGE } from "../design/transit";
 
 const MODES: Record<Mode, { label: string; icon: IconName }> = {
   unknown: { label: "Move", icon: "dots-horizontal" },
@@ -19,13 +20,36 @@ const MODES: Record<Mode, { label: string; icon: IconName }> = {
   cycling: { label: "Cycle", icon: "bike" },
   driving: { label: "Drive", icon: "car" },
   bus: { label: "Bus", icon: "bus" },
+  tram: { label: "Tram", icon: "tram" },
+  metro: { label: "Metro", icon: "subway-variant" },
   train: { label: "Train", icon: "train" },
   flying: { label: "Flight", icon: "airplane" },
-  boat: { label: "Boat", icon: "ferry" },
+  boat: { label: "Ferry", icon: "ferry" },
   motorcycle: { label: "Motorbike", icon: "motorbike" },
 };
 
 const RAIL = 28;
+
+/** "Bus 159  Leppävaara → Matinkylä (M)", in HSL's line colours. */
+function LegBadge({ leg }: { leg: Leg }) {
+  const b = LEG_BADGE[leg.kind];
+  const route = [leg.fromStop, leg.toStop].filter(Boolean).join(" → ");
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 5 }}>
+      <View style={{ backgroundColor: b.bg, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
+        <Text variant="caption" style={{ color: b.fg, fontWeight: "800" }}>
+          {b.label} {leg.lines[0]}
+          {leg.lines.length > 1 ? ` +${leg.lines.length - 1}` : ""}
+        </Text>
+      </View>
+      {route ? (
+        <Text variant="caption" color="textSecondary" style={{ flexShrink: 1 }}>
+          {route}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 function NavButton({ icon, onPress, disabled, label }: { icon: IconName; onPress: () => void; disabled: boolean; label: string }) {
   const t = useTheme();
@@ -205,6 +229,9 @@ export default function TimelineScreen() {
                       <Text variant="caption" color="textSecondary">
                         {m.mode === "stationary" ? fmtDuration(m.duration) : `${fmtDistance(m.distance)} · ${fmtDuration(m.duration)}`}
                       </Text>
+                      {m.legs.map((l, k) => (
+                        <LegBadge key={k} leg={l} />
+                      ))}
                       {drift && (
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
                           <Icon name="map-marker-alert-outline" size={13} color={t.c.accent} />

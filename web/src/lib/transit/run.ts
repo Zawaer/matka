@@ -1,0 +1,117 @@
+import { q, tx } from "../db";
+import { configuredFeeds } from "./feed";
+import { TransitIndex, matchLegs, type Shape, type Stop, type TransitKind } from "./match";
+
+/** Bump when the matcher changes, so every trip is matched again. */
+export const MATCHER_VERSION = "1";
+const SKIP_MODES = new Set(["walking", "flying", "stationary"]);
+
+let cache: { key: string; index: TransitIndex } | null = null;
+
+async function loadIndex(): Promise<TransitIndex | null> {
+  const [{ key }] = await q<{ key: string | null }>(
+    `SELECT string_agg(id || ':' || coalesce(version, ''), ',' ORDER BY id) AS key FROM transit_feeds WHERE loaded_at IS NOT NULL`,
+  );
+  if (!key) return null;
+  if (cache?.key === key) return cache.index;
+  const shapes = await q<Shape>(
+    `SELECT s.feed_id || '/' || s.shape_id AS key, r.kind, r.short_name AS line,
+            ST_AsGeoJSON(s.path::geometry)::json -> 'coordinates' AS coords
+     FROM transit_shapes s JOIN transit_routes r USING (feed_id, route_id)`,
+  );
+  const stops = await q<Stop>(`SELECT name, ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon FROM transit_stops`);
+  const t = Date.now();
+  cache = { key, index: new TransitIndex(shapes, stops) };
+  console.log(`[transit] index of ${shapes.length} shapes and ${stops.length} stops built in ${Date.now() - t} ms`);
+  return cache.index;
+}
+
+/**
+ * Matches up to `limit` not-yet-checked trips of users who have line matching
+ * on, newest first. Returns how many trips it looked at.
+ */
+export async function matchPendingTrips(limit = 200): Promise<number> {
+  if (configuredFeeds().length === 0) return 0;
+  const index = await loadIndex();
+  if (!index) return 0;
+  const trips = await q<{ id: string; user_id: string; mode: string; started_at: Date; ended_at: Date }>(
+    `SELECT t.id, t.user_id, t.mode, t.started_at, t.ended_at
+     FROM trips t JOIN users u ON u.id = t.user_id
+     WHERE t.transit_checked IS NULL AND u.transit_lines
+     ORDER BY t.started_at DESC LIMIT $1`,
+    [limit],
+  );
+  let legsFound = 0;
+  for (const trip of trips) {
+    try {
+      let legs: ReturnType<typeof matchLegs> = [];
+      if (!SKIP_MODES.has(trip.mode)) {
+        const pts = await q<{ ts: number; lat: number; lon: number }>(
+          `SELECT extract(epoch FROM ts)::float8 AS ts, ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon
+           FROM points WHERE user_id = $1 AND ts BETWEEN $2 AND $3 ORDER BY ts`,
+          [trip.user_id, trip.started_at, trip.ended_at],
+        );
+        if (pts.length >= 2 && pts.some((p) => index.covers(p.lat, p.lon))) legs = matchLegs(index, pts);
+      }
+      await tx(async (c) => {
+        await c.query(`DELETE FROM trip_legs WHERE trip_id = $1`, [trip.id]);
+        for (const [seq, l] of legs.entries()) {
+          await c.query(
+            `INSERT INTO trip_legs (trip_id, seq, kind, lines, from_stop, to_stop, started_at, ended_at, distance_m)
+             VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7), to_timestamp($8), $9)`,
+            [trip.id, seq, l.kind, l.lines, l.fromStop, l.toStop, l.start, l.end, l.distanceM],
+          );
+        }
+        await c.query(`UPDATE trips SET transit_checked = $2 WHERE id = $1`, [trip.id, MATCHER_VERSION]);
+      });
+      legsFound += legs.length;
+    } catch (err) {
+      // Usually the trip was rebuilt meanwhile; its replacement gets matched next time.
+      console.warn(`[transit] trip ${trip.id}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  if (trips.length) console.log(`[transit] matched ${trips.length} trips, ${legsFound} legs`);
+  return trips.length;
+}
+
+export type LegRow = {
+  trip_id: string;
+  kind: TransitKind;
+  lines: string[];
+  from_stop: string | null;
+  to_stop: string | null;
+  started_at: Date;
+  ended_at: Date;
+  distance_m: number;
+};
+
+/**
+ * The mode to show for a trip: the main transit kind when matched legs cover at
+ * least half of it, else the speed-based guess.
+ */
+export function displayMode(mode: string, distanceM: number, legs: Pick<LegRow, "kind" | "distance_m">[]): string {
+  if (legs.length === 0) return mode;
+  const covered = legs.reduce((a, l) => a + l.distance_m, 0);
+  if (covered < 0.5 * distanceM) return mode;
+  const byKind = new Map<string, number>();
+  for (const l of legs) byKind.set(l.kind, (byKind.get(l.kind) ?? 0) + l.distance_m);
+  return [...byKind].sort((a, b) => b[1] - a[1])[0][0];
+}
+
+/** Legs of these trips, grouped by trip id (empty when none). */
+export async function legsByTrip(tripIds: (string | number)[]): Promise<Map<string, LegRow[]>> {
+  const out = new Map<string, LegRow[]>();
+  if (tripIds.length === 0) return out;
+  const rows = await q<LegRow>(
+    `SELECT trip_id, kind, lines, from_stop, to_stop, started_at, ended_at, distance_m
+     FROM trip_legs WHERE trip_id = ANY($1::bigint[]) ORDER BY trip_id, seq`,
+    [tripIds.map(String)],
+  );
+  for (const r of rows) {
+    const k = String(r.trip_id);
+    const a = out.get(k);
+    if (a) a.push(r);
+    else out.set(k, [r]);
+  }
+  return out;
+}
