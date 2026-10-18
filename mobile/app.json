@@ -12,7 +12,9 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Matka records your location to build your timeline.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Matka records your location in the background to build your timeline.",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -41,7 +43,16 @@
           "isAndroidForegroundServiceEnabled": true,
           "locationAlwaysAndWhenInUsePermission": "Matka records your location in the background to build your timeline."
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/withLowMemoryGradle.js"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
