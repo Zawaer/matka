@@ -35,6 +35,7 @@ export async function tick(): Promise<void> {
         console.error(`[worker] processing user ${user_id} failed:`, err);
       }
     }
+    await c.query(`DELETE FROM sessions WHERE expires_at < now()`);
     // Drain the geocoding backlog a batch at a time.
     while ((await geocodePending()) > 0) {}
   } catch (err) {
