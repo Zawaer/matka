@@ -22,6 +22,9 @@ const ICON = {
   devices: (
     <path d="M7 1h10a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2Zm0 3v14h10V4H7Zm5 15.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
   ),
+  settings: (
+    <path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5-2.2-1.6ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" />
+  ),
   signOut: (
     <path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5v-2H5V5h5V3Zm6.6 4.4-1.4 1.4 2.2 2.2H9v2h8.4l-2.2 2.2 1.4 1.4L21.2 12l-4.6-4.6Z" />
   ),
@@ -33,6 +36,7 @@ const ITEMS: Item[] = [
   { href: "/timeline", label: "Timeline", icon: ICON.timeline },
   { href: "/places", label: "Places", icon: ICON.places },
   { href: "/devices", label: "Devices", icon: ICON.devices },
+  { href: "/settings", label: "Settings", icon: ICON.settings },
 ];
 
 function isActive(pathname: string, href: string) {
