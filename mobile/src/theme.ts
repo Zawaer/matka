@@ -1,14 +1,10 @@
+// Viewer theme: the shared dark tokens (src/ui/theme.ts) plus transport-mode
+// colours and display helpers for the viewer screens.
+import { C as BASE } from "./ui/theme";
+import type { Mode } from "./viewer";
+
 export const C = {
-  bg: "#0b1020",
-  surface: "#121829",
-  surface2: "#1b2338",
-  border: "#273149",
-  text: "#e8edf7",
-  muted: "#8b96ad",
-  primary: "#2dd4bf",
-  primaryStrong: "#14b8a6",
-  accent: "#fbbf24",
-  danger: "#ef4444",
+  ...BASE,
   // transport-mode colors (mirror web)
   walking: "#34d399",
   running: "#fb923c",
@@ -24,7 +20,7 @@ export const C = {
 };
 
 export const MODE_META: Record<
-  string,
+  Mode,
   { label: string; icon: string; color: string }
 > = {
   unknown: { label: "Move", icon: "•", color: C.unknown },
@@ -60,4 +56,36 @@ export function fmtTime(iso: string | null | undefined): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** OSM category → emoji for place lists. */
+export function categoryIcon(cat: string | null): string {
+  switch (cat) {
+    case "cafe": return "☕";
+    case "school":
+    case "university":
+    case "college": return "🏫";
+    case "library": return "📚";
+    case "restaurant":
+    case "fast_food": return "🍽️";
+    case "bar":
+    case "pub": return "🍺";
+    case "supermarket":
+    case "convenience": return "🛒";
+    case "station": return "🚉";
+    case "platform": return "🚏";
+    case "apartments":
+    case "house":
+    case "residential": return "🏠";
+    case "park": return "🌳";
+    case "gym":
+    case "sports_centre": return "🏋️";
+    default: return "📍";
+  }
+}
+
+/** OSM category value → "Fast Food"; null / "yes" → "Place". */
+export function categoryLabel(cat: string | null): string {
+  if (!cat || cat === "yes") return "Place";
+  return cat.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
