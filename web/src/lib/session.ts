@@ -5,9 +5,14 @@ import { deriveKey } from "./crypto";
 // table (see auth.ts). Only the short-lived OIDC login state is a signed
 // cookie, since it exists before there is a user.
 
-export const SESSION_COOKIE = "matka_session";
-export const LOGIN_COOKIE = "matka_login";
+// __Host- (production, https only): the browser refuses the cookie unless it
+// is Secure, host-only and Path=/, so a sibling subdomain can't plant one.
+const prefix = process.env.NODE_ENV === "production" ? "__Host-" : "";
+export const SESSION_COOKIE = `${prefix}matka_session`;
+export const LOGIN_COOKIE = `${prefix}matka_login`;
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days, sliding
+/** However active, a session ends this long after sign-in. */
+export const SESSION_ABSOLUTE_MAX_AGE = 60 * 60 * 24 * 90;
 export const LOGIN_MAX_AGE = 60 * 10; // 10 minutes to finish the IdP round trip
 
 export type LoginState = {
@@ -68,8 +73,10 @@ export async function isLiveSession(token: string | undefined): Promise<boolean>
   if (!token || token.length > 64) return false;
   const { q } = await import("./db");
   const { sha256 } = await import("./crypto");
-  const rows = await q(`SELECT 1 FROM sessions WHERE id = $1 AND expires_at > now()`, [
-    sha256(token),
-  ]);
+  const rows = await q(
+    `SELECT 1 FROM sessions WHERE id = $1 AND expires_at > now()
+       AND created_at > now() - make_interval(secs => $2)`,
+    [sha256(token), SESSION_ABSOLUTE_MAX_AGE],
+  );
   return rows.length > 0;
 }

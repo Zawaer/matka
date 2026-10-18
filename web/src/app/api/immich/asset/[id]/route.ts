@@ -35,6 +35,7 @@ export async function GET(
       headers: { "x-api-key": key, accept: "application/octet-stream" },
       signal: controller.signal,
       cache: "no-store",
+      redirect: "manual",
     });
 
     if (!upstream.ok || !upstream.body) {
@@ -44,12 +45,18 @@ export async function GET(
       );
     }
 
-    const contentType =
-      upstream.headers.get("content-type") ?? "image/jpeg";
+    // Only ever relay images, and sandbox them, so a hostile upstream can't
+    // serve script on Matka's origin.
+    const contentType = upstream.headers.get("content-type") ?? "";
+    if (!/^image\/(jpeg|png|webp|avif|gif|heic|heif)\b/i.test(contentType)) {
+      await upstream.body.cancel().catch(() => {});
+      return NextResponse.json({ error: "Upstream error" }, { status: 502 });
+    }
     return new NextResponse(upstream.body, {
       status: 200,
       headers: {
         "content-type": contentType,
+        "content-security-policy": "sandbox; default-src 'none'",
         // These thumbnails are immutable per asset id/size.
         "cache-control": "private, max-age=86400",
       },

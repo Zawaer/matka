@@ -39,7 +39,10 @@ export async function GET(req: Request) {
   if (!claims) return fail(400, "Sign-in failed: no ID token.");
 
   if (!isAllowedUser(claims)) {
-    console.warn(`[auth/callback] denied sub=${claims.sub} email=${String(claims.email)}`);
+    console.warn(
+      `[auth/callback] denied sub=${claims.sub} email=${String(claims.email)} ` +
+        `email_verified=${String(claims.email_verified)} (add the sub to MATKA_ALLOWED_USERS)`,
+    );
     return fail(403, "This account is not allowed to use this Matka instance.");
   }
 
@@ -47,6 +50,7 @@ export async function GET(req: Request) {
   const userId = await upsertUser(
     claims.sub,
     str(claims.email),
+    claims.email_verified === true,
     str(claims.name) ?? str(claims.preferred_username),
   );
   await startSession(userId);

@@ -69,7 +69,6 @@ try {
   let after = 0;
   let seen = 0;
   let inserted = 0;
-  let minTs = null;
   for (;;) {
     // Dawarich's velocity units vary by client, so speed is left for Matka to
     // derive from positions.
@@ -86,42 +85,48 @@ try {
     after = rows[rows.length - 1].id;
     seen += rows.length;
 
-    const res = await dst.query(
-      `WITH ins AS (
-         INSERT INTO points (user_id, source, ts, geom, accuracy, altitude, battery)
+    // Each page commits with its own dirty mark (from every row read, not just
+    // new ones) under the shared ingest lock, so an interrupted import that is
+    // re-run still gets processed, and a concurrent processing run can't
+    // clear the mark (see src/lib/processing/run.ts).
+    await dst.query("BEGIN");
+    try {
+      await dst.query(`SELECT pg_advisory_xact_lock_shared(hashtext('matka_ingest'), $1::int)`, [userId]);
+      const res = await dst.query(
+        `INSERT INTO points (user_id, source, ts, geom, accuracy, altitude, battery)
          SELECT $1, 'import', to_timestamp(t.ts), ST_SetSRID(ST_MakePoint(t.lon, t.lat), 4326)::geography,
                 t.accuracy, t.altitude, CASE WHEN t.battery BETWEEN 0 AND 100 THEN t.battery END
          FROM unnest($2::int8[], $3::float8[], $4::float8[], $5::real[], $6::real[], $7::int2[])
            AS t(ts, lon, lat, accuracy, altitude, battery)
          WHERE t.lat BETWEEN -90 AND 90 AND t.lon BETWEEN -180 AND 180
-         ON CONFLICT (user_id, ts) DO NOTHING
-         RETURNING ts)
-       SELECT count(*)::int n, min(ts) min FROM ins`,
-      [
-        userId,
-        rows.map((r) => r.ts),
-        rows.map((r) => r.lon),
-        rows.map((r) => r.lat),
-        rows.map((r) => r.accuracy),
-        rows.map((r) => r.altitude),
-        rows.map((r) => (r.battery == null ? null : Math.round(r.battery))),
-      ],
-    );
-    inserted += res.rows[0].n;
-    const m = res.rows[0].min;
-    if (m && (!minTs || m < minTs)) minTs = m;
+         ON CONFLICT (user_id, ts) DO NOTHING`,
+        [
+          userId,
+          rows.map((r) => r.ts),
+          rows.map((r) => r.lon),
+          rows.map((r) => r.lat),
+          rows.map((r) => r.accuracy),
+          rows.map((r) => r.altitude),
+          rows.map((r) => (r.battery == null ? null : Math.round(r.battery))),
+        ],
+      );
+      inserted += res.rowCount;
+      const minTs = new Date(Math.min(...rows.map((r) => r.ts)) * 1000);
+      await dst.query(
+        `INSERT INTO processing_state (user_id, dirty_from) VALUES ($1, $2)
+         ON CONFLICT (user_id) DO UPDATE
+           SET dirty_from = LEAST(COALESCE(processing_state.dirty_from, EXCLUDED.dirty_from), EXCLUDED.dirty_from)`,
+        [userId, minTs],
+      );
+      await dst.query("COMMIT");
+    } catch (err) {
+      await dst.query("ROLLBACK").catch(() => {});
+      throw err;
+    }
     process.stdout.write(`\r  ${seen}/${total} read, ${inserted} new`);
   }
   process.stdout.write("\n");
 
-  if (minTs) {
-    await dst.query(
-      `INSERT INTO processing_state (user_id, dirty_from) VALUES ($1, $2)
-       ON CONFLICT (user_id) DO UPDATE
-         SET dirty_from = LEAST(COALESCE(processing_state.dirty_from, EXCLUDED.dirty_from), EXCLUDED.dirty_from)`,
-      [userId, minTs],
-    );
-  }
   console.log(
     `import-dawarich: done, ${inserted} new points (${seen - inserted} already present or invalid). ` +
       `Matka will compute visits and trips within a minute.`,

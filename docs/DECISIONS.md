@@ -71,8 +71,11 @@ itself, phones pair with a token, ship a standalone Docker image (k3s + nginx in
 - **Allowlist is mandatory** (`MATKA_ALLOWED_USERS`: `sub`s or emails, `*` = trust Authentik's
   policy bindings; empty = nobody). Authentik admits any of its users to an app without bindings,
   and users can edit their own email by default, so prefer `sub`.
-- **Sessions are server-side**: random cookie token, SHA-256 stored in `sessions`, sliding 30 days,
-  revocable (sign out / sign out everywhere else). `src/proxy.ts` checks the session for every
+- **Sessions are server-side**: random cookie token (`__Host-` prefixed in production), SHA-256
+  stored in `sessions`, sliding 30 days with a 90-day absolute cap, revocable (sign out / sign out
+  everywhere else). The allowlist is re-checked on every request, so removing someone from
+  `MATKA_ALLOWED_USERS` cuts off their sessions and devices immediately. Email entries only match
+  emails the provider marks `email_verified`. `src/proxy.ts` checks the session for every
   page and `/api/*` route; pages, routes and server actions resolve the user again themselves.
 - **One server secret** `MATKA_SECRET`: signs the 10-minute OIDC login-state cookie and encrypts
   stored Immich API keys (AES-256-GCM, HKDF-separated keys). Rotating it invalidates stored
@@ -86,7 +89,13 @@ itself, phones pair with a token, ship a standalone Docker image (k3s + nginx in
   from `instrumentation.ts`; a Postgres advisory lock makes only one replica work at a time.
 - **Places persist** across rebuilds (they hold renames); unnamed places with no visits are pruned.
   Reverse geocoding via self-hosted Photon (`PHOTON_URL`), optional.
-- **Immich per user**, configured in Settings (verified before saving).
+- **Immich per user**, configured in Settings (verified before saving). The stored URL is
+  normalised (no query/fragment/credentials), redirects are never followed, and the thumbnail
+  proxy only relays `image/*` with a sandbox CSP, so the setting can't be turned into a proxy
+  into the cluster or into script on Matka's origin.
+- **Phone viewer** reads with the device token (`readUser`, GET routes only). Its map WebView
+  trades the token for a one-minute ticket and a 12 h map-only cookie, so the token never appears
+  in a URL; revoking the device ends both.
 - **Timezone per user** (default `MATKA_DEFAULT_TIMEZONE`, else Europe/Helsinki) decides day
   boundaries on the timeline and server-rendered times.
 - Dev without an IdP: `MATKA_AUTH_DISABLED=1` (ignored when `NODE_ENV=production`).

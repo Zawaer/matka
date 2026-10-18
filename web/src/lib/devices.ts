@@ -1,5 +1,6 @@
 import { randomToken, sha256 } from "./crypto";
 import { q } from "./db";
+import { isAllowedUser } from "./oidc";
 
 export type Device = {
   id: string;
@@ -45,13 +46,20 @@ export async function revokeDevice(userId: string, id: string): Promise<void> {
 export async function authenticateDevice(req: Request): Promise<DeviceAuth | null> {
   const m = TOKEN_RE.exec(req.headers.get("authorization") ?? "");
   if (!m) return null;
-  const [device] = await q<DeviceAuth & { stale: boolean }>(
-    `SELECT id, name, user_id AS "userId",
-            (last_seen_at IS NULL OR last_seen_at < now() - interval '1 minute') AS stale
-     FROM devices WHERE token_hash = $1 AND revoked_at IS NULL`,
+  const [device] = await q<
+    DeviceAuth & { stale: boolean; oidc_sub: string; email: string | null; email_verified: boolean }
+  >(
+    `SELECT d.id, d.name, d.user_id AS "userId", u.oidc_sub, u.email, u.email_verified,
+            (d.last_seen_at IS NULL OR d.last_seen_at < now() - interval '1 minute') AS stale
+     FROM devices d JOIN users u ON u.id = d.user_id
+     WHERE d.token_hash = $1 AND d.revoked_at IS NULL`,
     [sha256(m[1])],
   );
   if (!device) return null;
+  // Someone removed from the allowlist loses their devices too.
+  if (!isAllowedUser({ sub: device.oidc_sub, email: device.email, email_verified: device.email_verified })) {
+    return null;
+  }
   // Throttled so a chatty collector doesn't write this row on every batch.
   if (device.stale) {
     await q(`UPDATE devices SET last_seen_at = now() WHERE id = $1`, [device.id]);

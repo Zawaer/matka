@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiUser } from "@/lib/auth";
+import type { PoolClient } from "pg";
 import { pool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -25,52 +26,70 @@ export async function GET(req: Request) {
   const geojson = new URL(req.url).searchParams.get("format") === "geojson";
   const enc = new TextEncoder();
 
+  // Pull-based so a slow or vanished client never makes us buffer the whole
+  // history; one page is read per pull.
+  let c: PoolClient | null = null;
+  let after = "0";
+  let first = true;
+  let done = false;
+  const release = () => {
+    c?.release();
+    c = null;
+  };
   const stream = new ReadableStream<Uint8Array>({
     async start(ctl) {
-      const c = await pool().connect();
+      c = await pool().connect();
+      ctl.enqueue(
+        enc.encode(
+          geojson
+            ? '{"type":"FeatureCollection","features":[\n'
+            : "time,lat,lon,accuracy_m,altitude_m,speed_ms,battery\n",
+        ),
+      );
+    },
+    async pull(ctl) {
+      if (done || !c) return;
       try {
-        ctl.enqueue(
-          enc.encode(
-            geojson
-              ? '{"type":"FeatureCollection","features":[\n'
-              : "time,lat,lon,accuracy_m,altitude_m,speed_ms,battery\n",
-          ),
+        const { rows } = await c.query<Row>(
+          `SELECT id, ts, ST_Y(geom::geometry) lat, ST_X(geom::geometry) lon,
+                  accuracy, altitude, speed, battery
+           FROM points WHERE user_id = $1 AND id > $2 ORDER BY id LIMIT $3`,
+          [user.id, after, PAGE],
         );
-        let after = "0";
-        let first = true;
-        for (;;) {
-          const { rows } = await c.query<Row>(
-            `SELECT id, ts, ST_Y(geom::geometry) lat, ST_X(geom::geometry) lon,
-                    accuracy, altitude, speed, battery
-             FROM points WHERE user_id = $1 AND id > $2 ORDER BY id LIMIT $3`,
-            [user.id, after, PAGE],
-          );
-          let out = "";
-          for (const r of rows) {
-            const t = r.ts.toISOString();
-            if (geojson) {
-              out += `${first ? "" : ",\n"}${JSON.stringify({
-                type: "Feature",
-                geometry: { type: "Point", coordinates: [r.lon, r.lat] },
-                properties: { time: t, accuracy: r.accuracy, altitude: r.altitude, speed: r.speed, battery: r.battery },
-              })}`;
-              first = false;
-            } else {
-              out += [t, r.lat, r.lon, r.accuracy ?? "", r.altitude ?? "", r.speed ?? "", r.battery ?? ""].join(",") + "\n";
-            }
+        let out = "";
+        for (const r of rows) {
+          const t = r.ts.toISOString();
+          if (geojson) {
+            out += `${first ? "" : ",\n"}${JSON.stringify({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [r.lon, r.lat] },
+              properties: { time: t, accuracy: r.accuracy, altitude: r.altitude, speed: r.speed, battery: r.battery },
+            })}`;
+            first = false;
+          } else {
+            out += [t, r.lat, r.lon, r.accuracy ?? "", r.altitude ?? "", r.speed ?? "", r.battery ?? ""].join(",") + "\n";
           }
-          if (out) ctl.enqueue(enc.encode(out));
-          if (rows.length < PAGE) break;
+        }
+        if (rows.length < PAGE) {
+          done = true;
+          if (geojson) out += "\n]}\n";
+        } else {
           after = rows[rows.length - 1].id;
         }
-        if (geojson) ctl.enqueue(enc.encode("\n]}\n"));
-        ctl.close();
+        if (out) ctl.enqueue(enc.encode(out));
+        if (done) {
+          release();
+          ctl.close();
+        }
       } catch (err) {
         console.error("[/api/export] failed:", err);
+        release();
         ctl.error(err);
-      } finally {
-        c.release();
       }
+    },
+    cancel() {
+      done = true;
+      release();
     },
   });
 

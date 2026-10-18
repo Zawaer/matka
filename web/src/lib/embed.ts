@@ -8,7 +8,7 @@ import { q } from "./db";
 // and gets an httpOnly cookie that only the map and its read-only data
 // routes accept. Revoking the device ends it on the next request.
 
-export const EMBED_COOKIE = "matka_embed";
+export const EMBED_COOKIE = `${process.env.NODE_ENV === "production" ? "__Host-" : ""}matka_embed`;
 export const EMBED_MAX_AGE = 12 * 60 * 60;
 const TICKET_TTL = 60;
 

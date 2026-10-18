@@ -34,12 +34,20 @@ export function oidcConfig(): Promise<client.Configuration> {
  * hands the decision to the provider (bind a policy to the app in Authentik).
  * Prefer `sub` entries: Authentik users can edit their own email by default.
  */
-export function isAllowedUser(claims: { sub: string; email?: unknown }): boolean {
+export function isAllowedUser(claims: {
+  sub: string;
+  email?: unknown;
+  email_verified?: unknown;
+}): boolean {
   const allowed = (process.env.MATKA_ALLOWED_USERS ?? "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   if (allowed.includes("*")) return true;
-  const email = typeof claims.email === "string" ? claims.email.toLowerCase() : null;
+  // An unverified email is just a string the user typed.
+  const email =
+    typeof claims.email === "string" && claims.email_verified === true
+      ? claims.email.toLowerCase()
+      : null;
   return allowed.includes(claims.sub.toLowerCase()) || (email != null && allowed.includes(email));
 }

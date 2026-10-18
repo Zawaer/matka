@@ -4,17 +4,13 @@ import { revalidatePath } from "next/cache";
 import { endOtherSessions, requireUser } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { q } from "@/lib/db";
+import { normalizeImmichUrl } from "@/lib/immich";
 
 export type FormResult = { ok: boolean; message: string } | null;
 
-function validTimeZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
+// Only IANA names: Intl also accepts offsets like "+05:00", which Postgres
+// reads with the POSIX (inverted) sign.
+const validTimeZone = (tz: string) => Intl.supportedValuesOf("timeZone").includes(tz);
 
 export async function saveTimezone(_prev: FormResult, form: FormData): Promise<FormResult> {
   const user = await requireUser();
@@ -33,35 +29,36 @@ export async function saveImmich(_prev: FormResult, form: FormData): Promise<For
     return { ok: true, message: "Immich disconnected." };
   }
 
-  const rawUrl = String(form.get("url") ?? "").trim().replace(/\/+$/, "");
-  const key = String(form.get("key") ?? "").trim();
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-    if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error();
-  } catch {
+  const base = normalizeImmichUrl(String(form.get("url") ?? ""));
+  if (!base) {
     return { ok: false, message: "Enter the Immich server URL, e.g. http://immich_server:2283." };
   }
+  const key = String(form.get("key") ?? "").trim();
   if (!key) return { ok: false, message: "Enter an Immich API key." };
 
   // Check the pair works before storing it.
   try {
-    const res = await fetch(`${url.origin}${url.pathname.replace(/\/+$/, "")}/api/users/me`, {
+    const res = await fetch(`${base}/api/users/me`, {
       headers: { "x-api-key": key, accept: "application/json" },
       signal: AbortSignal.timeout(8000),
       cache: "no-store",
+      redirect: "manual",
     });
     if (res.status === 401 || res.status === 403) {
       return { ok: false, message: "Immich rejected that API key." };
     }
     if (!res.ok) return { ok: false, message: `Immich answered HTTP ${res.status}.` };
+    const me = (await res.json().catch(() => null)) as { id?: unknown } | null;
+    if (typeof me?.id !== "string") {
+      return { ok: false, message: "That URL doesn't look like an Immich server." };
+    }
   } catch {
     return { ok: false, message: "Couldn't reach Immich at that URL from the Matka server." };
   }
 
   await q(`UPDATE users SET immich_url = $2, immich_api_key = $3 WHERE id = $1`, [
     user.id,
-    rawUrl,
+    base,
     encrypt(key),
   ]);
   revalidatePath("/settings");

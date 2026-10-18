@@ -70,5 +70,6 @@ export async function GET(req: Request) {
 function numParam(raw: string | null, fallback: number | null): number | null {
   if (raw == null || raw === "") return fallback;
   const n = Number(raw);
-  return Number.isFinite(n) ? n : fallback;
+  // Epoch seconds between 1970 and 2100; anything else is ignored.
+  return Number.isFinite(n) && n >= 0 && n < 4_102_444_800 ? n : fallback;
 }

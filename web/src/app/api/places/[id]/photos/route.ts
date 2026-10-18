@@ -75,6 +75,7 @@ async function searchWindow(
       }),
       signal: controller.signal,
       cache: "no-store",
+      redirect: "manual",
     });
     if (!res.ok) return [];
     const data = (await res.json()) as {

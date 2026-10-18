@@ -4,7 +4,14 @@ import { NextResponse } from "next/server";
 import { cache } from "react";
 import { randomToken, sha256 } from "./crypto";
 import { q } from "./db";
-import { SESSION_COOKIE, SESSION_MAX_AGE, authDisabled, cookieOptions } from "./session";
+import { isAllowedUser } from "./oidc";
+import {
+  SESSION_ABSOLUTE_MAX_AGE,
+  SESSION_COOKIE,
+  SESSION_MAX_AGE,
+  authDisabled,
+  cookieOptions,
+} from "./session";
 
 export type User = {
   id: string;
@@ -13,17 +20,38 @@ export type User = {
   timezone: string;
 };
 
-const USER_COLS = `u.id, COALESCE(u.name, u.email, u.oidc_sub) AS name, u.email, u.timezone`;
+const USER_COLS = `u.id, COALESCE(u.name, u.email, u.oidc_sub) AS name, u.email, u.timezone,
+  u.oidc_sub, u.email_verified`;
+
+type UserRow = User & { oidc_sub: string; email_verified: boolean };
+
+/**
+ * The allowlist is checked on every request, not just at login, so removing
+ * someone from MATKA_ALLOWED_USERS locks out their sessions and devices at once.
+ */
+function allowed(u: UserRow | undefined): User | null {
+  if (!u) return null;
+  if (!authDisabled() && !isAllowedUser({ sub: u.oidc_sub, email: u.email, email_verified: u.email_verified })) {
+    return null;
+  }
+  return { id: u.id, name: u.name, email: u.email, timezone: u.timezone };
+}
 
 /** Creates or refreshes the user for an OIDC identity. */
-export async function upsertUser(sub: string, email: string | null, name: string | null) {
+export async function upsertUser(
+  sub: string,
+  email: string | null,
+  emailVerified: boolean,
+  name: string | null,
+) {
   const [row] = await q<{ id: string }>(
-    `INSERT INTO users (oidc_sub, email, name, timezone, last_login_at)
-     VALUES ($1, $2, $3, $4, now())
+    `INSERT INTO users (oidc_sub, email, email_verified, name, timezone, last_login_at)
+     VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (oidc_sub) DO UPDATE
-       SET email = EXCLUDED.email, name = EXCLUDED.name, last_login_at = now()
+       SET email = EXCLUDED.email, email_verified = EXCLUDED.email_verified,
+           name = EXCLUDED.name, last_login_at = now()
      RETURNING id`,
-    [sub, email, name, process.env.MATKA_DEFAULT_TIMEZONE ?? "Europe/Helsinki"],
+    [sub, email, emailVerified, name, process.env.MATKA_DEFAULT_TIMEZONE ?? "Europe/Helsinki"],
   );
   return row.id;
 }
@@ -56,17 +84,20 @@ export async function endOtherSessions(userId: string): Promise<void> {
 /** The signed-in user, or null. Cached per request. */
 export const getUser = cache(async (): Promise<User | null> => {
   if (authDisabled()) {
-    const id = await upsertUser("dev", null, "Developer");
-    const [u] = await q<User>(`SELECT ${USER_COLS} FROM users u WHERE id = $1`, [id]);
-    return u;
+    const id = await upsertUser("dev", null, false, "Developer");
+    const [u] = await q<UserRow>(`SELECT ${USER_COLS} FROM users u WHERE id = $1`, [id]);
+    return allowed(u);
   }
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token || token.length > 64) return null;
-  // Sliding expiry; touching the row at most once a minute.
-  const [u] = await q<User>(
+  // Sliding expiry, capped at an absolute lifetime; touching the row at most
+  // once a minute.
+  const [u] = await q<UserRow>(
     `WITH s AS (
        UPDATE sessions
-          SET last_seen_at = now(), expires_at = now() + make_interval(secs => $2)
+          SET last_seen_at = now(),
+              expires_at = LEAST(now() + make_interval(secs => $2),
+                                 created_at + make_interval(secs => $3))
         WHERE id = $1 AND expires_at > now()
           AND last_seen_at < now() - interval '1 minute'
         RETURNING user_id
@@ -74,10 +105,11 @@ export const getUser = cache(async (): Promise<User | null> => {
      SELECT ${USER_COLS} FROM users u
      WHERE u.id = COALESCE(
        (SELECT user_id FROM s),
-       (SELECT user_id FROM sessions WHERE id = $1 AND expires_at > now()))`,
-    [sha256(token), SESSION_MAX_AGE],
+       (SELECT user_id FROM sessions WHERE id = $1 AND expires_at > now()
+          AND created_at > now() - make_interval(secs => $3)))`,
+    [sha256(token), SESSION_MAX_AGE, SESSION_ABSOLUTE_MAX_AGE],
   );
-  return u ?? null;
+  return allowed(u);
 });
 
 /** For pages and server actions: the user, or a redirect to login. */
@@ -93,8 +125,8 @@ export async function apiUser(): Promise<User | NextResponse> {
 }
 
 async function userById(id: string): Promise<User | null> {
-  const [u] = await q<User>(`SELECT ${USER_COLS} FROM users u WHERE u.id = $1`, [id]);
-  return u ?? null;
+  const [u] = await q<UserRow>(`SELECT ${USER_COLS} FROM users u WHERE u.id = $1`, [id]);
+  return allowed(u);
 }
 
 /**

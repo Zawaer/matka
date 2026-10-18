@@ -27,9 +27,14 @@ describe("isAllowedUser", () => {
   it("matches sub or email, case-insensitively", () => {
     process.env.MATKA_ALLOWED_USERS = " abc123 , Me@Example.com ";
     expect(isAllowedUser({ sub: "ABC123" })).toBe(true);
-    expect(isAllowedUser({ sub: "zzz", email: "me@example.COM" })).toBe(true);
-    expect(isAllowedUser({ sub: "zzz", email: "other@example.com" })).toBe(false);
-    expect(isAllowedUser({ sub: "zzz", email: 42 })).toBe(false);
+    expect(isAllowedUser({ sub: "zzz", email: "me@example.COM", email_verified: true })).toBe(true);
+    expect(isAllowedUser({ sub: "zzz", email: "other@example.com", email_verified: true })).toBe(false);
+    expect(isAllowedUser({ sub: "zzz", email: 42, email_verified: true })).toBe(false);
+  });
+  it("ignores unverified emails", () => {
+    process.env.MATKA_ALLOWED_USERS = "me@example.com";
+    expect(isAllowedUser({ sub: "zzz", email: "me@example.com" })).toBe(false);
+    expect(isAllowedUser({ sub: "zzz", email: "me@example.com", email_verified: "true" })).toBe(false);
   });
   it("* defers to the identity provider", () => {
     process.env.MATKA_ALLOWED_USERS = "*";

@@ -18,8 +18,8 @@ Then create an **Application** that uses this provider (slug e.g. `matka`). The 
 
 Who may sign in: put your Authentik user's **sub** in `MATKA_ALLOWED_USERS`. To find it, sign
 in once with the allowlist set to a placeholder. Matka refuses you and logs
-`denied sub=…`; copy that value. Emails also work, but Authentik users can change their own
-email by default. To let Authentik decide instead, bind a policy or group to the application
+`denied sub=…`; copy that value. Emails also work (only if Authentik marks them
+`email_verified`), but Authentik users can change their own email by default. To let Authentik decide instead, bind a policy or group to the application
 and set `MATKA_ALLOWED_USERS=*`.
 
 ## 2. Configuration

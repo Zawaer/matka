@@ -8,7 +8,12 @@ import type { TimelineDay, TimelineItem } from "@/lib/types";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar date in YYYY-MM-DD form. */
+function isDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(s);
+}
 
 type VisitRow = {
   id: string;
@@ -54,7 +59,10 @@ export async function GET(req: Request) {
   const minDate = dates[0] ?? null;
   const maxDate = dates.at(-1) ?? null;
 
-  const date = dateParam && DATE_RE.test(dateParam) ? dateParam : maxDate;
+  if (dateParam && !isDate(dateParam)) {
+    return NextResponse.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });
+  }
+  const date = dateParam ?? maxDate;
   if (!date) {
     const empty: TimelineDay = { date: dateParam ?? "", items: [] };
     return NextResponse.json({ day: empty, dates, minDate, maxDate });
