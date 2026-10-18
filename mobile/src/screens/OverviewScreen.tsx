@@ -201,7 +201,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
 }
 
 const s = StyleSheet.create({
-  container: { padding: 20, paddingTop: 64, paddingBottom: 100, gap: 14 },
+  container: { padding: 20, paddingTop: 24, paddingBottom: 100, gap: 14 },
   h1: { color: C.text, fontSize: 30, fontWeight: "700" },
   sub: { color: C.muted, marginTop: -4 },
   card: { backgroundColor: C.surface, borderColor: C.border, borderWidth: 1, borderRadius: 14, padding: 16 },

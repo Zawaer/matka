@@ -119,7 +119,7 @@ export default function PlacesScreen() {
 }
 
 const ps = StyleSheet.create({
-  container: { padding: 20, paddingTop: 64, paddingBottom: 100, gap: 10 },
+  container: { padding: 20, paddingTop: 24, paddingBottom: 100, gap: 10 },
   h1: { color: C.text, fontSize: 30, fontWeight: "700" },
   sub: { color: C.muted, marginTop: -4, marginBottom: 10 },
   err: { color: C.accent, marginTop: 16 },

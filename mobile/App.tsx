@@ -1,6 +1,6 @@
 import "./src/collector"; // registers the background-location task at startup
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, StatusBar as RNStatusBar } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { C } from "./src/theme";
 import OverviewScreen from "./src/screens/OverviewScreen";
@@ -22,8 +22,10 @@ export default function App() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <StatusBar style="light" />
 
-      {/* Keep every screen mounted; just show/hide so state + the Map WebView persist. */}
-      <View style={{ flex: 1 }}>
+      {/* Keep every screen mounted; just show/hide so state + the Map WebView persist.
+          The app draws edge-to-edge, so inset the content below the status bar
+          (otherwise scrolled lists slide underneath the clock and icons). */}
+      <View style={{ flex: 1, paddingTop: RNStatusBar.currentHeight ?? 0 }}>
         {TABS.map((t) => (
           <View
             key={t.key}

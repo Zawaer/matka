@@ -82,7 +82,7 @@ export async function GET(req: Request) {
         v.status,
         v.started_at,
         v.ended_at,
-        v.duration,
+        EXTRACT(EPOCH FROM (v.ended_at - v.started_at))::int AS duration,
         v.place_id,
         COALESCE(p.name, v.name) AS place_name,
         ST_Y(p.lonlat::geometry) AS lat,

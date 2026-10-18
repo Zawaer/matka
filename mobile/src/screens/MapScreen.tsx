@@ -11,7 +11,7 @@ export default function MapScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <WebView
-        source={{ uri: `${API_BASE}/map` }}
+        source={{ uri: `${API_BASE}/map?embed=1` }}
         style={{ flex: 1, backgroundColor: C.bg }}
         onLoadEnd={() => setLoading(false)}
         onError={() => {

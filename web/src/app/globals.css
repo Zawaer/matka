@@ -78,3 +78,17 @@ body {
   border: 1px solid var(--mk-border);
   border-radius: var(--mk-radius);
 }
+
+/* ---------- Embedded in the mobile app (?embed=1) ---------- */
+html.embed body > div > aside,
+html.embed body > div > header,
+html.embed body > div > nav {
+  display: none !important;
+}
+html.embed main {
+  padding-bottom: 0 !important;
+}
+html.embed .map-shell {
+  height: 100dvh !important;
+  margin-bottom: 0 !important;
+}

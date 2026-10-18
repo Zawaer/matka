@@ -117,7 +117,7 @@ export default function TimelineScreen() {
 }
 
 const st = StyleSheet.create({
-  container: { padding: 20, paddingTop: 64, paddingBottom: 100 },
+  container: { padding: 20, paddingTop: 24, paddingBottom: 100 },
   h1: { color: C.text, fontSize: 30, fontWeight: "700", marginBottom: 12 },
   navRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   navBtn: { backgroundColor: C.surface, borderColor: C.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 6 },

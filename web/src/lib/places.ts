@@ -45,22 +45,37 @@ const SQL = `
     p.country,
     p.geodata->'properties'->>'osm_value' AS category,
     count(DISTINCT l.visit_id) AS visit_count,
-    COALESCE(sum(v.duration), 0) AS total_time,
+    COALESCE(sum(EXTRACT(EPOCH FROM (v.ended_at - v.started_at))::int), 0) AS total_time,
     max(v.ended_at) AS last_visit
   FROM places p
   LEFT JOIN links l ON l.place_id = p.id
   LEFT JOIN visits v ON v.id = l.visit_id
   WHERE p.user_id = $1
+    -- Roads, cycleways and transit platforms are where you pass through, not
+    -- places you spend time; Photon often snaps short stops to them.
+    AND COALESCE(p.geodata->'properties'->>'osm_key', '') <> 'highway'
+    AND COALESCE(p.geodata->'properties'->>'osm_value', '') NOT IN
+      ('platform', 'stop_position', 'stop', 'halt', 'tram_stop', 'bus_stop')
   GROUP BY p.id
   ORDER BY visit_count DESC, last_visit DESC NULLS LAST, p.name ASC
 `;
+
+/**
+ * Dawarich names places "Name (Category)", e.g. "Neulanen (Restaurant)".
+ * The category is shown separately, so drop the trailing parenthetical.
+ */
+export function cleanName(name: string | null): string | null {
+  if (!name) return name;
+  const stripped = name.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  return stripped || name;
+}
 
 /** Shared loader so the list page can render server-side without a self-fetch. */
 export async function getPlaces(): Promise<PlaceListItem[]> {
   const rows = await q<Row>(SQL, [USER_ID]);
   return rows.map((r) => ({
     id: Number(r.id),
-    name: r.name,
+    name: cleanName(r.name),
     city: r.city,
     country: r.country,
     category: r.category,

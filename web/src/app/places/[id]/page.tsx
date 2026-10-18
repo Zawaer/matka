@@ -48,7 +48,7 @@ export default async function PlaceDetailPage({
        JOIN visits v ON v.id = pv.visit_id AND v.deleted_at IS NULL
        WHERE pv.place_id = $1
      )
-     SELECT v.id, v.started_at, v.ended_at, v.duration
+     SELECT v.id, v.started_at, v.ended_at, EXTRACT(EPOCH FROM (v.ended_at - v.started_at))::int AS duration
      FROM visits v
      JOIN links l ON l.visit_id = v.id
      ORDER BY v.started_at DESC`,

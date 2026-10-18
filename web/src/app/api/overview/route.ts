@@ -35,7 +35,7 @@ export async function GET() {
       started_at: Date;
       duration: number | null;
     }>(`
-      SELECT v.id, COALESCE(p.name, v.name) AS name, v.started_at, v.duration
+      SELECT v.id, COALESCE(p.name, v.name) AS name, v.started_at, EXTRACT(EPOCH FROM (v.ended_at - v.started_at))::int AS duration
       FROM visits v LEFT JOIN places p ON p.id = v.place_id
       WHERE v.deleted_at IS NULL
       ORDER BY v.started_at DESC LIMIT 8
