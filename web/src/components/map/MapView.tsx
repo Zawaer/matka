@@ -145,9 +145,8 @@ export default function MapView() {
       const container = containerRef.current;
       if (!container) return;
 
-      // maplibre-gl v5 ships a UMD build with a blob-based worker (no external
-      // worker file), so the default import works cleanly under Next's bundler.
-      const maplibregl = (await import("maplibre-gl")).default;
+      // maplibre-gl v6 is ESM with named exports only.
+      const maplibregl = await import("maplibre-gl");
       if (cancelled) return;
 
       let dark = computeDark();
