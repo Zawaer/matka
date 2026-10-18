@@ -48,6 +48,34 @@ export function niceMax(v: number): number {
   if (v <= 0) return 1;
   const pow = Math.pow(10, Math.floor(Math.log10(v)));
   const n = v / pow;
-  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+  const step = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((x) => n <= x) ?? 10;
   return step * pow;
+}
+
+/**
+ * Dawarich names places "Name (Category)", e.g. "Kivenlahti (Bus stop)"; the category
+ * is shown separately where it matters, so drop one trailing parenthetical.
+ */
+export function cleanName(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const stripped = name.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  return stripped || name;
+}
+
+export function isNamed(name: string | null | undefined): boolean {
+  return !!name && name !== "Unknown Location";
+}
+
+/** Fastest believable average speed (km/h) per travel mode. */
+const MAX_KMH: Record<string, number> = { walking: 9, running: 22, cycling: 48 };
+
+/**
+ * A segment whose average speed is impossible for its mode is almost always GPS
+ * jumping about (a "walk" of 42 km in two hours), not real movement.
+ */
+export function isLikelyDrift(mode: string, distanceM: number | null, durationS: number | null): boolean {
+  if (mode === "stationary") return (distanceM ?? 0) > 0;
+  const max = MAX_KMH[mode];
+  if (!max || !distanceM || !durationS || durationS < 60) return false;
+  return distanceM / 1000 / (durationS / 3600) > max;
 }

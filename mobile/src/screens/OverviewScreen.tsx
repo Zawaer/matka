@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Easing, View } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
 import { getJSON, type Overview } from "../api";
-import { fmtCompact, fmtDuration, fmtWhen, greeting } from "../format";
+import { cleanName, fmtCompact, fmtDuration, fmtWhen, greeting, isNamed } from "../format";
 import { flushQueue, isTracking, queuedCount, requestPermissions, startTracking, stopTracking } from "../collector";
 import { Button, Card, EmptyState, ErrorState, Icon, IconChip, SectionTitle, Skeleton } from "../ui";
 import { ShareBar, MonthBars } from "../ui/charts";
@@ -215,7 +215,7 @@ export default function OverviewScreen() {
             {range ? (
               <View style={s.heroPill}>
                 <Icon name="calendar-blank-outline" size={14} color={t.c.onHero} />
-                <Text variant="caption" color="onHero" style={{ fontWeight: "700" }}>
+                <Text variant="caption" color="onHero" style={{ fontWeight: "800" }}>
                   {range}
                 </Text>
               </View>
@@ -246,7 +246,7 @@ export default function OverviewScreen() {
           <View style={s.row3}>
             {[
               { icon: "map-marker-check-outline", tint: "coral", label: "Visits", value: totals!.visits },
-              { icon: "calendar-check-outline", tint: "amber", label: "Days tracked", value: totals!.days },
+              { icon: "calendar-check-outline", tint: "amber", label: "Days", value: totals!.days },
               { icon: "crosshairs-gps", tint: "mint", label: "GPS points", value: totals!.points },
             ].map((x) => (
               <Card key={x.label} style={s.tile}>
@@ -302,13 +302,13 @@ export default function OverviewScreen() {
               <SectionTitle title="Recent visits" />
               <Card style={s.list}>
                 {data.recent.map((v) => {
-                  const named = v.name && v.name !== "Unknown Location";
+                  const named = isNamed(v.name);
                   return (
                     <View key={v.id} style={s.listRow}>
                       <IconChip icon={named ? "map-marker-outline" : "help-circle-outline"} tint={named ? "violet" : "slate"} size={38} />
                       <View style={{ flex: 1 }}>
-                        <Text variant="headline" numberOfLines={1}>
-                          {named ? v.name : "Unnamed place"}
+                        <Text variant="headline" numberOfLines={2}>
+                          {named ? cleanName(v.name) : "Unnamed place"}
                         </Text>
                         <Text variant="caption" color="textSecondary">
                           {fmtWhen(v.startedAt)}

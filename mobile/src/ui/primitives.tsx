@@ -61,7 +61,7 @@ export function Button({
     base: {
       minHeight: 44,
       paddingHorizontal: th.space.lg,
-      borderRadius: th.radius.pill,
+      borderRadius: 22,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
@@ -69,9 +69,9 @@ export function Button({
     },
   }));
   const look = {
-    primary: { bg: t.c.primary, pressed: t.c.primaryPressed, fg: t.c.onPrimary, border: "transparent" },
-    secondary: { bg: t.c.surface, pressed: t.c.surfaceAlt, fg: t.c.text, border: t.c.borderStrong },
-    danger: { bg: t.c.dangerSoft, pressed: t.c.surfaceAlt, fg: t.c.danger, border: "transparent" },
+    primary: { bg: t.c.primary, fg: t.c.onPrimary, border: "transparent" },
+    secondary: { bg: t.c.surface, fg: t.c.text, border: t.c.borderStrong },
+    danger: { bg: t.c.dangerSoft, fg: t.c.danger, border: "transparent" },
   }[variant];
   return (
     <Pressable
@@ -81,11 +81,12 @@ export function Button({
       accessibilityLabel={label}
       style={({ pressed }) => [
         s.base,
-        { backgroundColor: pressed ? look.pressed : look.bg, borderColor: look.border, borderWidth: 1, opacity: disabled || busy ? 0.6 : 1 },
+        // Pressed = dimmer, not a new background colour (swapping it drew square corners on Android).
+        { backgroundColor: look.bg, borderColor: look.border, borderWidth: 1, opacity: disabled || busy ? 0.6 : pressed ? 0.82 : 1 },
       ]}
     >
       {icon && <Icon name={icon} size={18} color={look.fg} />}
-      <Text variant="callout" style={{ color: look.fg, fontWeight: "700" }}>
+      <Text variant="callout" style={{ color: look.fg, fontWeight: "800" }}>
         {busy ? "Working…" : label}
       </Text>
     </Pressable>
@@ -110,7 +111,7 @@ export function Pill({ label, icon, tint = "slate" }: { label: string; icon?: Ic
       }}
     >
       {icon && <Icon name={icon} size={14} color={fg} />}
-      <Text variant="caption" style={{ color: fg, fontWeight: "700" }}>
+      <Text variant="caption" style={{ color: fg, fontWeight: "800" }}>
         {label}
       </Text>
     </View>

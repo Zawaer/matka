@@ -149,24 +149,27 @@ export const layout = { gutter: 20, tabBarHeight: 68, maxBar: 24 } as const;
 export type TypeStyle = {
   fontSize: number;
   lineHeight: number;
-  fontWeight: "400" | "500" | "600" | "700" | "800";
+  fontWeight: "400" | "500" | "800";
   letterSpacing?: number;
   textTransform?: "uppercase";
 };
 
-/** Type scale. System font: weight, size and tracking carry the personality. */
+/**
+ * Type scale. System font: weight, size and tracking carry the personality.
+ * Only 400, 500 and 800 are used: measured on the phone (OnePlus), 600 and 700 are
+ * drawn as regular, and only 800+ is a real bold. Use "800" for anything strong.
+ */
 export const type = {
-  display: { fontSize: 56, lineHeight: 60, fontWeight: "800", letterSpacing: -2 },
+  display: { fontSize: 56, lineHeight: 60, fontWeight: "800", letterSpacing: -1 },
   title1: { fontSize: 30, lineHeight: 36, fontWeight: "800", letterSpacing: -0.7 },
-  title2: { fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 },
-  title3: { fontSize: 18, lineHeight: 24, fontWeight: "700", letterSpacing: -0.2 },
+  title2: { fontSize: 22, lineHeight: 28, fontWeight: "800", letterSpacing: -0.4 },
+  title3: { fontSize: 18, lineHeight: 24, fontWeight: "800", letterSpacing: -0.2 },
   stat: { fontSize: 26, lineHeight: 30, fontWeight: "800", letterSpacing: -0.6 },
-  // 700, not 600: Android's Roboto has no semibold and renders 600 as regular.
-  headline: { fontSize: 16, lineHeight: 22, fontWeight: "700" },
+  headline: { fontSize: 16, lineHeight: 22, fontWeight: "800" },
   body: { fontSize: 15, lineHeight: 22, fontWeight: "400" },
   callout: { fontSize: 14, lineHeight: 20, fontWeight: "500" },
   caption: { fontSize: 12, lineHeight: 16, fontWeight: "500" },
-  overline: { fontSize: 11, lineHeight: 14, fontWeight: "700", letterSpacing: 0.9, textTransform: "uppercase" },
+  overline: { fontSize: 11, lineHeight: 14, fontWeight: "800", letterSpacing: 0.9, textTransform: "uppercase" },
 } satisfies Record<string, TypeStyle>;
 
 export type TypeVariant = keyof typeof type;

@@ -3,13 +3,13 @@ import { FlatList, Pressable, RefreshControl, TextInput, View } from "react-nati
 import { useStyles, useTheme } from "../design/theme";
 import { categoryMeta } from "../design/categories";
 import { getJSON, type PlaceItem } from "../api";
-import { fmtDuration } from "../format";
+import { cleanName, fmtDuration, isNamed } from "../format";
 import { Card, EmptyState, ErrorState, Icon, IconChip, Pill, Skeleton } from "../ui";
 import { ScreenHeader } from "../ui/Screen";
 import { Text } from "../ui/Text";
 
 function placeName(p: PlaceItem) {
-  return p.name && p.name !== "Unknown Location" ? p.name : "Unnamed place";
+  return isNamed(p.name) ? cleanName(p.name)! : "Unnamed place";
 }
 
 export default function PlacesScreen() {

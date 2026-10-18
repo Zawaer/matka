@@ -28,9 +28,8 @@ function Shell() {
     root: { flex: 1, backgroundColor: th.c.bg },
     bar: { flexDirection: "row", backgroundColor: th.c.tabBar, borderTopWidth: 1, borderTopColor: th.c.border, paddingTop: th.space.sm, paddingBottom: th.space.lg + 4, paddingHorizontal: th.space.sm },
     tab: { flex: 1, alignItems: "center", gap: 4 },
-    // Fixed radius (half the height) and an always-present background: on Android a
-    // background added after mount dropped an oversized radius and drew a square.
-    pill: { width: 60, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "transparent" },
+    pill: { width: 60, height: 32, alignItems: "center", justifyContent: "center" },
+    pillBg: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16, backgroundColor: th.c.primarySoft },
   }));
   return (
     <View style={s.root}>
@@ -48,10 +47,13 @@ function Shell() {
           const on = active === tab.key;
           return (
             <Pressable key={tab.key} style={s.tab} onPress={() => setActive(tab.key)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={tab.label}>
-              <View style={[s.pill, on && { backgroundColor: t.c.primarySoft }]}>
+              <View style={s.pill}>
+                {/* Own layer, mounted only when active: toggling the container's background
+                    drew a square on Android. */}
+                {on && <View style={s.pillBg} />}
                 <Icon name={on ? tab.iconOn : tab.icon} size={24} color={on ? t.c.primary : t.c.textMuted} />
               </View>
-              <Text variant="caption" style={{ color: on ? t.c.primary : t.c.textMuted, fontWeight: on ? "700" : "500" }}>
+              <Text variant="caption" style={{ color: on ? t.c.primary : t.c.textMuted, fontWeight: on ? "800" : "500" }}>
                 {tab.label}
               </Text>
             </Pressable>

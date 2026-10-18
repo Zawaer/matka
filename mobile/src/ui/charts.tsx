@@ -83,7 +83,7 @@ export function MonthBars({
         </View>
         <View style={s.labels}>
           {data.map((d, i) => (
-            <Text key={d.key} variant="caption" color={i === sel ? "text" : "textMuted"} style={[s.label, i === sel && { fontWeight: "700" }]}>
+            <Text key={d.key} variant="caption" color={i === sel ? "text" : "textMuted"} style={[s.label, i === sel && { fontWeight: "800" }]}>
               {d.label}
             </Text>
           ))}
