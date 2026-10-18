@@ -1,5 +1,43 @@
 # Deploying Matka
 
+There are two supported setups. Both run the same image and code; they differ in how
+people sign in and how the app is reached.
+
+| | Homelab (`compose.yml`) | Cluster (`deploy/k8s/`) |
+| --- | --- | --- |
+| Runs with | Docker Compose, `docker compose up -d --build matka` | k3s, image from GHCR |
+| Reached at | `https://matka.lan` via Caddy, Tailscale only | public host via ingress-nginx |
+| TLS | Caddy's private CA (installed on your devices) | public certificate |
+| Sign-in | `MATKA_AUTH=key`: one owner, a login key | OIDC (Authentik) + allowlist |
+| Place names | own Photon container (`matka_photon`) | own Photon (`photon.yaml`) |
+
+## Homelab
+
+`compose.yml` starts Matka, its PostGIS and its Photon. Non-secret settings are in the
+compose file; put the three secrets in `~/matka/.env`:
+
+```bash
+cd ~/matka
+cat >> .env <<EOF
+MATKA_DB_PASSWORD=$(openssl rand -hex 24)
+MATKA_SECRET=$(openssl rand -base64 48 | tr -d '\n')
+MATKA_LOGIN_KEY=$(openssl rand -base64 36 | tr -d '\n')
+EOF
+chmod 600 .env
+grep MATKA_LOGIN_KEY .env   # the key you sign in with; keep it in your password manager
+```
+
+Then run `docker compose up -d --build matka`. On first start the worker copies your Dawarich history by
+itself (see "Import your Dawarich history" below), and Photon indexes Finland (a few
+minutes). Open `https://matka.lan`, paste the login key once per browser, then pair
+the phone under **Devices**.
+
+The login key works like a password: anyone with it can sign in. To rotate it, change
+`MATKA_LOGIN_KEY` and redeploy; existing sessions last until they expire or you use
+**Sign out everywhere else** in Settings.
+
+## Cluster
+
 One Docker image (`web/Dockerfile`, published by CI as `ghcr.io/zawaer/matka`) runs the web
 app, the device API and the background processing worker. It needs PostgreSQL with PostGIS.
 It migrates the database on start. `deploy/k8s/matka.yaml` is a complete k3s example
@@ -48,7 +86,15 @@ credentials. Production should use the in-cluster Service only, with a real pass
 
 ## 4. Import your Dawarich history
 
-Sign in to Matka once so your user exists, then run the importer inside the app container:
+Automatic: set `DAWARICH_IMPORT_URL` to a **read-only** connection to Dawarich's database
+(e.g. the `matka_ro` role) and, with OIDC, `DAWARICH_IMPORT_TO` to your email or `sub`
+(sign in once first; in key mode it defaults to the owner). The worker copies the points
+in pages of 5,000 and logs `[import] dawarich: 45000/113872 read (40%), 44980 new`.
+Progress is kept in the `import_state` table: an interrupted import resumes where it
+stopped, and once it has finished it never runs again. Every read is in a read-only
+transaction; Matka never writes to Dawarich. Afterwards the variable can stay or go.
+
+Manual alternative (same result), inside the app container:
 
 ```bash
 kubectl -n matka exec -it deploy/matka -- \

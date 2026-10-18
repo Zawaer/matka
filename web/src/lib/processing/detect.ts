@@ -70,18 +70,56 @@ function addTo(c: Cluster, p: DPoint) {
 
 const duration = (c: Cluster) => c.end - c.pts[0].ts;
 
-/** Mode from the 80th-percentile speed of a move, in m/s. */
+const quantile = (sorted: number[], q: number) =>
+  sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(q * (sorted.length - 1))))];
+
+/**
+ * Travel mode from a move's speeds (m/s), distance (m) and duration (s).
+ *
+ * Decides mostly on the average speed and uses the 85th-percentile speed only
+ * with enough samples: with sparse fixes a single GPS jump would otherwise be
+ * "the 85th percentile" (tuned on real history, docs/DECISIONS.md). Trains
+ * are told apart from cars by a sustained average no car keeps on roads limited
+ * to 120 km/h; buses still read as driving.
+ */
 export function classifyMode(speeds: number[], distance: number, seconds: number): ModeKey {
-  if (speeds.length === 0) {
-    if (seconds <= 0) return "unknown";
-    speeds = [distance / seconds];
+  if (seconds <= 0 || distance <= 0) {
+    if (speeds.length === 0) return "unknown";
+    seconds = 1;
   }
-  const sorted = [...speeds].sort((a, b) => a - b);
-  const v = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.8))];
-  if (v < 2.5) return "walking"; // < 9 km/h
-  if (v < 8) return "cycling"; // < 29 km/h
-  if (v < 60) return "driving"; // < 216 km/h
-  return distance > 50_000 ? "flying" : "driving";
+  const avg = (distance / seconds) * 3.6;
+  const kmh = speeds.map((v) => v * 3.6).sort((a, b) => a - b);
+  const enough = kmh.length >= 5;
+  const p85 = kmh.length ? quantile(kmh, 0.85) : avg;
+  if ((distance > 100_000 && avg > 180) || (enough && p85 > 320)) return "flying";
+  if (distance > 50_000 && avg > 115) return "train";
+  if (avg >= 28 || (enough && p85 > 55)) return "driving";
+  if (avg < 7.5 && (!enough || p85 < 12)) return "walking";
+  if (avg < 14 && (!enough || p85 < 20)) return "running";
+  if (avg < 28 && (!enough || p85 < 50)) return "cycling";
+  return "driving";
+}
+
+/**
+ * Speeds to classify a move by. The phone's own speed readings (Doppler, not
+ * position differences) when most fixes carry one; otherwise straight-line
+ * speeds over chords of at least a minute, because fix-to-fix speeds are
+ * dominated by jitter (a 30 m wobble in 2 s reads as 54 km/h).
+ */
+export function moveSpeeds(pts: DPoint[]): number[] {
+  const reported = pts.filter((p) => p.speed != null && p.speed >= 0).map((p) => p.speed as number);
+  if (pts.length > 1 && reported.length >= 0.8 * pts.length) return reported;
+  const out: number[] = [];
+  let a = 0;
+  for (let k = 1; k < pts.length; k++) {
+    const dt = pts[k].ts - pts[a].ts;
+    if (dt >= 60) {
+      // A silent gap isn't a speed sample.
+      if (dt < 600) out.push(haversine(pts[a].lat, pts[a].lon, pts[k].lat, pts[k].lon) / dt);
+      a = k;
+    }
+  }
+  return out;
 }
 
 export class Detector {
@@ -195,15 +233,8 @@ export class Detector {
   private makeTrip(pts: DPoint[], from: number | null): Trip | null {
     if (pts.length < 2) return null;
     let distance = 0;
-    const speeds: number[] = [];
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1];
-      const b = pts[i];
-      const d = haversine(a.lat, a.lon, b.lat, b.lon);
-      distance += d;
-      if (b.speed != null) speeds.push(b.speed);
-      else if (b.ts > a.ts && b.ts - a.ts < 600) speeds.push(d / (b.ts - a.ts));
-    }
+    for (let i = 1; i < pts.length; i++) distance += haversine(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon);
+    const speeds = moveSpeeds(pts);
     if (distance < MIN_TRIP_M) return null;
     const end = pts[pts.length - 1].ts;
     const start = Math.min(end, Math.max(pts[0].ts, from ?? pts[0].ts));

@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
+import { importDawarichIfNeeded } from "../dawarichImport";
 import { geocodePending } from "./geocode";
 import { processUser } from "./run";
 
@@ -23,6 +24,12 @@ export async function tick(): Promise<void> {
       await c.query<{ ok: boolean }>(`SELECT pg_try_advisory_lock(hashtext($1)) ok`, [WORKER_LOCK])
     ).rows[0].ok;
     if (!locked) return;
+    // One-time history import; quiet no-op once finished or when not configured.
+    try {
+      await importDawarichIfNeeded();
+    } catch (err) {
+      console.error("[import] dawarich import failed, will retry:", err instanceof Error ? err.message : err);
+    }
     const dirty = (
       await c.query<{ user_id: string }>(
         `SELECT user_id FROM processing_state WHERE dirty_from IS NOT NULL`,

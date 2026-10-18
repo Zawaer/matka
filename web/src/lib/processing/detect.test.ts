@@ -117,4 +117,16 @@ describe("classifyMode", () => {
     expect(classifyMode([230, 240], 400_000, 1800)).toBe("flying");
     expect(classifyMode([], 1000, 0)).toBe("unknown");
   });
+
+  // Cases from real data (docs/DECISIONS.md, "Travel modes").
+  it("tells trains and runs apart, and isn't fooled by one GPS jump", () => {
+    // Helsinki-Tampere by train: 264 km in 116 min.
+    expect(classifyMode([], 264_000, 116 * 60)).toBe("train");
+    // A 12.4 km run in 62 min.
+    expect(classifyMode([3.4, 3.2, 3.5, 3.3, 3.6, 3.1], 12_400, 62 * 60)).toBe("running");
+    // A 5 km ride with sparse fixes and one 94 km/h jump: still not a car.
+    expect(classifyMode([1.4, 1.4, 0.3, 1.1, 26], 5000, 30 * 60)).not.toBe("driving");
+    // Phone silent through a flight: 398 km in 63 min.
+    expect(classifyMode([], 398_000, 63 * 60)).toBe("flying");
+  });
 });

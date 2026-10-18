@@ -99,3 +99,31 @@ itself, phones pair with a token, ship a standalone Docker image (k3s + nginx in
 - **Timezone per user** (default `MATKA_DEFAULT_TIMEZONE`, else Europe/Helsinki) decides day
   boundaries on the timeline and server-rendered times.
 - Dev without an IdP: `MATKA_AUTH_DISABLED=1` (ignored when `NODE_ENV=production`).
+
+## Update 2026-10-19: two deployments, own Photon, tuned travel modes
+Merged `hardening` into `main`. Decided with the owner:
+
+- **Two supported deployments, same image**: the homelab (`compose.yml`, Caddy with a private
+  CA, Tailscale only, no identity provider) and a k3s cluster (`deploy/k8s/`,
+  Authentik, public TLS). See the table at the top of `docs/DEPLOY.md`.
+- **`MATKA_AUTH=key`** for instances without an identity provider: one owner (`oidc_sub =
+  key:owner`), a 32+ character `MATKA_LOGIN_KEY` entered once per browser, compared in
+  constant time, 10 wrong tries per address per 15 minutes. Same server-side sessions and
+  token-paired devices as OIDC. OIDC stays the default.
+- **Own Photon** in both setups (Finland JSONL dump, reverse-only, 1 GB heap); Matka no
+  longer uses Dawarich's network for place names.
+- **Automatic Dawarich import** (`DAWARICH_IMPORT_URL`), resumable through `import_state`,
+  read-only on the Dawarich side, run by the worker under its lock so one replica does it.
+- **Travel modes tuned on the owner's own history.** Fix-to-fix speeds are mostly GPS
+  jitter (a 30 m wobble in 2 s reads as 54 km/h), which turned bike rides into driving and
+  trains into flights. Speeds now come from the phone's own readings when present, else
+  from chords of at least a minute; the decision leans on the average speed and uses the
+  85th percentile only with 5+ samples. Trains: a sustained average above 115 km/h over
+  more than 50 km (no car keeps that on 120 km/h roads). Running is its own mode; buses
+  still read as driving. On the owner's data this turned most
+  "flying" back into trains, doubled cycling and found the runs; before: no trains or runs.
+- **Private CA in release builds, pinned**: kept the rule that release builds don't trust
+  user-installed CAs (an MDM profile or "VPN" app could otherwise read the device token).
+  Instead any CA certificate committed to `mobile/certs/` is bundled and trusted next to the
+  system store. The homelab commits Caddy's local root there; the cluster's builds have
+  none and stay system-only.

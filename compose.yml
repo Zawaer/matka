@@ -1,11 +1,10 @@
 # Matka on the homelab: `docker compose up -d --build matka`
-# in ~/matka. Secrets come from ~/matka/.env (gitignored); every
-# variable is documented in web/.env.example. See docs/DEPLOY.md.
+# in ~/matka (dependencies start with it). Reached at https://matka.lan
+# through Caddy on proxy_net. Every variable is documented in web/.env.example and
+# docs/DEPLOY.md; the k3s setup lives in deploy/k8s/ instead.
 #
-# Matka keeps its own PostGIS (matka_db, not published). It still joins Dawarich's
-# network for Photon (PHOTON_URL=http://photon:2322) and the one-time history import:
-#   docker compose exec matka node scripts/import-dawarich.mjs \
-#     --from postgresql://postgres:<pw>@dawarich_db:5432/dawarich_development --to <you>
+# Secrets go in ~/matka/.env (gitignored):
+#   MATKA_DB_PASSWORD, MATKA_SECRET, MATKA_LOGIN_KEY
 services:
   matka:
     build: ./web
@@ -14,13 +13,23 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://matka:${MATKA_DB_PASSWORD:?set MATKA_DB_PASSWORD in .env}@matka_db:5432/matka
+      APP_URL: https://matka.lan
+      # No identity provider here: sign in with MATKA_LOGIN_KEY (see docs/DEPLOY.md).
+      MATKA_AUTH: key
+      PHOTON_URL: http://matka_photon:2322
+      # One-time Dawarich history import, run automatically and resumably by the worker
+      # through the read-only matka_ro role. Falls back to the read-only DATABASE_URL this
+      # .env held before Matka had its own database. Harmless to leave once finished.
+      DAWARICH_IMPORT_URL: ${DAWARICH_IMPORT_URL:-${DATABASE_URL:-}}
     depends_on:
       matka_db:
         condition: service_healthy
+      photon:
+        condition: service_started
     networks:
       - proxy_net        # Caddy reaches matka:3000 by name
       - matka_internal
-      - dawarich_dawarich  # photon, and dawarich_db for the one-time import
+      - dawarich_dawarich  # only for the one-time import from dawarich_db
     mem_limit: 768m
 
   matka_db:
@@ -41,8 +50,27 @@ services:
       retries: 10
       timeout: 5s
 
+  # Matka's own reverse geocoder (place names). Finland only exists as a JSONL dump
+  # (~0.2 GB download, indexed on first start); reverse-only keeps it small.
+  photon:
+    image: rtuszik/photon-docker:latest
+    container_name: matka_photon
+    restart: unless-stopped
+    environment:
+      IMPORT_MODE: jsonl
+      REGION: finland
+      LANGUAGES: fi,en
+      REVERSE_ONLY: "TRUE"
+      JAVA_PARAMS: -Xmx1g
+    volumes:
+      - matka_photon_data:/photon/data
+    networks:
+      - matka_internal
+    mem_limit: 2g
+
 volumes:
   matka_db_data:
+  matka_photon_data:
 
 networks:
   matka_internal: {}

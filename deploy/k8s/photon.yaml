@@ -1,0 +1,45 @@
+# Matka's own reverse geocoder (place names), for PHOTON_URL=http://matka-photon:2322.
+# Finland comes as a JSONL dump (~0.2 GB download, indexed on first start).
+# For another country or region, change REGION (see github.com/rtuszik/photon-docker).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: matka-photon
+  namespace: matka
+spec:
+  serviceName: matka-photon
+  replicas: 1
+  selector:
+    matchLabels: { app: matka-photon }
+  template:
+    metadata:
+      labels: { app: matka-photon }
+    spec:
+      containers:
+        - name: photon
+          image: rtuszik/photon-docker:latest
+          env:
+            - { name: IMPORT_MODE, value: jsonl }
+            - { name: REGION, value: finland }
+            - { name: LANGUAGES, value: "fi,en" }
+            - { name: REVERSE_ONLY, value: "TRUE" }
+            - { name: JAVA_PARAMS, value: "-Xmx1g" }
+          ports: [{ containerPort: 2322 }]
+          volumeMounts: [{ name: data, mountPath: /photon/data }]
+          resources:
+            requests: { cpu: 100m, memory: 1Gi }
+            limits: { memory: 2Gi }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 5Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matka-photon
+  namespace: matka
+spec:
+  selector: { app: matka-photon }
+  ports: [{ port: 2322, targetPort: 2322 }]

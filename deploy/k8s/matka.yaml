@@ -16,6 +16,8 @@ stringData:
   DATABASE_URL: postgresql://matka:change-me@matka-db:5432/matka
   MATKA_SECRET: change-me-at-least-32-chars   # openssl rand -base64 48
   OIDC_CLIENT_SECRET: change-me
+  # Optional one-time history import, run automatically by the worker (docs/DEPLOY.md):
+  # DAWARICH_IMPORT_URL: postgresql://matka_ro:<pw>@<dawarich-db>:5432/dawarich_development
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -28,7 +30,11 @@ data:
   OIDC_CLIENT_ID: matka
   MATKA_ALLOWED_USERS: "<your Authentik sub>"
   MATKA_DEFAULT_TIMEZONE: Europe/Helsinki
-  # PHOTON_URL: http://photon.photon.svc:2322
+  PHOTON_URL: http://matka-photon:2322          # deploy/k8s/photon.yaml
+  # Sign-in: OIDC by default. Without an identity provider, use a login key instead:
+  #   MATKA_AUTH: key   (and MATKA_LOGIN_KEY in the Secret, >= 32 chars)
+  # Who receives imported Dawarich history (email or OIDC sub; sign in once first):
+  # DAWARICH_IMPORT_TO: you@example.com
 ---
 apiVersion: apps/v1
 kind: StatefulSet
