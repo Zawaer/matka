@@ -3,7 +3,8 @@ import * as client from "openid-client";
 // Authentik (or any OIDC provider) via openid-client. Configured from env:
 //   OIDC_ISSUER         e.g. https://auth.example.com/application/o/matka/
 //   OIDC_CLIENT_ID / OIDC_CLIENT_SECRET
-//   MATKA_ALLOWED_USERS comma-separated OIDC `sub`s and/or emails allowed in
+//   MATKA_ALLOWED_USERS comma-separated OIDC `sub`s and/or emails allowed in,
+//                       or "*" to admit everyone the provider authenticates
 
 let configPromise: Promise<client.Configuration> | undefined;
 
@@ -29,7 +30,8 @@ export function oidcConfig(): Promise<client.Configuration> {
 
 /**
  * Authentik lets any of its users into an app that has no policy binding, so
- * Matka keeps its own allowlist and refuses everyone when it is empty.
+ * Matka keeps its own allowlist and refuses everyone when it is empty. "*"
+ * hands the decision to the provider (bind a policy to the app in Authentik).
  * Prefer `sub` entries: Authentik users can edit their own email by default.
  */
 export function isAllowedUser(claims: { sub: string; email?: unknown }): boolean {
@@ -37,6 +39,7 @@ export function isAllowedUser(claims: { sub: string; email?: unknown }): boolean
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+  if (allowed.includes("*")) return true;
   const email = typeof claims.email === "string" ? claims.email.toLowerCase() : null;
   return allowed.includes(claims.sub.toLowerCase()) || (email != null && allowed.includes(email));
 }

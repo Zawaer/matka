@@ -1,60 +1,73 @@
 import Link from "next/link";
+import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
-import { formatDistance, formatDuration } from "@/lib/format";
+import { formatDateShort, formatDistance, formatDuration, formatTime } from "@/lib/format";
+import { PLACE_NAME_SQL } from "@/lib/places";
 
 export const dynamic = "force-dynamic";
 
 type Totals = {
   points: string;
   visits: string;
-  tracks: string;
   days: string;
+  distance: number | null;
   first: Date | null;
   last: Date | null;
 };
 
 export default async function Overview() {
-  const [totals] = await q<Totals>(`
-    SELECT
-      (SELECT count(*) FROM points) AS points,
-      (SELECT count(*) FROM visits WHERE deleted_at IS NULL) AS visits,
-      (SELECT count(*) FROM tracks) AS tracks,
-      (SELECT count(DISTINCT date(to_timestamp(timestamp))) FROM points) AS days,
-      (SELECT to_timestamp(min(timestamp)) FROM points) AS first,
-      (SELECT to_timestamp(max(timestamp)) FROM points) AS last
-  `);
+  const user = await requireUser();
+  const tz = user.timezone;
 
-  const months = await q<{ year: number; month: number; distance: string }>(
-    `SELECT year, month, distance FROM stats ORDER BY year, month`,
-  );
-  const cities = await q<{ city: string; n: string }>(
-    `SELECT city, count(*) n FROM points WHERE city IS NOT NULL
-     GROUP BY city ORDER BY n DESC LIMIT 8`,
-  );
-  const recent = await q<{
-    id: number;
-    name: string | null;
-    started_at: Date;
-    duration: number | null;
-  }>(`
-    SELECT v.id, COALESCE(p.name, v.name) AS name, v.started_at, v.duration
-    FROM visits v LEFT JOIN places p ON p.id = v.place_id
-    WHERE v.deleted_at IS NULL
-    ORDER BY v.started_at DESC LIMIT 8
-  `);
+  const [[totals], months, topPlaces, recent] = await Promise.all([
+    q<Totals>(
+      `SELECT
+         (SELECT count(*) FROM points WHERE user_id = $1) AS points,
+         (SELECT count(*) FROM visits WHERE user_id = $1) AS visits,
+         (SELECT count(DISTINCT (ts AT TIME ZONE $2)::date) FROM points WHERE user_id = $1) AS days,
+         (SELECT sum(distance_m)::float8 FROM trips WHERE user_id = $1) AS distance,
+         (SELECT min(ts) FROM points WHERE user_id = $1) AS first,
+         (SELECT max(ts) FROM points WHERE user_id = $1) AS last`,
+      [user.id, tz],
+    ),
+    // Last 12 months of travelled distance.
+    q<{ year: number; month: number; distance: number }>(
+      `SELECT extract(year FROM m)::int AS year, extract(month FROM m)::int AS month,
+              COALESCE(sum(t.distance_m), 0)::float8 AS distance
+       FROM generate_series(date_trunc('month', now() AT TIME ZONE $2) - interval '11 months',
+                            date_trunc('month', now() AT TIME ZONE $2), interval '1 month') AS m
+       LEFT JOIN trips t ON t.user_id = $1
+             AND date_trunc('month', t.started_at AT TIME ZONE $2) = m
+       GROUP BY m ORDER BY m`,
+      [user.id, tz],
+    ),
+    q<{ id: string; name: string | null; hours: number }>(
+      `SELECT p.id, ${PLACE_NAME_SQL} AS name,
+              sum(extract(epoch FROM v.ended_at - v.started_at))::float8 / 3600 AS hours
+       FROM visits v JOIN places p ON p.id = v.place_id
+       WHERE v.user_id = $1
+       GROUP BY p.id ORDER BY hours DESC LIMIT 8`,
+      [user.id],
+    ),
+    q<{ id: string; place_id: string; name: string | null; started_at: Date; duration: number }>(
+      `SELECT v.id, v.place_id, ${PLACE_NAME_SQL} AS name, v.started_at,
+              extract(epoch FROM v.ended_at - v.started_at)::int AS duration
+       FROM visits v JOIN places p ON p.id = v.place_id
+       WHERE v.user_id = $1
+       ORDER BY v.started_at DESC LIMIT 8`,
+      [user.id],
+    ),
+  ]);
 
-  const totalKm =
-    months.reduce((s, m) => s + Number(m.distance || 0), 0) / 1000;
-  const maxMonth = Math.max(1, ...months.map((m) => Number(m.distance || 0)));
+  const totalKm = (totals?.distance ?? 0) / 1000;
+  const maxMonth = Math.max(1, ...months.map((m) => m.distance));
   const fmtMonth = (y: number, m: number) =>
-    new Date(y, m - 1, 1).toLocaleDateString([], { month: "short" });
+    new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" });
 
   const range =
     totals?.first && totals?.last
-      ? `${new Date(totals.first).toLocaleDateString()} – ${new Date(
-          totals.last,
-        ).toLocaleDateString()}`
-      : "—";
+      ? `${formatDateShort(totals.first, tz)} – ${formatDateShort(totals.last, tz)}`
+      : "No data yet — pair your phone under Devices to start.";
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
@@ -77,11 +90,11 @@ export default async function Overview() {
       <section className="mt-6 grid gap-5 md:grid-cols-5">
         <div className="mk-card p-5 md:col-span-3">
           <h2 className="mb-4 text-sm font-semibold text-muted">
-            Distance by month
+            Distance, last 12 months
           </h2>
           <div className="flex h-40 items-stretch gap-2">
             {months.map((m) => {
-              const h = (Number(m.distance || 0) / maxMonth) * 100;
+              const h = (m.distance / maxMonth) * 100;
               return (
                 <div
                   key={`${m.year}-${m.month}`}
@@ -91,7 +104,7 @@ export default async function Overview() {
                     <div
                       className="w-full rounded-t-md bg-primary/80 transition-all hover:bg-primary"
                       style={{ height: `${Math.max(3, h)}%` }}
-                      title={`${formatDistance(Number(m.distance))}`}
+                      title={formatDistance(m.distance)}
                     />
                   </div>
                   <span className="text-[10px] text-muted">
@@ -104,22 +117,20 @@ export default async function Overview() {
         </div>
 
         <div className="mk-card p-5 md:col-span-2">
-          <h2 className="mb-4 text-sm font-semibold text-muted">Top places</h2>
-          {cities.length === 0 ? (
-            <p className="text-sm text-muted">
-              Reverse geocoding is still filling in city names…
-            </p>
+          <h2 className="mb-4 text-sm font-semibold text-muted">Most time spent</h2>
+          {topPlaces.length === 0 ? (
+            <p className="text-sm text-muted">Places appear after your first longer stays.</p>
           ) : (
             <ul className="flex flex-wrap gap-2">
-              {cities.map((c) => (
-                <li
-                  key={c.city}
-                  className="rounded-full border border-border bg-surface-2 px-3 py-1 text-sm"
-                >
-                  {c.city}{" "}
-                  <span className="text-muted">
-                    {Number(c.n).toLocaleString()}
-                  </span>
+              {topPlaces.map((p) => (
+                <li key={p.id}>
+                  <Link
+                    href={`/places/${p.id}`}
+                    className="block rounded-full border border-border bg-surface-2 px-3 py-1 text-sm hover:border-primary/60"
+                  >
+                    {p.name ?? "Unknown place"}{" "}
+                    <span className="text-muted">{Math.round(p.hours)} h</span>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -136,23 +147,25 @@ export default async function Overview() {
       <section className="mt-6">
         <h2 className="mb-3 text-sm font-semibold text-muted">Recent visits</h2>
         <ul className="mk-card divide-y divide-border">
+          {recent.length === 0 && (
+            <li className="px-5 py-3 text-sm text-muted">No visits yet.</li>
+          )}
           {recent.map((v) => (
-            <li key={v.id} className="flex items-center justify-between px-5 py-3">
-              <div className="min-w-0">
-                <p className="truncate font-medium">
-                  {v.name && v.name !== "Unknown Location" ? (
-                    v.name
-                  ) : (
-                    <span className="text-muted">Unknown location</span>
-                  )}
-                </p>
-                <p className="text-xs text-muted">
-                  {new Date(v.started_at).toLocaleString()}
-                </p>
-              </div>
-              <span className="shrink-0 text-sm text-muted">
-                {formatDuration(v.duration)}
-              </span>
+            <li key={v.id}>
+              <Link
+                href={`/places/${v.place_id}`}
+                className="flex items-center justify-between px-5 py-3 hover:bg-surface-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    {v.name ?? <span className="text-muted">Unknown place</span>}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {formatDateShort(v.started_at, tz)} · {formatTime(v.started_at, tz)}
+                  </p>
+                </div>
+                <span className="shrink-0 text-sm text-muted">{formatDuration(v.duration)}</span>
+              </Link>
             </li>
           ))}
         </ul>

@@ -1,5 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
-import { q, USER_ID } from "./db";
+import { randomToken, sha256 } from "./crypto";
+import { q } from "./db";
 
 export type Device = {
   id: string;
@@ -9,59 +9,52 @@ export type Device = {
   revoked_at: Date | null;
 };
 
+export type DeviceAuth = { id: string; name: string; userId: string };
+
 const TOKEN_RE = /^Bearer (mtk_[A-Za-z0-9_-]{43})$/;
 
-const hashToken = (token: string) => createHash("sha256").update(token).digest();
-
-/** `mtk_` + 32 random bytes as base64url (43 chars). */
-function newToken(): string {
-  return `mtk_${randomBytes(32).toString("base64url")}`;
-}
-
-export async function listDevices(): Promise<Device[]> {
+export async function listDevices(userId: string): Promise<Device[]> {
   return q<Device>(
     `SELECT id, name, created_at, last_seen_at, revoked_at
-     FROM matka_devices WHERE user_id = $1
+     FROM devices WHERE user_id = $1
      ORDER BY revoked_at IS NOT NULL, created_at DESC`,
-    [USER_ID],
+    [userId],
   );
 }
 
-/** Creates a device and returns its token. The token is never retrievable again. */
-export async function createDevice(name: string): Promise<{ id: string; token: string }> {
-  const token = newToken();
-  const [row] = await q<{ id: string }>(
-    `INSERT INTO matka_devices (user_id, name, token_hash) VALUES ($1, $2, $3) RETURNING id`,
-    [USER_ID, name, hashToken(token)],
-  );
-  return { id: row.id, token };
+/** Creates a device and returns its token (`mtk_` + 43 chars). Never retrievable again. */
+export async function createDevice(userId: string, name: string): Promise<string> {
+  const token = `mtk_${randomToken()}`;
+  await q(`INSERT INTO devices (user_id, name, token_hash) VALUES ($1, $2, $3)`, [
+    userId,
+    name,
+    sha256(token),
+  ]);
+  return token;
 }
 
-export async function revokeDevice(id: string): Promise<void> {
+export async function revokeDevice(userId: string, id: string): Promise<void> {
   await q(
-    `UPDATE matka_devices SET revoked_at = now()
+    `UPDATE devices SET revoked_at = now()
      WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL`,
-    [id, USER_ID],
+    [id, userId],
   );
 }
 
 /** Resolves `Authorization: Bearer mtk_…` to an active device, or null. */
-export async function authenticateDevice(
-  req: Request,
-): Promise<{ id: string; name: string } | null> {
+export async function authenticateDevice(req: Request): Promise<DeviceAuth | null> {
   const m = TOKEN_RE.exec(req.headers.get("authorization") ?? "");
   if (!m) return null;
-  const [device] = await q<{ id: string; name: string; stale: boolean }>(
-    `SELECT id, name,
+  const [device] = await q<DeviceAuth & { stale: boolean }>(
+    `SELECT id, name, user_id AS "userId",
             (last_seen_at IS NULL OR last_seen_at < now() - interval '1 minute') AS stale
-     FROM matka_devices
-     WHERE token_hash = $1 AND user_id = $2 AND revoked_at IS NULL`,
-    [hashToken(m[1]), USER_ID],
+     FROM devices WHERE token_hash = $1 AND revoked_at IS NULL`,
+    [sha256(m[1])],
   );
   if (!device) return null;
   // Throttled so a chatty collector doesn't write this row on every batch.
   if (device.stale) {
-    await q(`UPDATE matka_devices SET last_seen_at = now() WHERE id = $1`, [device.id]);
+    await q(`UPDATE devices SET last_seen_at = now() WHERE id = $1`, [device.id]);
   }
-  return { id: device.id, name: device.name };
+  return { id: device.id, name: device.name, userId: device.userId };
 }

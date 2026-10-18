@@ -1,4 +1,4 @@
-import { q, USER_ID } from "@/lib/db";
+import { q } from "@/lib/db";
 
 type Row = {
   id: string;
@@ -25,39 +25,23 @@ export interface PlaceListItem {
   lastVisit: string | null;
 }
 
-// Visits link to a place either directly (visits.place_id) or via the
-// place_visits join table. Union both, de-duping per (place, visit) pair,
-// so a visit counted through both paths is only counted once.
-const SQL = `
-  WITH links AS (
-    SELECT place_id, id AS visit_id
-    FROM visits
-    WHERE deleted_at IS NULL AND place_id IS NOT NULL
-    UNION
-    SELECT pv.place_id, pv.visit_id
-    FROM place_visits pv
-    JOIN visits v ON v.id = pv.visit_id AND v.deleted_at IS NULL
-  )
-  SELECT
-    p.id,
-    p.name,
-    p.city,
-    p.country,
-    p.geodata->'properties'->>'osm_value' AS category,
-    count(DISTINCT l.visit_id) AS visit_count,
-    COALESCE(sum(v.duration), 0) AS total_time,
-    max(v.ended_at) AS last_visit
-  FROM places p
-  LEFT JOIN links l ON l.place_id = p.id
-  LEFT JOIN visits v ON v.id = l.visit_id
-  WHERE p.user_id = $1
-  GROUP BY p.id
-  ORDER BY visit_count DESC, last_visit DESC NULLS LAST, p.name ASC
-`;
+/** Display name: the user's rename wins over the geocoder's. */
+export const PLACE_NAME_SQL = `COALESCE(p.custom_name, p.geo_name)`;
 
 /** Shared loader so the list page can render server-side without a self-fetch. */
-export async function getPlaces(): Promise<PlaceListItem[]> {
-  const rows = await q<Row>(SQL, [USER_ID]);
+export async function getPlaces(userId: string): Promise<PlaceListItem[]> {
+  const rows = await q<Row>(
+    `SELECT p.id, ${PLACE_NAME_SQL} AS name, p.city, p.country, p.category,
+            count(v.id) AS visit_count,
+            COALESCE(sum(extract(epoch FROM v.ended_at - v.started_at)), 0) AS total_time,
+            max(v.ended_at) AS last_visit
+     FROM places p
+     LEFT JOIN visits v ON v.place_id = p.id
+     WHERE p.user_id = $1
+     GROUP BY p.id
+     ORDER BY visit_count DESC, last_visit DESC NULLS LAST, name ASC`,
+    [userId],
+  );
   return rows.map((r) => ({
     id: Number(r.id),
     name: r.name,
@@ -65,7 +49,7 @@ export async function getPlaces(): Promise<PlaceListItem[]> {
     country: r.country,
     category: r.category,
     visitCount: Number(r.visit_count),
-    totalTime: Number(r.total_time ?? 0),
+    totalTime: Math.round(Number(r.total_time ?? 0)),
     lastVisit: r.last_visit ? new Date(r.last_visit).toISOString() : null,
   }));
 }

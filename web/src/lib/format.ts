@@ -15,19 +15,35 @@ export function formatDistance(meters: number | null | undefined): string {
   return `${Math.round(meters)} m`;
 }
 
-export function formatTime(iso: string | null | undefined): string {
+// Pass `timeZone` when rendering on the server (the container runs in UTC);
+// in the browser the viewer's own zone is the right default.
+
+export function formatTime(iso: string | Date | null | undefined, timeZone?: string): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], {
+  return new Date(iso).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone,
   });
 }
 
-export function formatDateLong(iso: string | null | undefined): string {
+export function formatDateLong(iso: string | Date | null | undefined, timeZone?: string): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString([], {
+  return new Date(iso).toLocaleDateString("en-GB", {
     weekday: "long",
     day: "numeric",
     month: "long",
+    timeZone,
+  });
+}
+
+export function formatDateShort(iso: string | Date | null | undefined, timeZone?: string): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone,
   });
 }

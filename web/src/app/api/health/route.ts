@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     await Promise.race([
-      pool.query("SELECT 1"),
+      pool().query("SELECT 1"),
       new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
     ]);
     return NextResponse.json({ ok: true }, { headers: { "cache-control": "no-store" } });

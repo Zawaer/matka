@@ -1,6 +1,6 @@
 import { PairDevice } from "@/components/devices/PairDevice";
 import { appUrl, isDeviceSafeUrl } from "@/lib/appUrl";
-import { requireSession } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 import { listDevices, type Device } from "@/lib/devices";
 import { revoke } from "./actions";
 
@@ -10,12 +10,12 @@ export const metadata = {
   title: "Devices — Matka",
 };
 
-const fmt = (d: Date) =>
-  d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Helsinki" });
+const fmt = (d: Date, timeZone: string) =>
+  d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone });
 
 export default async function DevicesPage() {
-  await requireSession();
-  const devices = await listDevices();
+  const user = await requireUser();
+  const devices = await listDevices(user.id);
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8 md:px-10 md:py-10">
@@ -30,14 +30,14 @@ export default async function DevicesPage() {
         {devices.length === 0 ? (
           <p className="px-1 text-sm text-muted">No devices paired yet.</p>
         ) : (
-          devices.map((d) => <DeviceRow key={d.id} device={d} />)
+          devices.map((d) => <DeviceRow key={d.id} device={d} tz={user.timezone} />)
         )}
       </section>
     </div>
   );
 }
 
-function DeviceRow({ device: d }: { device: Device }) {
+function DeviceRow({ device: d, tz }: { device: Device; tz: string }) {
   const revoked = d.revoked_at != null;
   return (
     <div className={`mk-card flex items-center gap-4 px-5 py-4 ${revoked ? "opacity-60" : ""}`}>
@@ -45,10 +45,10 @@ function DeviceRow({ device: d }: { device: Device }) {
         <div className="truncate font-medium">{d.name}</div>
         <div className="text-sm text-muted">
           {revoked
-            ? `Revoked ${fmt(d.revoked_at!)}`
+            ? `Revoked ${fmt(d.revoked_at!, tz)}`
             : d.last_seen_at
-              ? `Last upload ${fmt(d.last_seen_at)}`
-              : `Paired ${fmt(d.created_at)} · not seen yet`}
+              ? `Last upload ${fmt(d.last_seen_at, tz)}`
+              : `Paired ${fmt(d.created_at, tz)} · not seen yet`}
         </div>
       </div>
       {!revoked && (

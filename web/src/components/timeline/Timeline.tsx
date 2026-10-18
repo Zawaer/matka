@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
+import { categoryLabel } from "@/components/places/category";
 import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
 import {
@@ -233,7 +235,7 @@ function VisitRow({
   isFirst: boolean;
   isLast: boolean;
 }) {
-  const name = visit.placeName ?? "Unknown location";
+  const name = visit.placeName ?? categoryLabel(visit.category);
   const unknown = !visit.placeName;
 
   return (
@@ -253,7 +255,9 @@ function VisitRow({
               unknown ? "text-muted" : "text-text"
             }`}
           >
-            {name}
+            <Link href={`/places/${visit.placeId}`} className="hover:text-primary">
+              {name}
+            </Link>
           </h3>
           <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-muted">
             {formatDuration(visit.duration)}

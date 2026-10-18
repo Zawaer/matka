@@ -1,25 +1,33 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { q, USER_ID } from "@/lib/db";
-import { formatDuration } from "@/lib/format";
+import { requireUser } from "@/lib/auth";
+import { q } from "@/lib/db";
+import { formatDateShort, formatDuration, formatTime } from "@/lib/format";
 import { categoryIcon, categoryLabel } from "@/components/places/category";
 import { PhotoGallery } from "@/components/places/PhotoGallery";
+import { renamePlace } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+// Long histories: show the most recent visits, but count them all.
+const VISIT_LIMIT = 200;
+
 type PlaceRow = {
   id: string;
-  name: string | null;
+  custom_name: string | null;
+  geo_name: string | null;
   city: string | null;
   country: string | null;
   category: string | null;
+  visit_count: string;
+  total_time: number;
 };
 
 type VisitRow = {
   id: string;
-  started_at: Date | null;
-  ended_at: Date | null;
-  duration: number | null;
+  started_at: Date;
+  ended_at: Date;
+  duration: number;
 };
 
 export default async function PlaceDetailPage({
@@ -27,39 +35,29 @@ export default async function PlaceDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const user = await requireUser();
+  const tz = user.timezone;
   const { id } = await params;
-  const placeId = Number(id);
-  if (!Number.isFinite(placeId)) notFound();
+  if (!/^\d+$/.test(id)) notFound();
 
   const [place] = await q<PlaceRow>(
-    `SELECT id, name, city, country,
-            geodata->'properties'->>'osm_value' AS category
-     FROM places WHERE id = $1 AND user_id = $2`,
-    [placeId, USER_ID],
+    `SELECT p.id, p.custom_name, p.geo_name, p.city, p.country, p.category,
+            (SELECT count(*) FROM visits v WHERE v.place_id = p.id) AS visit_count,
+            (SELECT COALESCE(sum(extract(epoch FROM v.ended_at - v.started_at)), 0)::float8
+               FROM visits v WHERE v.place_id = p.id) AS total_time
+     FROM places p WHERE p.id = $1 AND p.user_id = $2`,
+    [id, user.id],
   );
   if (!place) notFound();
 
   const visits = await q<VisitRow>(
-    `WITH links AS (
-       SELECT id AS visit_id FROM visits
-       WHERE deleted_at IS NULL AND place_id = $1
-       UNION
-       SELECT pv.visit_id FROM place_visits pv
-       JOIN visits v ON v.id = pv.visit_id AND v.deleted_at IS NULL
-       WHERE pv.place_id = $1
-     )
-     SELECT v.id, v.started_at, v.ended_at, v.duration
-     FROM visits v
-     JOIN links l ON l.visit_id = v.id
-     ORDER BY v.started_at DESC`,
-    [placeId],
+    `SELECT id, started_at, ended_at, extract(epoch FROM ended_at - started_at)::int AS duration
+     FROM visits WHERE place_id = $1 ORDER BY started_at DESC LIMIT $2`,
+    [id, VISIT_LIMIT],
   );
 
-  const totalTime = visits.reduce((s, v) => s + Number(v.duration ?? 0), 0);
-  const name =
-    place.name && place.name !== "Unknown Location"
-      ? place.name
-      : categoryLabel(place.category);
+  const visitCount = Number(place.visit_count);
+  const name = place.custom_name ?? place.geo_name ?? categoryLabel(place.category);
   const locale = [place.city, place.country].filter(Boolean).join(", ");
 
   return (
@@ -78,67 +76,61 @@ export default async function PlaceDetailPage({
         >
           {categoryIcon(place.category)}
         </span>
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-            {name}
-          </h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{name}</h1>
           <p className="mt-1 text-muted">
             {categoryLabel(place.category)}
             {locale ? ` · ${locale}` : ""}
           </p>
           <p className="mt-2 text-sm text-muted">
-            <span className="font-medium text-text">{visits.length}</span>{" "}
-            {visits.length === 1 ? "visit" : "visits"} ·{" "}
-            {formatDuration(totalTime)} total
+            <span className="font-medium text-text">{visitCount}</span>{" "}
+            {visitCount === 1 ? "visit" : "visits"} · {formatDuration(place.total_time)} total
           </p>
+          <details className="mt-3 text-sm">
+            <summary className="cursor-pointer text-muted hover:text-text">Rename</summary>
+            <form action={renamePlace} className="mt-2 flex max-w-md gap-2">
+              <input type="hidden" name="id" value={place.id} />
+              <input
+                name="name"
+                defaultValue={place.custom_name ?? ""}
+                placeholder={place.geo_name ?? "e.g. Home"}
+                maxLength={120}
+                className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 py-1.5 outline-none focus:border-primary"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-primary px-3 py-1.5 font-medium text-white"
+              >
+                Save
+              </button>
+            </form>
+            <p className="mt-1 text-xs text-muted">Leave empty to use the looked-up name.</p>
+          </details>
         </div>
       </header>
 
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold text-muted">Photos</h2>
-        <PhotoGallery placeId={placeId} />
+        <PhotoGallery placeId={Number(place.id)} />
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-muted">Visits</h2>
+        <h2 className="mb-3 text-sm font-semibold text-muted">
+          Visits{visitCount > VISIT_LIMIT ? ` (latest ${VISIT_LIMIT})` : ""}
+        </h2>
         {visits.length === 0 ? (
           <p className="text-sm text-muted">No visits recorded yet.</p>
         ) : (
           <ul className="mk-card divide-y divide-border">
             {visits.map((v) => (
-              <li
-                key={v.id}
-                className="flex items-center justify-between gap-3 px-5 py-3"
-              >
+              <li key={v.id} className="flex items-center justify-between gap-3 px-5 py-3">
                 <div className="min-w-0">
-                  <p className="truncate font-medium">
-                    {v.started_at
-                      ? new Date(v.started_at).toLocaleDateString([], {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "Unknown date"}
-                  </p>
+                  <p className="truncate font-medium">{formatDateShort(v.started_at, tz)}</p>
                   <p className="text-xs text-muted">
-                    {v.started_at
-                      ? new Date(v.started_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "—"}
-                    {v.ended_at
-                      ? ` – ${new Date(v.ended_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}`
-                      : ""}
+                    {formatTime(v.started_at, tz)} – {formatTime(v.ended_at, tz)}
                   </p>
                 </div>
-                <span className="shrink-0 text-sm text-muted">
-                  {formatDuration(v.duration)}
-                </span>
+                <span className="shrink-0 text-sm text-muted">{formatDuration(v.duration)}</span>
               </li>
             ))}
           </ul>

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { apiUser } from "@/lib/auth";
+import { immichFor } from "@/lib/immich";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // Proxies an Immich asset thumbnail/preview so the API key stays server-side.
 // Client requests /api/immich/asset/<id>?size=thumbnail|preview.
@@ -8,14 +11,16 @@ export async function GET(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const base = (process.env.IMMICH_URL ?? "").trim().replace(/\/+$/, "");
-  const key = (process.env.IMMICH_API_KEY ?? "").trim();
-  if (!base || !key) {
+  const user = await apiUser();
+  if (user instanceof NextResponse) return user;
+  const immich = await immichFor(user.id);
+  if (!immich) {
     return NextResponse.json({ error: "Immich not configured" }, { status: 404 });
   }
+  const { base, key } = immich;
 
   const { id } = await ctx.params;
-  if (!/^[A-Za-z0-9-]+$/.test(id)) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
     return NextResponse.json({ error: "Bad asset id" }, { status: 400 });
   }
 

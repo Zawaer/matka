@@ -3,14 +3,8 @@ import { NextResponse } from "next/server";
 import * as client from "openid-client";
 import { appUrl } from "@/lib/appUrl";
 import { isAllowedUser, oidcConfig } from "@/lib/oidc";
-import {
-  LOGIN_COOKIE,
-  SESSION_COOKIE,
-  SESSION_MAX_AGE,
-  cookieOptions,
-  signSession,
-  verifyLoginState,
-} from "@/lib/session";
+import { startSession, upsertUser } from "@/lib/auth";
+import { LOGIN_COOKIE, verifyLoginState } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,12 +43,12 @@ export async function GET(req: Request) {
     return fail(403, "This account is not allowed to use this Matka instance.");
   }
 
-  const name =
-    [claims.name, claims.preferred_username, claims.email].find(
-      (v): v is string => typeof v === "string" && v.length > 0,
-    ) ?? claims.sub;
-
-  const res = NextResponse.redirect(`${appUrl()}${login.next}`);
-  res.cookies.set(SESSION_COOKIE, await signSession({ sub: claims.sub, name }), cookieOptions(SESSION_MAX_AGE));
-  return res;
+  const str = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : null);
+  const userId = await upsertUser(
+    claims.sub,
+    str(claims.email),
+    str(claims.name) ?? str(claims.preferred_username),
+  );
+  await startSession(userId);
+  return NextResponse.redirect(`${appUrl()}${login.next}`);
 }
