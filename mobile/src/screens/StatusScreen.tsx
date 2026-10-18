@@ -4,7 +4,7 @@ import { ago, count, inFuture } from "../format";
 import { displayServer } from "../pairing";
 import { requestIgnoreBatteryOptimizations, openAppSettings } from "../system";
 import { PRESETS, startTracking, stopTracking } from "../tracking";
-import { Banner, Button, Card, Row, s } from "../ui/components";
+import { Banner, Button, Card, PairingLostBanner, Row, s } from "../ui/components";
 import { C } from "../ui/theme";
 import type { CollectorState } from "../ui/useCollectorState";
 import { refreshServerStatus, uploadNow } from "../uploader";
@@ -86,7 +86,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
       <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }}>
         <View>
           <Text style={s.h1}>Matka</Text>
-          <Text style={s.sub}>location collector</Text>
+          <Text style={s.sub}>recorder</Text>
         </View>
         <Text style={s.link} onPress={onSettings} accessibilityRole="button">
           Settings
@@ -99,13 +99,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
           <Button title="Pair with server" onPress={onPair} />
         </Banner>
       ) : state.authLost ? (
-        <Banner tone="bad">
-          <Text style={[s.bannerText, { color: C.danger }]}>
-            Pairing lost — the server rejected this device&apos;s token (revoked?). Uploads are paused; queued points
-            are kept. Pair again from the web app&apos;s Devices page.
-          </Text>
-          <Button title="Re-pair" kind="danger" onPress={onPair} />
-        </Banner>
+        <PairingLostBanner onPair={onPair} />
       ) : null}
 
       {state.trackingEnabled && perm && perm.background !== "granted" ? (

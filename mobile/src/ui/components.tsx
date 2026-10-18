@@ -78,6 +78,19 @@ export function Banner({ tone, children }: { tone: "warn" | "bad" | "info"; chil
   );
 }
 
+/** Shown on every tab after a 401: the token was revoked or is invalid. */
+export function PairingLostBanner({ onPair }: { onPair: () => void }) {
+  return (
+    <Banner tone="bad">
+      <Text style={[s.bannerText, { color: C.danger }]}>
+        Pairing lost — the server rejected this device&apos;s token (revoked?). Uploads are paused; queued points are
+        kept. Pair again from the web app&apos;s Devices page.
+      </Text>
+      <Button title="Re-pair" kind="danger" onPress={onPair} />
+    </Banner>
+  );
+}
+
 export const s = StyleSheet.create({
   card: {
     backgroundColor: C.surface,

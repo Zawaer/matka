@@ -11,11 +11,14 @@ export type StatusResult =
   | { ok: true; status: ServerStatus }
   | { ok: false; unauthorized: boolean; error: string };
 
-async function request(url: string, init: RequestInit): Promise<PostResult> {
+export async function request(url: string, init: RequestInit): Promise<PostResult> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, { ...init, signal: ctl.signal });
+    // credentials: "omit" keeps the shared cookie jar (on Android that is the
+    // WebView's, which holds the map embed cookie) out of API calls, so the
+    // bearer token is the only credential and a 401 really means "token bad".
+    const res = await fetch(url, { ...init, credentials: "omit", signal: ctl.signal });
     const text = await res.text();
     let body: unknown = text;
     try {
@@ -32,7 +35,7 @@ async function request(url: string, init: RequestInit): Promise<PostResult> {
   }
 }
 
-const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}`, Accept: "application/json" });
+export const authHeaders = (token: string) => ({ Authorization: `Bearer ${token}`, Accept: "application/json" });
 
 export function postPoints(p: Pairing, body: string): Promise<PostResult> {
   return request(`${p.server}/api/ingest`, {

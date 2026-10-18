@@ -88,7 +88,9 @@
           "imageWidth": 160,
           "backgroundColor": "#0b1020"
         }
-      ]
+      ],
+      "./plugins/withUserCerts.js",
+      "./plugins/withLowMemoryGradle.js"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
