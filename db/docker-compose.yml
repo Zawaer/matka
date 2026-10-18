@@ -1,0 +1,21 @@
+services:
+  matka_db:
+    image: imresamu/postgis:17-3.5-alpine  # arm64-compatible PostGIS (Apple Silicon); homelab uses postgis/postgis on x86
+    container_name: matka_db
+    environment:
+      POSTGRES_USER: matka
+      POSTGRES_PASSWORD: matka
+      POSTGRES_DB: matka
+    ports:
+      - "5544:5432"
+    volumes:
+      - matka_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matka -d matka"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
+volumes:
+  matka_db_data:
