@@ -10,6 +10,8 @@ export type QueuedPoint = {
   altitude: number | null;
   speed: number | null;
   battery: number | null;
+  /** The phone's motion classification near the fix (modules/matka-activity), if any. */
+  activity: string | null;
 };
 
 /** The wire shape sent in `POST /api/ingest` (`ts` in epoch seconds). */
@@ -21,6 +23,7 @@ export type WirePoint = {
   altitude?: number;
   speed?: number;
   battery?: number;
+  activity?: string;
 };
 
 /** Minimal subset of expo-location's LocationObject that we use. */
@@ -58,7 +61,7 @@ export function batteryPercent(level: number | null | undefined): number | null 
 }
 
 /** Converts a fix to a queue row, or null if it can never be valid. */
-export function fixToPoint(fix: FixLike, battery: number | null = null): QueuedPoint | null {
+export function fixToPoint(fix: FixLike, battery: number | null = null, activity: string | null = null): QueuedPoint | null {
   const { latitude: lat, longitude: lon, accuracy, altitude, speed } = fix.coords ?? ({} as FixLike["coords"]);
   if (!finite(lat) || lat < -90 || lat > 90) return null;
   if (!finite(lon) || lon < -180 || lon > 180) return null;
@@ -72,6 +75,7 @@ export function fixToPoint(fix: FixLike, battery: number | null = null): QueuedP
     altitude: finite(altitude) ? altitude : null,
     speed: finite(speed) && speed >= 0 ? speed : null,
     battery: finite(battery) && battery >= 0 && battery <= 100 ? Math.round(battery) : null,
+    activity: activity || null,
   };
 }
 
@@ -82,6 +86,7 @@ export function toWire(p: QueuedPoint): WirePoint {
   if (p.altitude != null) w.altitude = round1(p.altitude);
   if (p.speed != null) w.speed = round1(p.speed);
   if (p.battery != null) w.battery = p.battery;
+  if (p.activity) w.activity = p.activity;
   return w;
 }
 

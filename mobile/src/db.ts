@@ -27,6 +27,9 @@ function db(): Promise<SQLite.SQLiteDatabase> {
         );
         CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY NOT NULL, v TEXT);
       `);
+      // Added later (motion activity): upgrade existing queues in place.
+      const cols = await d.getAllAsync<{ name: string }>(`PRAGMA table_info(queue)`);
+      if (!cols.some((c) => c.name === "activity")) await d.execAsync(`ALTER TABLE queue ADD COLUMN activity TEXT`);
       return d;
     })().catch((e) => {
       dbPromise = null; // let the next call retry
@@ -38,8 +41,8 @@ function db(): Promise<SQLite.SQLiteDatabase> {
 
 // ---- Queue -----------------------------------------------------------------
 
-const COLS = 7;
-const ROWS_PER_INSERT = 100; // 700 bound params, well under SQLite's limit
+const COLS = 8;
+const ROWS_PER_INSERT = 100; // 800 bound params, well under SQLite's limit
 
 /** Appends points and trims the oldest beyond QUEUE_CAP. Returns how many were trimmed. */
 export async function enqueue(points: QueuedPoint[]): Promise<number> {
@@ -48,9 +51,9 @@ export async function enqueue(points: QueuedPoint[]): Promise<number> {
   for (let i = 0; i < points.length; i += ROWS_PER_INSERT) {
     const chunk = points.slice(i, i + ROWS_PER_INSERT);
     const placeholders = chunk.map(() => `(${Array(COLS).fill("?").join(",")})`).join(",");
-    const params = chunk.flatMap((p) => [p.ts, p.lat, p.lon, p.accuracy, p.altitude, p.speed, p.battery]);
+    const params = chunk.flatMap((p) => [p.ts, p.lat, p.lon, p.accuracy, p.altitude, p.speed, p.battery, p.activity ?? null]);
     await d.runAsync(
-      `INSERT INTO queue (ts, lat, lon, accuracy, altitude, speed, battery) VALUES ${placeholders}`,
+      `INSERT INTO queue (ts, lat, lon, accuracy, altitude, speed, battery, activity) VALUES ${placeholders}`,
       params,
     );
   }
@@ -71,7 +74,7 @@ async function trim(): Promise<number> {
 export async function peek(limit: number): Promise<QueuedPoint[]> {
   const d = await db();
   return d.getAllAsync<QueuedPoint>(
-    `SELECT id, ts, lat, lon, accuracy, altitude, speed, battery FROM queue ORDER BY id LIMIT ?`,
+    `SELECT id, ts, lat, lon, accuracy, altitude, speed, battery, activity FROM queue ORDER BY id LIMIT ?`,
     [limit],
   );
 }

@@ -1,3 +1,4 @@
+import { usableActivity } from "../../modules/matka-activity";
 import { batteryPercent, fixToPoint, toEpochMs, toEpochSeconds, toWire } from "../points";
 
 describe("timestamps", () => {
@@ -45,6 +46,7 @@ describe("fixToPoint / toWire", () => {
       altitude: 14.24,
       speed: 1.33,
       battery: 87,
+      activity: null,
     });
     expect(toWire(p)).toEqual({
       lat: 60.1699,
@@ -72,3 +74,25 @@ describe("fixToPoint / toWire", () => {
     expect(fixToPoint({ ...fix, timestamp: NaN })).toBeNull();
   });
 });
+
+describe("motion activity", () => {
+  it("rides along on the queue row and the wire, only when known", () => {
+    const fix = { timestamp: 1760781600000, coords: { latitude: 60.17, longitude: 24.94, accuracy: 8 } };
+    expect(fixToPoint(fix, 80, "on_bicycle")?.activity).toBe("on_bicycle");
+    expect(fixToPoint(fix, 80)?.activity).toBeNull();
+    expect(toWire(fixToPoint(fix, 80, "in_vehicle")!).activity).toBe("in_vehicle");
+    expect("activity" in toWire(fixToPoint(fix, 80)!)).toBe(false);
+  });
+
+  it("uses a reading only if it's confident and close to the fix", () => {
+    const at = 1760781600000;
+    expect(usableActivity({ type: "on_bicycle", confidence: 70, at }, at + 60_000)).toBe("on_bicycle");
+    // Deferred batch: the reading came after the fix.
+    expect(usableActivity({ type: "in_vehicle", confidence: 70, at: at + 120_000 }, at)).toBe("in_vehicle");
+    expect(usableActivity({ type: "on_bicycle", confidence: 30, at }, at)).toBeNull();
+    expect(usableActivity({ type: "on_bicycle", confidence: 90, at }, at + 4 * 60_000)).toBeNull();
+    expect(usableActivity({ type: "tilting", confidence: 90, at }, at)).toBeNull();
+    expect(usableActivity(null, at)).toBeNull();
+  });
+});
+

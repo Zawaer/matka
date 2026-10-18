@@ -14,7 +14,8 @@
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Matka records your location to build your timeline on your own Matka server.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMotionUsageDescription": "Matka uses motion activity (walking, cycling, in a vehicle) to tell how you travelled, for example a bike ride from a bus ride."
       }
     },
     "android": {
@@ -35,7 +36,8 @@
         "FOREGROUND_SERVICE_LOCATION",
         "POST_NOTIFICATIONS",
         "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-        "CAMERA"
+        "CAMERA",
+        "ACTIVITY_RECOGNITION"
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",

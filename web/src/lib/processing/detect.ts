@@ -35,6 +35,8 @@ export type DPoint = {
   accuracy: number | null;
   /** m/s as reported by the device, if any. */
   speed: number | null;
+  /** The phone's motion classification at this fix, if it sent one. */
+  activity?: string | null;
 };
 
 export type Stay = {
@@ -98,6 +100,33 @@ export function classifyMode(speeds: number[], distance: number, seconds: number
   if (avg < 14 && (!enough || p85 < 20)) return "running";
   if (avg < 28 && (!enough || p85 < 50)) return "cycling";
   return "driving";
+}
+
+/**
+ * The phone's own motion sensing outranks speed where speed can't decide: a
+ * bike and a city bus both average 15-25 km/h. Needs a clear majority among
+ * the fixes that carry an activity, and at least 3 of them; rail and flights
+ * (told apart by speed and distance) stay as they are.
+ */
+export function withActivity(mode: ModeKey, pts: Pick<DPoint, "activity">[]): ModeKey {
+  if (mode === "train" || mode === "flying" || mode === "boat") return mode;
+  const counts = new Map<string, number>();
+  let n = 0;
+  for (const p of pts) {
+    if (!p.activity || p.activity === "still") continue;
+    counts.set(p.activity, (counts.get(p.activity) ?? 0) + 1);
+    n++;
+  }
+  if (n < 3) return mode;
+  const [top, k] = [...counts].sort((a, b) => b[1] - a[1])[0];
+  if (k < 0.6 * n) return mode;
+  if (top === "on_bicycle") return "cycling";
+  if (top === "running") return "running";
+  if (top === "walking") return mode === "driving" ? mode : "walking";
+  // In a vehicle: speed alone may have said bike or run; HSL matching later
+  // tells bus, tram or metro apart.
+  if (top === "in_vehicle") return mode === "cycling" || mode === "running" || mode === "walking" ? "driving" : mode;
+  return mode;
 }
 
 /**
@@ -242,7 +271,7 @@ export class Detector {
       start,
       end,
       distance,
-      mode: classifyMode(speeds, distance, end - start),
+      mode: withActivity(classifyMode(speeds, distance, end - start), pts),
       path: pts.map((p) => [p.lon, p.lat]),
       count: pts.length,
     };

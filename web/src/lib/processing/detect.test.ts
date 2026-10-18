@@ -130,3 +130,19 @@ describe("classifyMode", () => {
     expect(classifyMode([], 398_000, 63 * 60)).toBe("flying");
   });
 });
+
+describe("withActivity", async () => {
+  const { withActivity } = await import("./detect");
+  const pts = (...a: (string | null)[]) => a.map((activity) => ({ activity }));
+  it("lets the phone's motion sensing decide what speed can't", () => {
+    expect(withActivity("cycling", pts("in_vehicle", "in_vehicle", "in_vehicle", "on_bicycle"))).toBe("driving");
+    expect(withActivity("driving", pts("on_bicycle", "on_bicycle", "on_bicycle", null, "still"))).toBe("cycling");
+    expect(withActivity("cycling", pts("running", "running", "running"))).toBe("running");
+  });
+  it("needs a clear majority of at least 3 readings, and leaves rail and flights alone", () => {
+    expect(withActivity("cycling", pts("in_vehicle", "in_vehicle"))).toBe("cycling");
+    expect(withActivity("cycling", pts("in_vehicle", "on_bicycle", "in_vehicle", "on_bicycle"))).toBe("cycling");
+    expect(withActivity("train", pts("in_vehicle", "in_vehicle", "in_vehicle"))).toBe("train");
+    expect(withActivity("flying", pts("still", "still", "still"))).toBe("flying");
+  });
+});

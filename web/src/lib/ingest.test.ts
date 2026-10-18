@@ -29,7 +29,7 @@ describe("parseFix", () => {
   });
   it("nulls bad optional fields instead of rejecting", () => {
     expect(parseFix({ lat: 60, lon: 24, ts: S, speed: -1, battery: 140, accuracy: -3 }, NOW)).toEqual({
-      lat: 60, lon: 24, ts: S, speed: null, battery: null, accuracy: null, altitude: null,
+      lat: 60, lon: 24, ts: S, speed: null, battery: null, accuracy: null, altitude: null, activity: null,
     });
     expect(parseFix({ lat: 60, lon: 24, ts: S, battery: 86.6, altitude: 12.5 }, NOW)).toMatchObject({
       battery: 87, altitude: 12.5,
@@ -54,3 +54,14 @@ describe("parseBatch", () => {
     expect(r.fixes.map((f) => [f.lat, f.ts])).toEqual([[60, S], [60, S + 1]]);
   });
 });
+
+describe("activity", () => {
+  it("keeps known activities and drops anything else", async () => {
+    const { parseFix } = await import("./ingest");
+    const base = { lat: 60.17, lon: 24.94, ts: 1_760_000_000 };
+    expect(parseFix({ ...base, activity: "on_bicycle" }, 1_760_000_100_000)?.activity).toBe("on_bicycle");
+    expect(parseFix({ ...base, activity: "zeppelin" }, 1_760_000_100_000)?.activity).toBeNull();
+    expect(parseFix(base, 1_760_000_100_000)?.activity).toBeNull();
+  });
+});
+

@@ -15,7 +15,13 @@ export type Fix = {
   altitude: number | null;
   speed: number | null;
   battery: number | null;
+  /** The phone's motion classification (docs/API.md), if sent. */
+  activity: Activity | null;
 };
+
+export const ACTIVITIES = ["still", "walking", "running", "on_bicycle", "in_vehicle"] as const;
+export type Activity = (typeof ACTIVITIES)[number];
+const isActivity = (v: unknown): v is Activity => typeof v === "string" && (ACTIVITIES as readonly string[]).includes(v);
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -32,7 +38,7 @@ export function toEpochSeconds(ts: unknown, now = Date.now()): number | null {
 /** One fix: required fields must be valid; bad optional fields become null. */
 export function parseFix(p: unknown, now = Date.now()): Fix | null {
   if (typeof p !== "object" || p === null) return null;
-  const { lat, lon, ts, accuracy, altitude, speed, battery } = p as Record<string, unknown>;
+  const { lat, lon, ts, accuracy, altitude, speed, battery, activity } = p as Record<string, unknown>;
   if (!finite(lat) || lat < -90 || lat > 90) return null;
   if (!finite(lon) || lon < -180 || lon > 180) return null;
   const t = toEpochSeconds(ts, now);
@@ -45,6 +51,7 @@ export function parseFix(p: unknown, now = Date.now()): Fix | null {
     altitude: finite(altitude) ? altitude : null,
     speed: finite(speed) && speed >= 0 ? speed : null,
     battery: finite(battery) && battery >= 0 && battery <= 100 ? Math.round(battery) : null,
+    activity: isActivity(activity) ? activity : null,
   };
 }
 

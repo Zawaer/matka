@@ -49,11 +49,18 @@ Upload a batch of fixes.
       "accuracy": 12.5,      // optional, metres (horizontal)
       "altitude": 14.2,      // optional, metres
       "speed": 1.3,          // optional, m/s (negative = unknown, ignored)
-      "battery": 87          // optional, 0..100
+      "battery": 87,         // optional, 0..100
+      "activity": "on_bicycle" // optional: still | walking | running | on_bicycle | in_vehicle
     }
   ]
 }
 ```
+
+`activity` is the phone's own motion classification when the fix was taken (Android
+Activity Recognition, iOS Core Motion): send it only when the OS is reasonably confident
+and the reading is fresh (the Matka app: confidence ≥ 50%, under 3 minutes old). Unknown
+values are ignored like other invalid optional fields. It decides between modes that
+speed can't tell apart, e.g. a bike and a city bus.
 
 Limits: at most **1000 points** and **1 MB** per request.
 

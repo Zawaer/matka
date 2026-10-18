@@ -21,6 +21,7 @@ const pt = (id: number): QueuedPoint => ({
   altitude: null,
   speed: null,
   battery: 80,
+  activity: null,
 });
 
 const receipt = (n: number) => ({ received: n, inserted: n, duplicates: 0, rejected: 0 });

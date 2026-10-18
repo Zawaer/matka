@@ -12,7 +12,7 @@ const WORK = { lat: 60.2, lon: 24.94 };
 const T0 = 1_760_000_000;
 
 const fix = (ts: number, lat: number, lon: number): Fix => ({
-  ts, lat, lon, accuracy: 10, altitude: null, speed: null, battery: null,
+  ts, lat, lon, accuracy: 10, altitude: null, speed: null, battery: null, activity: null,
 });
 
 function dwell(start: number, secs: number, s: typeof HOME) {

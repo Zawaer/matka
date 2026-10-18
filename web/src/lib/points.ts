@@ -18,11 +18,11 @@ export async function insertPoints(
     await c.query(`SELECT pg_advisory_xact_lock_shared(hashtext('matka_ingest'), $1::int)`, [userId]);
     const res = await c.query<{ min: Date | null; n: string }>(
       `WITH ins AS (
-         INSERT INTO points (user_id, device_id, source, ts, geom, accuracy, altitude, speed, battery)
+         INSERT INTO points (user_id, device_id, source, ts, geom, accuracy, altitude, speed, battery, activity)
          SELECT $1, $2, $3, to_timestamp(t.ts), ST_SetSRID(ST_MakePoint(t.lon, t.lat), 4326)::geography,
-                t.accuracy, t.altitude, t.speed, t.battery
-         FROM unnest($4::float8[], $5::float8[], $6::int8[], $7::real[], $8::real[], $9::real[], $10::int2[])
-           AS t(lon, lat, ts, accuracy, altitude, speed, battery)
+                t.accuracy, t.altitude, t.speed, t.battery, t.activity
+         FROM unnest($4::float8[], $5::float8[], $6::int8[], $7::real[], $8::real[], $9::real[], $10::int2[], $11::text[])
+           AS t(lon, lat, ts, accuracy, altitude, speed, battery, activity)
          ON CONFLICT (user_id, ts) DO NOTHING
          RETURNING ts
        )
@@ -38,6 +38,7 @@ export async function insertPoints(
         fixes.map((f) => f.altitude),
         fixes.map((f) => f.speed),
         fixes.map((f) => f.battery),
+        fixes.map((f) => f.activity ?? null),
       ],
     );
     const { min, n } = res.rows[0];

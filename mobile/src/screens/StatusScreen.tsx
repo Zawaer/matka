@@ -150,6 +150,19 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         </View>
         <Row label="Location permission" value={permText} tone={permTone} />
         <Row label="Last fix" value={ago(state.lastFixAt)} tone={state.lastFixAt ? undefined : "dim"} />
+        {state.activityStatus ? (
+          <Row
+            label="Motion detection"
+            value={
+              state.activityStatus === "on"
+                ? "On (tells bike from bus)"
+                : state.activityStatus === "denied"
+                  ? "Not allowed: Settings → Permissions → Physical activity"
+                  : "Not available on this phone"
+            }
+            tone={state.activityStatus === "on" ? "ok" : "dim"}
+          />
+        ) : null}
       </Panel>
 
       <Panel title="Upload">

@@ -26,6 +26,8 @@ export type CollectorState = {
   oldestQueued: number | null;
   droppedOverflow: number;
   lastFixAt: number | null;
+  /** Motion activity updates: "on" | "denied" | "unavailable", or null before the first start. */
+  activityStatus: string | null;
   lastAttemptAt: number | null;
   lastSuccessAt: number | null;
   lastError: string | null;
@@ -72,6 +74,7 @@ export async function readState(): Promise<CollectorState> {
     oldestQueued,
     droppedOverflow: num(kv.dropped_overflow) ?? 0,
     lastFixAt: num(kv.last_fix_at),
+    activityStatus: kv.activity_status ?? null,
     lastAttemptAt: num(kv.last_attempt_at),
     lastSuccessAt: num(kv.last_success_at),
     lastError: kv.last_error ?? null,

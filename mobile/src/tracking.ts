@@ -10,6 +10,7 @@ import * as TaskManager from "expo-task-manager";
 import { PermissionsAndroid, Platform } from "react-native";
 import * as db from "./db";
 import { batteryPercent, fixToPoint, type QueuedPoint } from "./points";
+import { currentActivity, startActivityUpdates, stopActivityUpdates } from "../modules/matka-activity";
 import { maybeUploadFromTask } from "./uploader";
 
 export const TASK = "matka-bg-location";
@@ -105,7 +106,7 @@ TaskManager.defineTask<{ locations?: Location.LocationObject[] }>(TASK, async ({
       // battery is optional
     }
     const points = locations
-      .map((l) => fixToPoint(l, battery))
+      .map((l) => fixToPoint(l, battery, currentActivity(l.timestamp)))
       .filter((p): p is QueuedPoint => p != null);
     await db.enqueue(points);
     if (points.length > 0) await db.setNum("last_fix_at", Math.max(...points.map((p) => p.ts)));
@@ -203,12 +204,15 @@ export async function startTracking(): Promise<StartResult> {
     return { ok: false, error: `Couldn't start location updates: ${String(e)}` };
   }
   await db.setKv("tracking_enabled", "1");
+  // Motion activity (bike vs bus): asked for once; tracking works without it.
+  await db.setKv("activity_status", await startActivityUpdates(true));
   return { ok: true };
 }
 
 export async function stopTracking(): Promise<void> {
   await db.setKv("tracking_enabled", "0");
   if (await isTrackingRunning()) await Location.stopLocationUpdatesAsync(TASK);
+  await stopActivityUpdates();
 }
 
 export async function setPreset(preset: PresetKey): Promise<void> {
@@ -227,6 +231,8 @@ export async function resumeTracking(): Promise<string | null> {
   if (perm.foreground !== "granted" || perm.background !== "granted") {
     return "Tracking is on, but background location permission was revoked.";
   }
+  // Re-subscribe to motion activity without prompting (updates don't survive a reboot).
+  await db.setKv("activity_status", await startActivityUpdates(false));
   const preset = await getPreset();
   const running = await isTrackingRunning();
   const applied = await db.getKv("applied_preset");

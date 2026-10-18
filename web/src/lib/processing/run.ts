@@ -69,7 +69,7 @@ export async function processUser(userId: string): Promise<number> {
       const rows = (
         await c.query<PointRow>(
           `SELECT id, extract(epoch FROM ts)::float8 AS ts,
-                  ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon, accuracy, speed
+                  ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon, accuracy, speed, activity
            FROM points
            WHERE user_id = $1 AND ts > $2 AND id <= $3
            ORDER BY ts LIMIT $4`,
