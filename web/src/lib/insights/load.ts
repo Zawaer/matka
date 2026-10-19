@@ -148,3 +148,15 @@ export async function getWorld(user: User, sort: WorldSort = "visits") {
 export async function getCity(user: User, city: string, country: string | null) {
   return cityPlaces(await getPlaces(user.id), city, country);
 }
+
+/** A trip with ISO timestamps, as the API returns it. */
+export function tripJson(t: AwayTrip, withDays = false) {
+  const { dayList, departure, arrival, cities, ...rest } = t;
+  return {
+    ...rest,
+    departure: new Date(departure).toISOString(),
+    arrival: arrival == null ? null : new Date(arrival).toISOString(),
+    cities: cities.map((c) => ({ ...c, firstSeen: new Date(c.firstSeen).toISOString() })),
+    ...(withDays ? { dayList } : {}),
+  };
+}

@@ -103,6 +103,12 @@ ISO-8601 UTC; durations seconds; distances metres.
 | `GET /api/overview` | `{ totals: {points, visits, trips, days, distance, first, last}, months: [{year, month, distance}] (last 12), topPlaces: [{id, name, hours}], recent: [{id, placeId, name, startedAt, duration}] }` |
 | `GET /api/timeline[?date=YYYY-MM-DD]` | `{ day: {date, items: [{kind:"visit", visit:{id, startedAt, endedAt, duration, placeId, placeName, category, lat, lon}} \| {kind:"move", track:{id, startedAt, endedAt, distance, duration, mode}}]}, dates: [...], minDate, maxDate }`. Days are in the account's time zone; without `date`, the latest day with data. `mode` is one of `walking, running, cycling, driving, bus, train, flying, boat, motorcycle, stationary, unknown`. |
 | `GET /api/places` | `{ places: [{id, name, city, country, category, visitCount, totalTime, lastVisit}] }`; `name` may be null (unknown), `category` is an OSM value like `cafe`. |
+| `GET /api/day-summary?date=YYYY-MM-DD` | `{ date, distance, duration, modes: [{mode, distance, duration, count}] }` for one local day, modes largest distance first. A trip crossing midnight is split between the days by time (distance pro rata). |
+| `GET /api/insights/modes[?month=YYYY-MM]` | `{ month, distance, duration, modes: [{mode, distance, duration, count, history: [{month, distance, duration}]}], historyMonths, firstMonth, lastMonth }`. Default month: the latest with trips. `history` is the six months ending at `month`, oldest first; `modes` lists every mode used in those six months (zeros included) in a fixed order. |
+| `GET /api/insights/trips` | `{ home: {lat, lon, nights, city, country} \| null, trips: [{id, name, startDate, endDate, days, nights, departure, arrival, cities: [{city, country, duration, firstSeen, away}], countries, distance, duration, modes}] }`, newest first. |
+| `GET /api/insights/trips/:id` | `{ trip }` as above plus `dayList: [{date, distance, duration, modes, cities}]`; `404` for an unknown id. |
+| `GET /api/insights/world[?sort=visits\|places\|time\|recent\|name]` | `{ countries: [{name, places, visits, duration, lastVisit, cities}], cities: [{name, country, places, visits, duration, lastVisit}], unplaced }`. |
+| `GET /api/insights/world?city=…&country=…` | `{ city, country, places: [...] }`, the `/api/places` item shape, most visited first. |
 | `GET /api/places/:id/photos` | `{ configured, photos: [{id, thumbUrl, takenAt}] }`; `thumbUrl` is a path on the server, fetch it with the bearer header. |
 
 Same `401` rule as ingest: a request carrying `Authorization` is judged on that token
@@ -111,6 +117,16 @@ because on Android `fetch` shares the WebView's cookie jar.
 
 Details:
 - `topPlaces` and `recent` hold at most 8 entries; `hours` is fractional.
+- Insight modes are the displayed ones: with transit lines on, a trip at least half covered by matched
+  transit legs counts as the kind covering most of it (`tram`, `metro` can then appear too).
+- Trips (`/api/insights/trips`) are found automatically: home is where most nights (00:00–06:00 local)
+  are spent; a trip is a run of nights more than 30 km from home, from leaving home to getting back.
+  `id` is the trip's first day (`YYYY-MM-DD`), stable as long as that day doesn't change. `arrival` is
+  null while still away. `startDate`/`endDate`/`dayList[].date` are local dates; `departure`, `arrival`
+  and `firstSeen` are ISO instants.
+- World entries count places with at least one visit, grouped by the geocoder's `city`/`country`;
+  `unplaced` counts places with neither.
+- Months and days follow the account's time zone. Bad `date`/`month`/`sort` values get `400`.
 - With no data yet, the timeline returns `day.date: ""`, `dates: []` and `minDate`/`maxDate: null`.
 - On a server error these return `500 {"error": "…"}` (`/api/places` also includes `places: []`);
   treat that like any 5xx and retry later.
