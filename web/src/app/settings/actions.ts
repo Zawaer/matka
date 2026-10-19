@@ -32,6 +32,21 @@ export async function saveTransit(_prev: FormResult, form: FormData): Promise<Fo
   };
 }
 
+export async function savePhotoPoints(_prev: FormResult, form: FormData): Promise<FormResult> {
+  const user = await requireUser();
+  const on = form.get("photo_points") === "on";
+  await q(`UPDATE users SET photo_points = $2 WHERE id = $1`, [user.id, on]);
+  if (on) await q(`DELETE FROM import_state WHERE source = $1`, [`immich-photos:${user.id}`]);
+  else await q(`DELETE FROM points WHERE user_id = $1 AND source = 'photo'`, [user.id]).then(() =>
+    q(`UPDATE processing_state SET dirty_from = '-infinity' WHERE user_id = $1`, [user.id]),
+  );
+  revalidatePath("/settings");
+  return {
+    ok: true,
+    message: on ? "On. Photo locations are read in the background." : "Off. Photo locations were removed from your history.",
+  };
+}
+
 export async function saveImmich(_prev: FormResult, form: FormData): Promise<FormResult> {
   const user = await requireUser();
   if (form.get("disconnect")) {

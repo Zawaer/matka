@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { saveImmich, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
+import { saveImmich, savePhotoPoints, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
 
 const input =
   "mt-1.5 block w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-primary";
@@ -110,6 +110,36 @@ export function TransitForm({ on, available }: { on: boolean; available: boolean
       )}
       <div className="flex items-center gap-3">
         <button className={button} disabled={pending || !available}>
+          Save
+        </button>
+        <Result r={r} />
+      </div>
+    </form>
+  );
+}
+
+export function PhotoPointsForm({ on }: { on: boolean }) {
+  const [r, action, pending] = useActionState<FormResult, FormData>(savePhotoPoints, null);
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <label className="flex items-start gap-3 text-sm">
+        <input
+          type="checkbox"
+          name="photo_points"
+          defaultChecked={on}
+          className="mt-0.5 h-4 w-4 accent-[color:var(--mk-primary)]"
+        />
+        <span>
+          <span className="font-medium">Fill gaps from photo locations</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            A geotagged photo shows where you were when you took it. Where nothing was recorded
+            (before you used Matka, or with the phone off), those spots are added to your history.
+            Screenshots and saved images are ignored. Turning this off removes them again.
+          </span>
+        </span>
+      </label>
+      <div className="flex items-center gap-3">
+        <button className={button} disabled={pending}>
           Save
         </button>
         <Result r={r} />

@@ -1,4 +1,4 @@
-import { ImmichForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
+import { ImmichForm, PhotoPointsForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
 import { configuredFeeds } from "@/lib/transit/feed";
 import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
@@ -13,8 +13,8 @@ export const metadata = {
 export default async function SettingsPage() {
   const user = await requireUser();
   const [[row], [{ sessions }]] = await Promise.all([
-    q<{ immich_url: string | null; has_key: boolean }>(
-      `SELECT immich_url, immich_api_key IS NOT NULL AS has_key FROM users WHERE id = $1`,
+    q<{ immich_url: string | null; has_key: boolean; photo_points: boolean }>(
+      `SELECT immich_url, immich_api_key IS NOT NULL AS has_key, photo_points FROM users WHERE id = $1`,
       [user.id],
     ),
     q<{ sessions: string }>(
@@ -46,6 +46,11 @@ export default async function SettingsPage() {
 
         <Section title="Immich photos">
           <ImmichForm url={row.immich_url} connected={row.has_key} />
+          {row.has_key && (
+            <div className="mt-5 border-t border-border pt-5">
+              <PhotoPointsForm on={row.photo_points} />
+            </div>
+          )}
         </Section>
 
         <Section title="Your data">
