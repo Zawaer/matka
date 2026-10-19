@@ -79,7 +79,8 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": false
+            "usesCleartextTraffic": false,
+            "extraProguardRules": "# WorkManager (expo-background-task) builds its Room database by reflection;\n# R8 stripping it crashed the app at startup.\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.** { *; }\n-keep class androidx.room.** { *; }\n-dontwarn androidx.work.**"
           }
         }
       ],
