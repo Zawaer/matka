@@ -278,3 +278,32 @@ Code map:
 | `src/ui/session.tsx` | viewer context (pairing, 401 handling), `useViewerQuery` |
 | `src/screens/*` | Overview, Timeline, Places, Map; Status, Pair (QR / manual), Settings |
 | `plugins/*` | config plugins, see *Config plugins* |
+
+## Release signing
+
+Release builds are signed with your own upload key when the build machine has
+`~/.matka/signing.properties` (or a file named by `$MATKA_SIGNING_FILE`); see
+`plugins/withReleaseSigning.js`. Without it they fall back to React Native's
+public debug key, with a warning in the build log. Set
+`MATKA_REQUIRE_RELEASE_KEY=1` in the build job to fail instead.
+
+Create the key once, on the build machine, and back up the `.jks` file and
+its passwords (a password manager is fine). A lost key means every phone has
+to uninstall and re-pair to take the next update.
+
+```sh
+mkdir -p ~/.matka && chmod 700 ~/.matka
+keytool -genkeypair -v -keystore ~/.matka/matka-release.jks -alias matka \
+  -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Matka"
+cat > ~/.matka/signing.properties <<EOF
+storeFile=$HOME/.matka/matka-release.jks
+storePassword=<the store password you chose>
+keyAlias=matka
+keyPassword=<the key password you chose>
+EOF
+chmod 600 ~/.matka/signing.properties ~/.matka/matka-release.jks
+```
+
+Switching an installed app from the debug key to this key needs one
+uninstall + reinstall (Android refuses updates signed with a different key):
+upload pending points first, then re-pair after installing.

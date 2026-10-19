@@ -93,7 +93,8 @@
       ],
       "expo-font",
       "./plugins/withUserCerts.js",
-      "./plugins/withLowMemoryGradle.js"
+      "./plugins/withLowMemoryGradle.js",
+      "./plugins/withReleaseSigning.js"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
