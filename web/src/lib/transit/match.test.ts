@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { badgeColors } from "./colors";
 import { parseCsv } from "./feed";
-import { TransitIndex, kindOfRouteType, matchLegs, type Shape, type TrackPoint } from "./match";
+import { TransitIndex, kindOfRouteType, matchLegs, resolveRides, type Leg, type Shape, type TrackPoint } from "./match";
 import { displayMode } from "./run";
 
 // A straight east-west street in Helsinki, ~5.5 km long.
@@ -62,6 +62,104 @@ describe("matchLegs", () => {
     const legs = matchLegs(index, [...first, gap, gap, gap, ...rest]);
     expect(legs).toHaveLength(1);
     expect(legs[0].lines[0]).toBe("159");
+  });
+});
+
+describe("one vehicle, one line", () => {
+  // A second area so these shapes don't touch the ones above.
+  const Y = 60.2;
+  const east = (lat: number, from: number, n: number): [number, number][] =>
+    Array.from({ length: n }, (_, i) => [24.85 + (from + i) * 0.002, lat]);
+  const north = (lon: number, lat: number, n: number): [number, number][] =>
+    Array.from({ length: n }, (_, i) => [lon, lat + i * 0.001]);
+  const main = east(Y, 0, 51); // ~5.5 km
+  const detour = east(Y + 0.0008, 20, 15); // 90 m north of the middle
+  const a = east(Y + 0.05, 0, 16); // three lines end to end, turning north in the middle
+  const b = north(a[15][0], Y + 0.05, 16);
+  const c = east(b[15][1], 15, 16);
+  const idx = new TransitIndex(
+    [
+      { key: "main", kind: "bus", line: "90N", coords: main },
+      { key: "detour", kind: "bus", line: "80", coords: detour },
+      { key: "corr1", kind: "bus", line: "118N", coords: main.slice(0, 9) },
+      { key: "corr2", kind: "bus", line: "164", coords: main.slice(0, 9) },
+      { key: "mid", kind: "bus", line: "119", coords: main.slice(15, 35) },
+      { key: "a", kind: "bus", line: "121A", coords: a },
+      { key: "b", kind: "bus", line: "158", coords: b },
+      { key: "c", kind: "bus", line: "124", coords: c },
+    ],
+    [],
+  );
+  /** Points along coords every `every` coords, `secs` apart, from t0. */
+  const along = (coords: [number, number][], secs: number, t0: number, every = 1, dLat = 0.0001): TrackPoint[] =>
+    coords.filter((_, i) => i % every === 0).map(([lon, lat], k) => ({ lon, lat: lat + dLat, ts: t0 + k * secs }));
+  const T0 = 1_760_000_000;
+  const cont = (p: TrackPoint[], secs: number) => p[p.length - 1].ts + secs;
+
+  it("absorbs a short leg sandwiched between two legs of the same line", () => {
+    // 11 s per 111 m is ~36 km/h; the middle stretch wanders 100 m off onto line 80.
+    const p1 = along(main.slice(0, 19), 11, T0);
+    const p2 = along(detour, 11, cont(p1, 11));
+    const p3 = along(main.slice(36), 11, cont(p2, 11));
+    const legs = matchLegs(idx, [...p1, ...p2, ...p3]);
+    expect(legs).toHaveLength(1);
+    expect(legs[0].lines).toEqual(["90N"]);
+    expect(legs[0].distanceM).toBeGreaterThan(5000);
+  });
+
+  it("drops a chain of different lines that never stops: that is a car", () => {
+    const p1 = along(a, 11, T0);
+    const p2 = along(b.slice(1), 11, cont(p1, 11));
+    const p3 = along(c.slice(1), 11, cont(p2, 11));
+    expect(matchLegs(idx, [...p1, ...p2, ...p3])).toEqual([]);
+  });
+
+  it("keeps a real transfer: off one bus, three minutes at the stop, onto another", () => {
+    const p1 = along(a, 11, T0);
+    const wait = Array.from({ length: 12 }, (_, k) => ({ lon: a[15][0] + (k % 2) * 0.0002, lat: a[15][1] + 0.0002, ts: cont(p1, 15 * (k + 1)) }));
+    const p2 = along(b.slice(1), 11, cont(wait, 11));
+    const wait2 = wait.map((w) => ({ ...w, lon: b[15][0], lat: b[15][1], ts: w.ts - wait[0].ts + cont(p2, 15) }));
+    const p3 = along(c.slice(1), 11, cont(wait2, 11));
+    const legs = matchLegs(idx, [...p1, ...wait, ...p2, ...wait2, ...p3]);
+    expect(legs.map((l) => l.lines[0])).toEqual(["121A", "158", "124"]);
+  });
+
+  it("keeps a bus to metro change even when GPS shows no wait (stations are underground)", () => {
+    const p1 = along(a, 11, T0);
+    const p2 = along(b.slice(1), 8, cont(p1, 30)); // 30 s after the bus, never slow in between
+    const legs = matchLegs(
+      new TransitIndex(
+        [
+          { key: "a", kind: "bus", line: "121A", coords: a },
+          { key: "bm", kind: "metro", line: "M1", coords: b },
+        ],
+        [],
+      ),
+      [...p1, ...p2],
+    );
+    expect(legs.map((l) => `${l.kind} ${l.lines[0]}`)).toEqual(["bus 121A", "metro M1"]);
+  });
+
+  it("prefers the line that explains the whole ride over short or shared legs on it", () => {
+    // The 125N pattern: a shared terminal corridor, a leg that only matched
+    // another line, then the line itself, all one vehicle.
+    const pts = along(main, 12, T0);
+    const at = (i: number) => pts[i].ts;
+    const leg = (lines: string[], i: number, j: number, distanceM: number): Leg => ({
+      kind: "bus",
+      lines,
+      fromStop: null,
+      toStop: null,
+      start: at(i),
+      end: at(j),
+      distanceM,
+    });
+    const legs = resolveRides(idx, pts, [leg(["118N", "90N", "164"], 0, 8, 900), leg(["119"], 16, 34, 2000), leg(["90N"], 36, 50, 1550)]);
+    expect(legs).toHaveLength(1);
+    expect(legs[0].lines).toEqual(["90N"]);
+    expect(legs[0].start).toBe(at(0));
+    expect(legs[0].end).toBe(at(50));
+    expect(legs[0].distanceM).toBeGreaterThan(5000); // the span along 90N, not the sum of the pieces
   });
 });
 

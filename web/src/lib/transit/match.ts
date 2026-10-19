@@ -5,7 +5,8 @@
 // noise and metro tunnels) and the position along that shape keeps moving
 // forward. A leg counts when it covers MIN_LEG_M along the shape at vehicle
 // speed, so walking along a bus route isn't "riding the bus". Shared corridors
-// keep every line that fits, best first. Pure: no I/O.
+// keep every line that fits, best first. Legs not separated by a transfer
+// dwell must be one line (resolveRides). Pure: no I/O.
 
 export type TransitKind = "bus" | "tram" | "metro" | "train" | "boat";
 
@@ -29,6 +30,15 @@ const MAX_MISSES = 2;
 /** Slower than this over a whole leg is walking next to the route. */
 const MIN_LEG_KMH = 9;
 const STOP_RADIUS_M = 250;
+/** A transfer: this long without getting further than DWELL_KMH allows (MIN_LEG_KMH: slower than any ride). */
+const TRANSFER_DWELL_S = 90;
+const DWELL_KMH = 9;
+const DWELL_RADIUS_M = 600; // just bounds the search
+/** How far into the legs on either side of a junction a transfer dwell may sit. */
+const DWELL_MARGIN_S = 300;
+/** A line "explains" a leg when this share of its points lie within LOOSE_M of it. */
+const LOOSE_M = 150;
+const EXPLAINED_SHARE = 0.8;
 const STEP_M = 25;
 const CELL_LAT = 0.001;
 const CELL_LON = 0.002;
@@ -89,16 +99,18 @@ export class TransitIndex {
     return lon >= w - 0.05 && lon <= e + 0.05 && lat >= s - 0.05 && lat <= n + 0.05;
   }
 
-  /** Shapes within NEAR_M of the point: shape index -> position along it (m). */
-  near(lat: number, lon: number): Map<number, number> {
+  /** Shapes within `radius` of the point: shape index -> position along it (m). */
+  near(lat: number, lon: number, radius = NEAR_M): Map<number, number> {
     const best = new Map<number, { d: number; along: number }>();
     const ci = Math.floor(lat / CELL_LAT);
     const cj = Math.floor(lon / CELL_LON);
-    for (let di = -1; di <= 1; di++)
-      for (let dj = -1; dj <= 1; dj++)
+    const ri = Math.ceil(radius / (CELL_LAT * 111_320));
+    const rj = Math.ceil(radius / (CELL_LON * 111_320 * Math.cos((lat * Math.PI) / 180)));
+    for (let di = -ri; di <= ri; di++)
+      for (let dj = -rj; dj <= rj; dj++)
         for (const p of this.grid.get(`${ci + di}:${cj + dj}`) ?? []) {
           const d = dist(lat, lon, p.lat, p.lon);
-          if (d > NEAR_M) continue;
+          if (d > radius) continue;
           const cur = best.get(p.s);
           if (!cur || d < cur.d) best.set(p.s, { d, along: p.along });
         }
@@ -178,7 +190,7 @@ export function matchLegs(index: TransitIndex, pts: TrackPoint[]): Leg[] {
       i++;
     }
   }
-  return mergeLegs(legs);
+  return resolveRides(index, pts, mergeLegs(legs));
 }
 
 /**
@@ -201,6 +213,159 @@ function mergeLegs(legs: Leg[]): Leg[] {
     } else out.push({ ...l });
   }
   return out;
+}
+
+/**
+ * Changing vehicles takes a stop: getting off, walking, waiting. Legs with no
+ * such dwell between them were one vehicle, so they must be one line. When a
+ * line explains all of them (it is on every leg, the leg is sandwiched between
+ * two of its legs, or the leg's points lie along it anyway) they become one
+ * leg of that line; when none does, the "ride" changed line without ever
+ * stopping, which is a car following bus streets, and the legs are dropped
+ * (buses and trams only; see below).
+ */
+export function resolveRides(index: TransitIndex, pts: TrackPoint[], legs: Leg[]): Leg[] {
+  const groups: Leg[][] = [];
+  for (const l of legs) {
+    const g = groups[groups.length - 1];
+    const prev = g?.[g.length - 1];
+    if (prev && !hasDwell(pts, prev.end - DWELL_MARGIN_S, l.start + DWELL_MARGIN_S)) g.push(l);
+    else groups.push([l]);
+  }
+  const out: Leg[] = [];
+  for (const g of groups) {
+    if (g.length === 1) {
+      out.push(g[0]);
+      continue;
+    }
+    const merged = oneLine(index, pts, g);
+    if (merged) {
+      out.push(merged);
+      continue;
+    }
+    // Rail stations are entered underground or off the street, where GPS
+    // rarely shows the walk or the wait: no dwell proves nothing next to a
+    // metro or train leg. A rail leg takes in the bus legs beside it that
+    // follow its line (buses along the track while GPS is poor), and only the
+    // remaining runs of buses and trams must be one line.
+    const items = g.map((l) => ({ ...l }));
+    for (let i = 0; i < items.length; i++) {
+      const r = items[i];
+      if (STREET.has(r.kind)) continue;
+      const follows = (l: Leg) => STREET.has(l.kind) && r.lines.some((x) => alongLine(index, inLeg(pts, l), r.kind, x) !== null);
+      while (i > 0 && follows(items[i - 1])) {
+        const [l] = items.splice(--i, 1);
+        Object.assign(r, { start: l.start, fromStop: l.fromStop, distanceM: r.distanceM + l.distanceM });
+      }
+      while (i + 1 < items.length && follows(items[i + 1])) {
+        const [l] = items.splice(i + 1, 1);
+        Object.assign(r, { end: l.end, toStop: l.toStop, distanceM: r.distanceM + l.distanceM });
+      }
+    }
+    let run: Leg[] = [];
+    const flush = () => {
+      if (run.length === 1) out.push(run[0]);
+      else if (run.length > 1) {
+        const m = oneLine(index, pts, run);
+        if (m) out.push(m);
+      }
+      run = [];
+    };
+    for (const l of items) {
+      if (STREET.has(l.kind)) run.push(l);
+      else {
+        flush();
+        out.push(l);
+      }
+    }
+    flush();
+  }
+  return out;
+}
+
+const STREET = new Set<TransitKind>(["bus", "tram"]);
+
+/**
+ * Stood still for a while: a stretch of TRANSFER_DWELL_S or more that never
+ * gets further from where it began than walking pace allows (so a loop that
+ * comes back doesn't count).
+ */
+function hasDwell(pts: TrackPoint[], from: number, to: number): boolean {
+  const w = pts.filter((p) => p.ts >= from && p.ts <= to);
+  for (let k = 0; k < w.length; k++) {
+    let far = 0;
+    for (let m = k + 1; m < w.length; m++) {
+      far = Math.max(far, dist(w[k].lat, w[k].lon, w[m].lat, w[m].lon));
+      if (far > DWELL_RADIUS_M) break;
+      const dt = w[m].ts - w[k].ts;
+      if (dt >= TRANSFER_DWELL_S && far <= (dt * DWELL_KMH) / 3.6) return true;
+    }
+  }
+  return false;
+}
+
+const inLeg = (pts: TrackPoint[], l: Leg) => pts.filter((p) => p.ts >= l.start && p.ts <= l.end);
+
+/** The single line this transfer-less run of legs was ridden on, as one leg, if any. */
+function oneLine(index: TransitIndex, pts: TrackPoint[], g: Leg[]): Leg | null {
+  const direct = new Map<string, { kind: TransitKind; line: string; m: number }>();
+  for (const l of g)
+    for (const line of l.lines) {
+      const k = `${l.kind}:${line}`;
+      const c = direct.get(k) ?? { kind: l.kind, line, m: 0 };
+      c.m += l.distanceM;
+      direct.set(k, c);
+    }
+  const on = (l: Leg, kind: TransitKind, line: string) => l.kind === kind && l.lines.includes(line);
+  for (const { kind, line } of [...direct.values()].sort((a, b) => b.m - a.m)) {
+    const ok = g.every((l, i) => {
+      if (on(l, kind, line)) return true;
+      if (g.slice(0, i).some((x) => on(x, kind, line)) && g.slice(i + 1).some((x) => on(x, kind, line))) return true;
+      return alongLine(index, inLeg(pts, l), kind, line) !== null;
+    });
+    if (!ok) continue;
+    const own = g.filter((l) => on(l, kind, line));
+    const lines = [line, ...own[0].lines.filter((x) => x !== line && own.every((l) => l.lines.includes(x)))];
+    const first = g[0];
+    const last = g[g.length - 1];
+    const ends = pts.filter((p) => p.ts === first.start || p.ts === last.end);
+    const span = ends.length >= 2 ? alongLine(index, [ends[0], ends[ends.length - 1]], kind, line, 1) : null;
+    const sum = g.reduce((a, l) => a + l.distanceM, 0);
+    return {
+      kind,
+      lines,
+      fromStop: first.fromStop,
+      toStop: last.toStop,
+      start: first.start,
+      end: last.end,
+      distanceM: Math.max(sum, span ?? 0),
+    };
+  }
+  return null;
+}
+
+/**
+ * Whether these points follow one shape of the line forwards, within LOOSE_M
+ * for at least `share` of them (GPS wanders further than NEAR_M on a fast
+ * road). Returns the distance covered along that shape, or null.
+ */
+function alongLine(index: TransitIndex, w: TrackPoint[], kind: TransitKind, line: string, share = EXPLAINED_SHARE): number | null {
+  if (w.length === 0) return null;
+  const per = new Map<number, { n: number; first: number; last: number }>();
+  for (const p of w)
+    for (const [s, a] of index.near(p.lat, p.lon, LOOSE_M)) {
+      const sh = index.shapes[s];
+      if (sh.kind !== kind || sh.line !== line) continue;
+      const v = per.get(s);
+      if (v) {
+        v.n++;
+        v.last = a;
+      } else per.set(s, { n: 1, first: a, last: a });
+    }
+  let best: number | null = null;
+  for (const v of per.values())
+    if (v.n >= share * w.length && v.last >= v.first) best = Math.max(best ?? 0, v.last - v.first);
+  return best;
 }
 
 /** GTFS route_type -> kind (basic and extended types, as HSL uses them). */

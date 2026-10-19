@@ -127,3 +127,13 @@ Merged `hardening` into `main`. Decided with the owner:
   Instead any CA certificate committed to `mobile/certs/` is bundled and trusted next to the
   system store. The homelab commits Caddy's local root there; the cluster's builds have
   none and stay system-only.
+- **Transit legs: one vehicle, one line** (matcher v2). Changing vehicles needs a stop, so
+  legs with no dwell between them (90 s+ never further away than 9 km/h allows, looked for up
+  to 5 min either side of the junction) are one vehicle: if one line explains them all (on
+  every leg, sandwiched between its legs, or 80% of the leg's points within 150 m of it, going
+  forward) they merge into one leg of that line, measured along its shape; otherwise a run of
+  buses/trams changing line without stopping is a car and is dropped. Metro and train are
+  exempt (underground stations hide the walk and wait from GPS) and absorb bus legs that
+  follow their track. Tuned on a day of the owner's ground truth (a night bus with a bogus extra leg,
+  another ride split by GPS noise, two car trips matched as bus chains); about 6% of trips
+  change displayed mode, mostly bus → driving/cycling.

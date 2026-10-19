@@ -3,7 +3,7 @@ import { configuredFeeds } from "./feed";
 import { TransitIndex, matchLegs, type Shape, type Stop, type TransitKind } from "./match";
 
 /** Bump when the matcher changes, so every trip is matched again. */
-export const MATCHER_VERSION = "1";
+export const MATCHER_VERSION = "2";
 const SKIP_MODES = new Set(["walking", "flying", "stationary"]);
 
 let cache: { key: string; index: TransitIndex } | null = null;
