@@ -8,13 +8,13 @@ import { isPairingLink, type Pairing } from "./src/pairing";
 import MapScreen from "./src/screens/MapScreen";
 import OverviewScreen from "./src/screens/OverviewScreen";
 import PairScreen from "./src/screens/PairScreen";
-import PlacesScreen from "./src/screens/PlacesScreen";
+import InsightsScreen from "./src/screens/InsightsScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import StatusScreen from "./src/screens/StatusScreen";
 import TimelineScreen from "./src/screens/TimelineScreen";
 import { resumeTracking } from "./src/tracking";
 import { Icon, iconFont, Skeleton, type IconName } from "./src/ui";
-import { SessionContext, type Session, type Tab } from "./src/ui/session";
+import { SessionContext, type InsightsSegment, type Session, type Tab } from "./src/ui/session";
 import { Text } from "./src/ui/Text";
 import { useCollectorState, type CollectorState } from "./src/ui/useCollectorState";
 import { markPairingLost, refreshServerStatus, uploadNow } from "./src/uploader";
@@ -24,7 +24,7 @@ const TABS: { key: Tab; label: string; icon: IconName; iconOn: IconName }[] = [
   { key: "overview", label: "Overview", icon: "view-dashboard-outline", iconOn: "view-dashboard" },
   { key: "map", label: "Map", icon: "map-outline", iconOn: "map" },
   { key: "timeline", label: "Timeline", icon: "timeline-clock-outline", iconOn: "timeline-clock" },
-  { key: "places", label: "Places", icon: "map-marker-multiple-outline", iconOn: "map-marker-multiple" },
+  { key: "insights", label: "Insights", icon: "chart-box-outline", iconOn: "chart-box" },
   { key: "recorder", label: "Recorder", icon: "record-circle-outline", iconOn: "record-circle" },
 ];
 
@@ -159,6 +159,8 @@ function Tabs({
   // their state and the map WebView isn't reloaded on every tab switch.
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set(["overview"]));
   const [recorderView, setRecorderView] = useState<"status" | "settings">("status");
+  const [insightsSegment, setInsightsSegment] = useState<InsightsSegment>("travel");
+  const [timelineDate, setTimelineDate] = useState<{ date: string; n: number } | null>(null);
 
   const s = useStyles((th) => ({
     bar: {
@@ -180,6 +182,22 @@ function Tabs({
     setVisited((v) => (v.has(tab) ? v : new Set(v).add(tab)));
   }, []);
 
+  const openInsights = useCallback(
+    (segment: InsightsSegment) => {
+      setInsightsSegment(segment);
+      goTab("insights");
+    },
+    [goTab],
+  );
+
+  const openDay = useCallback(
+    (date: string) => {
+      setTimelineDate((r) => ({ date, n: (r?.n ?? 0) + 1 }));
+      goTab("timeline");
+    },
+    [goTab],
+  );
+
   const onUnauthorized = useCallback(() => {
     markPairingLost()
       .catch(() => {})
@@ -187,8 +205,8 @@ function Tabs({
   }, [refresh]);
 
   const session = useMemo<Session>(
-    () => ({ pairing, authLost: state.authLost, onUnauthorized, goPair, goTab }),
-    [pairing, state.authLost, onUnauthorized, goPair, goTab],
+    () => ({ pairing, authLost: state.authLost, onUnauthorized, goPair, goTab, openInsights, openDay, timelineDate }),
+    [pairing, state.authLost, onUnauthorized, goPair, goTab, openInsights, openDay, timelineDate],
   );
 
   const screen = (tab: Tab) => {
@@ -196,9 +214,10 @@ function Tabs({
       case "overview":
         return <OverviewScreen collector={state} refreshCollector={refresh} />;
       case "timeline":
-        return <TimelineScreen />;
-      case "places":
-        return <PlacesScreen />;
+        // Remounted for each "open this day" request (Insights → trip → day), so it starts there.
+        return <TimelineScreen key={timelineDate?.n ?? 0} />;
+      case "insights":
+        return <InsightsScreen segment={insightsSegment} onSegment={setInsightsSegment} active={active === "insights"} />;
       case "map":
         return <MapScreen />;
       case "recorder":

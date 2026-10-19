@@ -53,7 +53,7 @@ export default function OverviewScreen({
   refreshCollector: () => Promise<void>;
 }) {
   const t = useTheme();
-  const { authLost, goTab } = useSession();
+  const { authLost, goTab, openInsights } = useSession();
   const { data, error: loadErr, reload } = useViewerQuery(getOverview);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -300,7 +300,7 @@ export default function OverviewScreen({
           {topPlaces.length > 0 && (
             <>
               <SectionTitle title="Where you spend time" trailing="by hours there" />
-              <Pressable onPress={() => goTab("places")} accessibilityRole="button" accessibilityLabel="Open places">
+              <Pressable onPress={() => openInsights("places")} accessibilityRole="button" accessibilityLabel="Open places">
                 <Card style={s.list}>
                   {topPlaces.map((p) => (
                     <ShareBar key={p.id} label={placeName(p.name) ?? "Unnamed place"} value={p.hours} max={maxHours} display={fmtDuration(p.hours * 3600)} />

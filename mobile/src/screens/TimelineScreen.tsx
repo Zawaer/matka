@@ -9,24 +9,10 @@ import type { IconName } from "../ui/Icon";
 import { Screen, ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
-import { getTimeline, type Leg, type Mode, type Timeline } from "../viewer";
+import { getTimeline, type Leg, type Timeline } from "../viewer";
+import { getDaySummary, stripModes, type DaySummary } from "../daySummary";
+import { DaySummaryStrip, MODE_META } from "../ui/DaySummary";
 import { LEG_BADGE } from "../design/transit";
-
-const MODES: Record<Mode, { label: string; icon: IconName }> = {
-  unknown: { label: "Move", icon: "dots-horizontal" },
-  stationary: { label: "Stationary", icon: "pause-circle-outline" },
-  walking: { label: "Walk", icon: "walk" },
-  running: { label: "Run", icon: "run" },
-  cycling: { label: "Cycle", icon: "bike" },
-  driving: { label: "Drive", icon: "car" },
-  bus: { label: "Bus", icon: "bus" },
-  tram: { label: "Tram", icon: "tram" },
-  metro: { label: "Metro", icon: "subway-variant" },
-  train: { label: "Train", icon: "train" },
-  flying: { label: "Flight", icon: "airplane" },
-  boat: { label: "Ferry", icon: "ferry" },
-  motorcycle: { label: "Motorbike", icon: "motorbike" },
-};
 
 const RAIL = 28;
 
@@ -65,13 +51,23 @@ function NavButton({ icon, onPress, disabled, label }: { icon: IconName; onPress
 
 export default function TimelineScreen() {
   const t = useTheme();
-  const { authLost } = useSession();
-  // null = latest day with data (server default)
-  const [want, setWant] = useState<string | null>(null);
+  const { authLost, timelineDate } = useSession();
+  // null = latest day with data (server default); another tab may open a given day.
+  const [want, setWant] = useState<string | null>(() => timelineDate?.date ?? null);
   const fetcher = useCallback((p: Pairing) => getTimeline(p, want), [want]);
   const { data: resp, error: err, loading, reload } = useViewerQuery<Timeline>(fetcher);
 
   const date = resp?.day.date || null;
+  // The day's per-mode totals load alongside the timeline once the day is known
+  // (straight away when a day was picked, after the first answer for "latest").
+  const sumDate = want ?? date;
+  const sumFetcher = useCallback(
+    async (p: Pairing) => (sumDate ? getDaySummary(p, sumDate) : { ok: true as const, data: null }),
+    [sumDate],
+  );
+  const { data: sumResp, error: sumErr, reload: reloadSum } = useViewerQuery<DaySummary | null>(sumFetcher);
+  // Ignore a summary left over from the previous day while this one loads.
+  const summary = sumResp && sumResp.date === date ? sumResp : null;
   const dates = resp?.dates ?? [];
   const idx = date ? dates.indexOf(date) : -1;
   const canPrev = idx > 0;
@@ -95,7 +91,9 @@ export default function TimelineScreen() {
 
   const s = useStyles((th) => ({
     nav: { flexDirection: "row", alignItems: "center", gap: th.space.md },
-    summary: { flexDirection: "row", paddingVertical: th.space.md },
+    summary: { paddingVertical: th.space.md, gap: th.space.md },
+    stats: { flexDirection: "row" },
+    hairline: { height: 1, backgroundColor: th.c.border, marginHorizontal: -th.space.lg },
     sumCell: { flex: 1, alignItems: "center", gap: 2 },
     divider: { width: 1, backgroundColor: th.c.border, marginVertical: 4 },
     row: { flexDirection: "row", gap: th.space.md },
@@ -107,7 +105,13 @@ export default function TimelineScreen() {
   }));
 
   return (
-    <Screen refreshing={false} onRefresh={reload}>
+    <Screen
+      refreshing={false}
+      onRefresh={() => {
+        reload();
+        reloadSum();
+      }}
+    >
       <ScreenHeader title="Timeline" subtitle="Your day, stop by stop" />
       {authLost ? <PairingLost /> : null}
 
@@ -142,32 +146,40 @@ export default function TimelineScreen() {
       ) : (
         <>
           <Card style={s.summary}>
-            <View style={s.sumCell}>
-              <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
-                {fmtDistance(km)}
-              </Text>
-              <Text variant="caption" color="textSecondary">
-                Travelled
-              </Text>
+            <View style={s.stats}>
+              <View style={s.sumCell}>
+                <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
+                  {fmtDistance(km)}
+                </Text>
+                <Text variant="caption" color="textSecondary">
+                  Travelled
+                </Text>
+              </View>
+              <View style={s.divider} />
+              <View style={s.sumCell}>
+                <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
+                  {fmtDuration(moving)}
+                </Text>
+                <Text variant="caption" color="textSecondary">
+                  On the move
+                </Text>
+              </View>
+              <View style={s.divider} />
+              <View style={s.sumCell}>
+                <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
+                  {visits}
+                </Text>
+                <Text variant="caption" color="textSecondary">
+                  {visits === 1 ? "Stop" : "Stops"}
+                </Text>
+              </View>
             </View>
-            <View style={s.divider} />
-            <View style={s.sumCell}>
-              <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
-                {fmtDuration(moving)}
-              </Text>
-              <Text variant="caption" color="textSecondary">
-                On the move
-              </Text>
-            </View>
-            <View style={s.divider} />
-            <View style={s.sumCell}>
-              <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
-                {visits}
-              </Text>
-              <Text variant="caption" color="textSecondary">
-                {visits === 1 ? "Stop" : "Stops"}
-              </Text>
-            </View>
+            {moves.length > 0 && (summary ? stripModes(summary).length > 0 : !sumErr) ? (
+              <>
+                <View style={s.hairline} />
+                <DaySummaryStrip summary={summary} />
+              </>
+            ) : null}
           </Card>
 
           {err ? (
@@ -210,7 +222,7 @@ export default function TimelineScreen() {
                 );
               }
               const m = it.track;
-              const meta = MODES[m.mode];
+              const meta = MODE_META[m.mode];
               const color = t.mode(m.mode);
               const drift = isLikelyDrift(m.mode, m.distance, m.duration);
               return (

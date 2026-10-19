@@ -6,7 +6,10 @@ import type { Pairing } from "../pairing";
 import type { ViewerResult } from "../viewer";
 import { PairingLostBanner } from "./components";
 
-export type Tab = "overview" | "timeline" | "places" | "map" | "recorder";
+export type Tab = "overview" | "timeline" | "insights" | "map" | "recorder";
+
+/** The Insights tab's segments (Places lives there too, to keep the tab bar at five). */
+export type InsightsSegment = "travel" | "trips" | "world" | "places";
 
 export type Session = {
   pairing: Pairing;
@@ -15,6 +18,15 @@ export type Session = {
   onUnauthorized: () => void;
   goPair: () => void;
   goTab: (t: Tab) => void;
+  /** Switches to the Insights tab on that segment. */
+  openInsights: (segment: InsightsSegment) => void;
+  /** Switches to the Timeline tab on that local day (YYYY-MM-DD). */
+  openDay: (date: string) => void;
+  /**
+   * The last day asked for with openDay; `n` grows with every request. The
+   * Timeline is remounted on a new request and should start on `date`.
+   */
+  timelineDate: { date: string; n: number } | null;
 };
 
 export const SessionContext = createContext<Session | null>(null);

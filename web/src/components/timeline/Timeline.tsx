@@ -6,6 +6,7 @@ import { categoryLabel } from "@/components/places/category";
 import { KIND_META } from "@/lib/savedPlaces";
 import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
+import { DaySummaryStrip } from "./DaySummaryStrip";
 import { KIND_LABEL, badgeColors } from "@/lib/transit/colors";
 import {
   formatDuration,
@@ -55,6 +56,13 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
         nextDate={nextDate}
         onPick={setDate}
       />
+
+      {current && (
+        <DaySummaryStrip
+          date={current}
+          travelled={items.some((it) => it.kind === "move" && it.track.mode !== "stationary")}
+        />
+      )}
 
       <div className="mt-6">
         {error ? (

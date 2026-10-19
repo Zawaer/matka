@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { FlatList, Pressable, RefreshControl, TextInput, View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
@@ -13,7 +13,8 @@ function placeName(p: Place) {
   return p.name && p.name !== "Unknown Location" ? p.name : "Unnamed place";
 }
 
-export default function PlacesScreen() {
+/** `top`: shown as a segment of Insights, under that header instead of its own title. */
+export default function PlacesScreen({ top }: { top?: ReactNode }) {
   const t = useTheme();
   const { authLost } = useSession();
   const { data, error: err, reload } = useViewerQuery(getPlaces);
@@ -52,7 +53,16 @@ export default function PlacesScreen() {
 
   const header = (
     <View style={{ gap: 14, marginBottom: 4 }}>
-      <ScreenHeader title="Places" subtitle={places ? `${places.length.toLocaleString()} places you come back to` : "Where you spend your time"} />
+      {top ? (
+        <>
+          {top}
+          <Text variant="callout" color="textSecondary">
+            {places ? `${places.length.toLocaleString()} places you come back to` : "Where you spend your time"}
+          </Text>
+        </>
+      ) : (
+        <ScreenHeader title="Places" subtitle={places ? `${places.length.toLocaleString()} places you come back to` : "Where you spend your time"} />
+      )}
       {authLost ? <PairingLost /> : null}
       <View style={s.search}>
         <Icon name="magnify" size={20} color={t.c.textMuted} />

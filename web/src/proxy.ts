@@ -19,7 +19,7 @@ const PUBLIC = [
 // the map embed cookie; those routes authenticate with readUser().
 const DEVICE_READABLE = [
   /^\/api\/(overview|timeline|places|points|tracks\/geojson|day-summary)$/,
-  /^\/api\/insights\/(modes|world|trips)$/,
+  /^\/api\/insights\/(modes|world|trips|saved)$/,
   /^\/api\/insights\/trips\/\d{4}-\d{2}-\d{2}$/,
   /^\/api\/places\/\d+\/photos$/,
   /^\/api\/immich\/asset\/[0-9a-fA-F-]+$/,
