@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { categoryLabel } from "@/components/places/category";
 import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
@@ -12,7 +12,7 @@ import {
   formatTime,
   formatDateLong,
 } from "@/lib/format";
-import type { TimelineDay, TimelineItem, Visit, TrackSummary } from "@/lib/types";
+import type { TimelineDay, TimelineItem, Visit, TrackSummary, TransitLeg } from "@/lib/types";
 
 type TimelineResponse = {
   day: TimelineDay;
@@ -74,19 +74,38 @@ export function Timeline() {
           />
         ) : (
           <ol className="relative">
-            {items.map((item, i) => (
-              <TimelineRow
-                key={rowKey(item, i)}
-                item={item}
-                isFirst={i === 0}
-                isLast={i === items.length - 1}
-              />
-            ))}
+            {items.map((item, i) => {
+              const gap = i > 0 ? gapBetween(items[i - 1], item) : null;
+              return (
+                <Fragment key={rowKey(item, i)}>
+                  {gap && <GapRow from={gap.from} to={gap.to} />}
+                  <TimelineRow item={item} isFirst={i === 0} isLast={i === items.length - 1} />
+                </Fragment>
+              );
+            })}
           </ol>
         )}
       </div>
     </div>
   );
+}
+
+/** Shorter silences are the phone lying still or a short tunnel, not worth a row. */
+const MIN_GAP_S = 30 * 60;
+
+const startOf = (it: TimelineItem) => (it.kind === "visit" ? it.visit.startedAt : it.track.startedAt);
+const endOf = (it: TimelineItem) => (it.kind === "visit" ? it.visit.endedAt : it.track.endedAt);
+
+/**
+ * Time between two items with nothing recorded (location recording off). The
+ * server no longer stretches a visit or invents a trip across such a hole, so
+ * say so instead of leaving the jump unexplained.
+ */
+function gapBetween(a: TimelineItem, b: TimelineItem): { from: string; to: string } | null {
+  const from = endOf(a);
+  const to = startOf(b);
+  if (!from || !to) return null;
+  return (new Date(to).getTime() - new Date(from).getTime()) / 1000 >= MIN_GAP_S ? { from, to } : null;
 }
 
 function rowKey(item: TimelineItem, i: number) {
@@ -273,6 +292,59 @@ function VisitRow({
   );
 }
 
+/** A gap between two rides shorter than this is just getting off and on. */
+const MIN_CHANGE_S = 3 * 60;
+
+/** A transfer the server folded into the trip (lib/processing/detect.ts). */
+type Wait = { startedAt: string; endedAt: string; stop: string | null };
+type SubRow = { kind: "leg"; leg: TransitLeg } | { kind: "wait"; stop: string | null; secs: number };
+
+const ms = (iso: string) => new Date(iso).getTime();
+
+/**
+ * The rides of a trip and the transfers between them, in order: "Waited at
+ * Kamppi" where the server saw a wait at a stop, else "Change" when the next
+ * ride starts a while after the last one ended.
+ */
+function subRows(track: TrackSummary & { waits?: Wait[] }): SubRow[] {
+  const legs = track.legs ?? [];
+  const waits = [...(track.waits ?? [])].sort((a, b) => ms(a.startedAt) - ms(b.startedAt));
+  const rows: { at: number; row: SubRow }[] = waits.map((w) => ({
+    at: ms(w.startedAt),
+    row: { kind: "wait", stop: w.stop, secs: (ms(w.endedAt) - ms(w.startedAt)) / 1000 },
+  }));
+  legs.forEach((l, i) => {
+    rows.push({ at: ms(l.startedAt), row: { kind: "leg", leg: l } });
+    if (i === 0) return;
+    const from = ms(legs[i - 1].endedAt);
+    const to = ms(l.startedAt);
+    const waited = waits.some((w) => ms(w.endedAt) > from && ms(w.startedAt) < to);
+    if (!waited && (to - from) / 1000 >= MIN_CHANGE_S) {
+      rows.push({ at: from, row: { kind: "wait", stop: null, secs: (to - from) / 1000 } });
+    }
+  });
+  // A wait sorts before a ride starting at the same moment.
+  return rows.sort((a, b) => a.at - b.at || (a.row.kind === "wait" ? -1 : 1)).map((r) => r.row);
+}
+
+function LegLine({ leg: l }: { leg: TransitLeg }) {
+  const c = badgeColors(l.kind);
+  const route = [l.fromStop, l.toStop].filter(Boolean).join(" → ");
+  return (
+    <div className="flex flex-wrap items-center gap-2 pl-9 text-sm">
+      <span
+        className="rounded-md px-2 py-0.5 text-xs font-bold"
+        style={{ backgroundColor: c.bg, color: c.fg }}
+        title={l.lines.length > 1 ? `Could also be ${l.lines.slice(1).join(", ")}` : undefined}
+      >
+        {KIND_LABEL[l.kind]} {l.lines[0]}
+        {l.lines.length > 1 ? ` +${l.lines.length - 1}` : ""}
+      </span>
+      {route && <span className="text-muted">{route}</span>}
+    </div>
+  );
+}
+
 function MoveRow({ track }: { track: TrackSummary }) {
   const meta = MODE_META[track.mode];
   const parts = [
@@ -309,24 +381,39 @@ function MoveRow({ track }: { track: TrackSummary }) {
             <span className="text-sm text-muted">· {parts.join(" · ")}</span>
           )}
         </div>
-        {track.legs?.map((l, i) => {
-          const c = badgeColors(l.kind);
-          const route = [l.fromStop, l.toStop].filter(Boolean).join(" → ");
-          return (
-            <div key={i} className="flex flex-wrap items-center gap-2 pl-9 text-sm">
-              <span
-                className="rounded-md px-2 py-0.5 text-xs font-bold"
-                style={{ backgroundColor: c.bg, color: c.fg }}
-                title={l.lines.length > 1 ? `Could also be ${l.lines.slice(1).join(", ")}` : undefined}
-              >
-                {KIND_LABEL[l.kind]} {l.lines[0]}
-                {l.lines.length > 1 ? ` +${l.lines.length - 1}` : ""}
-              </span>
-              {route && <span className="text-muted">{route}</span>}
+        {subRows(track).map((r, i) =>
+          r.kind === "wait" ? (
+            <div key={i} className="pl-9 text-xs text-muted">
+              {r.stop ? `Waited at ${r.stop}` : "Change"} · {formatDuration(r.secs)}
             </div>
-          );
-        })}
+          ) : (
+            <LegLine key={i} leg={r.leg} />
+          ),
+        )}
       </div>
+    </li>
+  );
+}
+
+function GapRow({ from, to }: { from: string; to: string }) {
+  const secs = (new Date(to).getTime() - new Date(from).getTime()) / 1000;
+  return (
+    <li className="flex gap-3 sm:gap-4">
+      <div className="relative flex w-10 shrink-0 flex-col items-center">
+        <span
+          className="w-px flex-1"
+          style={{
+            backgroundImage: "linear-gradient(currentColor 30%, transparent 0%)",
+            backgroundSize: "1px 6px",
+            backgroundRepeat: "repeat-y",
+            opacity: 0.35,
+          }}
+        />
+      </div>
+      <p className="flex-1 py-2 text-sm italic text-muted">
+        No location recorded · {formatDuration(secs)}
+        <span className="not-italic"> ({formatTime(from)} – {formatTime(to)})</span>
+      </p>
     </li>
   );
 }

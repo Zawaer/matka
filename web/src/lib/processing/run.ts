@@ -1,7 +1,8 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
-import { Detector, STAY_RADIUS_M, type DPoint, type Output } from "./detect";
+import { Detector, STAY_RADIUS_M, TRANSFER_STOP_M, type DPoint, type Output } from "./detect";
 import { isFerry } from "./ferry";
+import { StopIndex } from "./stops";
 
 // Incremental processing for one user. Everything from processing_state.dirty_from
 // onward is rebuilt: we rewind to the start of the last visit that began before
@@ -62,7 +63,16 @@ export async function processUser(userId: string): Promise<number> {
       from,
     ]);
 
-    const det = new Detector();
+    // Stops tell a wait for the next bus from a visit; without a feed there
+    // are none and every stay stays a visit.
+    const stops = new StopIndex(
+      (
+        await c.query<{ lat: number; lon: number; name: string }>(
+          `SELECT ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon, name FROM transit_stops`,
+        )
+      ).rows,
+    );
+    const det = new Detector(stops.size ? { nearStop: (lat, lon, r) => stops.near(lat, lon, r) } : {});
     let n = 0;
     let afterTs = new Date(from.getTime() - 1);
     for (;;) {
@@ -78,11 +88,11 @@ export async function processUser(userId: string): Promise<number> {
       ).rows;
       for (const r of rows) det.push(r as DPoint);
       n += rows.length;
-      await write(c, userId, det.drain());
+      await write(c, userId, det.drain(), stops);
       if (rows.length < PAGE) break;
       afterTs = new Date(rows[rows.length - 1].ts * 1000);
     }
-    await write(c, userId, det.finish());
+    await write(c, userId, det.finish(), stops);
 
     // Places nobody visits any more and the user never named are noise.
     await c.query(
@@ -111,7 +121,7 @@ export async function processUser(userId: string): Promise<number> {
   }
 }
 
-async function write(c: PoolClient, userId: string, out: Output[]) {
+async function write(c: PoolClient, userId: string, out: Output[], stops: StopIndex) {
   for (const o of out) {
     if (o.kind === "stay") {
       const s = o.stay;
@@ -138,8 +148,8 @@ async function write(c: PoolClient, userId: string, out: Output[]) {
     } else {
       const t = o.trip;
       await c.query(
-        `INSERT INTO trips (user_id, started_at, ended_at, distance_m, mode, path, point_count)
-         VALUES ($1, to_timestamp($2), to_timestamp($3), $4, $5, ST_GeomFromGeoJSON($6)::geography, $7)`,
+        `INSERT INTO trips (user_id, started_at, ended_at, distance_m, mode, path, point_count, waits)
+         VALUES ($1, to_timestamp($2), to_timestamp($3), $4, $5, ST_GeomFromGeoJSON($6)::geography, $7, $8)`,
         [
           userId,
           t.start,
@@ -148,6 +158,15 @@ async function write(c: PoolClient, userId: string, out: Output[]) {
           isFerry(t) ? "boat" : t.mode,
           JSON.stringify({ type: "LineString", coordinates: t.path }),
           t.count,
+          t.waits.length
+            ? JSON.stringify(
+                t.waits.map((w) => ({
+                  startedAt: new Date(w.start * 1000).toISOString(),
+                  endedAt: new Date(w.end * 1000).toISOString(),
+                  stop: stops.nearest(w.lat, w.lon, TRANSFER_STOP_M)?.name ?? null,
+                })),
+              )
+            : null,
         ],
       );
     }

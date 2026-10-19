@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
 import { importDawarichIfNeeded } from "../dawarichImport";
+import { syncPhotoPoints } from "../photoPoints";
 import { refreshFeeds } from "../transit/feed";
 import { matchPendingTrips } from "../transit/run";
 import { geocodePending } from "./geocode";
@@ -31,6 +32,12 @@ export async function tick(): Promise<void> {
       await importDawarichIfNeeded();
     } catch (err) {
       console.error("[import] dawarich import failed, will retry:", err instanceof Error ? err.message : err);
+    }
+    // Photo locations from Immich fill gaps (every few hours per user).
+    try {
+      await syncPhotoPoints();
+    } catch (err) {
+      console.error("[photos] sync failed, will retry:", err instanceof Error ? err.message : err);
     }
     const dirty = (
       await c.query<{ user_id: string }>(

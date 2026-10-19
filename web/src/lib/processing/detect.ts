@@ -12,7 +12,13 @@ import { haversine } from "./geo";
 //
 // Because of that silence a stay's end isn't its last fix: when the next fix
 // is outside, the stay is assumed to last until just before it, minus the
-// time needed to cover the distance at LEAVE_SPEED.
+// time needed to cover the distance at LEAVE_SPEED. Not when the silence was
+// long and ends far away: then recording was off (the phone was moving, just
+// not reporting), so the stay ends at its last fix and no trip is invented
+// across the hole.
+//
+// A short stay at a public transport stop between two moves is a transfer
+// (waiting for the next bus), not a visit: it is folded into one trip.
 
 export const STAY_RADIUS_M = 100;
 export const MIN_STAY_S = 5 * 60;
@@ -26,6 +32,31 @@ const MERGE_GAP_S = 20 * 60;
 const MIN_TRIP_M = 2 * STAY_RADIUS_M;
 /** Assumed speed when estimating how long ago a silent phone left a stay (m/s). */
 const LEAVE_SPEED_MS = 5;
+/**
+ * A silence longer than this that ends FAR_AFTER_SILENCE_M or more away is a
+ * recording gap, not a still phone. On the owner's data, leaving home after a
+ * night's silence gives a first fix 300-500 m out; recording switched off for
+ * an afternoon of moving around gave one 1 km or more away.
+ */
+export const LONG_SILENCE_S = 2 * 3600;
+export const FAR_AFTER_SILENCE_M = 750;
+/**
+ * How long a stay is assumed to go on after its last fix before a recording
+ * gap. MIN_STAY_S, so where the phone was last seen still shows as a (short)
+ * visit: arriving home and switching recording off is still "home".
+ */
+const GAP_ALLOWANCE_S = MIN_STAY_S;
+/** A stay at most this long, within TRANSFER_STOP_M of a stop, between two moves, is a transfer. */
+export const TRANSFER_MAX_S = 20 * 60;
+export const TRANSFER_STOP_M = 50;
+/** Weight of a fix without a reported accuracy (see weight). */
+const DEFAULT_ACCURACY_M = 20;
+/**
+ * A fix this close to an ongoing stay, while the phone has said "still" for it
+ * and the fix before, is GPS jitter: a real departure comes with walking or
+ * in_vehicle readings.
+ */
+export const STILL_JITTER_M = 400;
 
 export type DPoint = {
   /** Epoch seconds. */
@@ -47,6 +78,9 @@ export type Stay = {
   count: number;
 };
 
+/** A transfer folded into a trip: waiting at a stop (where, from when to when). */
+export type Wait = { start: number; end: number; lat: number; lon: number };
+
 export type Trip = {
   start: number;
   end: number;
@@ -54,20 +88,56 @@ export type Trip = {
   mode: ModeKey;
   path: [number, number][]; // [lon, lat]
   count: number;
+  waits: Wait[];
 };
 
 export type Output = { kind: "stay"; stay: Stay } | { kind: "trip"; trip: Trip };
 
-type Cluster = { pts: DPoint[]; lat: number; lon: number; end: number };
+export type DetectorOptions = {
+  /** Whether a public transport stop lies within `radiusM` (absent: no transfer detection). */
+  nearStop?: (lat: number, lon: number, radiusM: number) => boolean;
+};
 
-const newCluster = (p: DPoint): Cluster => ({ pts: [p], lat: p.lat, lon: p.lon, end: p.ts });
+/** A move not yet turned into a Trip. */
+type Move = {
+  pts: DPoint[];
+  /** Departure time (the previous stay's end when known). */
+  start: number;
+  /** Seconds spent waiting at folded transfers. */
+  paused: number;
+  /** The moving stretches, for speeds (waits would drag them down). */
+  parts: DPoint[][];
+  waits: Wait[];
+};
+
+type Cluster = {
+  pts: DPoint[];
+  lat: number;
+  lon: number;
+  end: number;
+  /** Sum of the fixes' weights (see weight). */
+  w: number;
+  /** Time of the last fix that belonged to this cluster (jitter included). */
+  seen: number;
+};
+
+/**
+ * A fix's weight in the stay's centre: inverse variance, so one 60 m
+ * urban-canyon fix doesn't drag a centre built from 10 m ones. Fixes without
+ * an accuracy count as DEFAULT_ACCURACY_M; equal accuracies give a plain mean.
+ */
+const weight = (p: DPoint) => 1 / Math.max(p.accuracy ?? DEFAULT_ACCURACY_M, 5) ** 2;
+
+const newCluster = (p: DPoint): Cluster => ({ pts: [p], lat: p.lat, lon: p.lon, end: p.ts, w: weight(p), seen: p.ts });
 
 function addTo(c: Cluster, p: DPoint) {
   c.pts.push(p);
   c.end = p.ts;
-  const n = c.pts.length;
-  c.lat += (p.lat - c.lat) / n;
-  c.lon += (p.lon - c.lon) / n;
+  c.seen = p.ts;
+  const w = weight(p);
+  c.w += w;
+  c.lat += ((p.lat - c.lat) * w) / c.w;
+  c.lon += ((p.lon - c.lon) * w) / c.w;
 }
 
 const duration = (c: Cluster) => c.end - c.pts[0].ts;
@@ -156,10 +226,18 @@ export class Detector {
   /** Fixes since the last stay ended (the move in progress), starting with that stay's last fix. */
   private move: DPoint[] = [];
   private lastStay: Stay | null = null;
+  /** All fixes of lastStay (path of a transfer when it is folded into a trip). */
+  private lastStayPts: DPoint[] = [];
+  /** The move that arrived at lastStay, held back until we know whether lastStay was a transfer. */
+  private inMove: Move | null = null;
   /** A candidate outlier held back until the next fix shows whether it was noise. */
   private suspect: DPoint | null = null;
+  /** Whether the suspect came after a recording gap (see LONG_SILENCE_S). */
+  private suspectAfterGap = false;
   private last: DPoint | null = null;
   readonly out: Output[] = [];
+
+  constructor(private readonly opts: DetectorOptions = {}) {}
 
   push(p: DPoint) {
     if (p.accuracy != null && p.accuracy > MAX_ACCURACY_M) return;
@@ -169,6 +247,7 @@ export class Detector {
       const d = haversine(this.last.lat, this.last.lon, p.lat, p.lon);
       if (d / dt > MAX_SPEED_MS && d > 1000) return;
     }
+    const before = this.last;
     this.last = p;
 
     const c = this.cluster;
@@ -183,11 +262,30 @@ export class Detector {
       addTo(c, p);
       return;
     }
+    if (
+      !this.suspect &&
+      d <= STILL_JITTER_M &&
+      p.activity === "still" &&
+      before?.activity === "still" &&
+      duration(c) >= MIN_STAY_S
+    ) {
+      // The phone says it hasn't moved: jitter. The stay goes on, centre untouched.
+      c.end = Math.max(c.end, p.ts);
+      c.seen = p.ts;
+      return;
+    }
     // Silent while still: the stay lasted until shortly before this fix.
-    c.end = Math.max(c.end, Math.round(p.ts - d / LEAVE_SPEED_MS));
+    // Unless the silence was long and ended far away: recording was off.
+    let end = Math.round(p.ts - d / LEAVE_SPEED_MS);
+    const recordingGap = this.suspect
+      ? this.suspectAfterGap
+      : p.ts - c.seen > LONG_SILENCE_S && d >= FAR_AFTER_SILENCE_M;
+    if (recordingGap) end = Math.min(end, c.seen + GAP_ALLOWANCE_S);
+    c.end = Math.max(c.end, end);
     if (duration(c) >= MIN_STAY_S && !this.suspect) {
       // Leaving a real stay: wait one fix before believing it.
       this.suspect = p;
+      this.suspectAfterGap = recordingGap;
       return;
     }
     const pending = this.suspect;
@@ -237,44 +335,80 @@ export class Detector {
       prev.lon = (prev.lon * prev.count + stay.lon * stay.count) / n;
       prev.count = n;
       prev.end = stay.end;
+      this.lastStayPts.push(...this.move.slice(1), ...c.pts);
       this.move = [c.pts[c.pts.length - 1]];
       return;
     }
-    if (prev) this.emitPrevStay(c.pts[0]);
-    else {
-      // Movement before the first stay in this window.
-      const trip = this.makeTrip([...this.move, c.pts[0]], null);
-      if (trip) this.out.push({ kind: "trip", trip });
-    }
+    const arrival = c.pts[0];
+    this.settle(this.splitMove([...this.move, arrival], prev ? prev.end : null), arrival);
     this.lastStay = stay;
+    this.lastStayPts = [...c.pts];
     this.move = [c.pts[c.pts.length - 1]];
   }
 
-  /** Emit the previous stay and the trip from it to `arrival`. */
-  private emitPrevStay(arrival: DPoint) {
-    const prev = this.lastStay!;
-    this.out.push({ kind: "stay", stay: prev });
-    const trip = this.makeTrip([...this.move, arrival], prev.end);
-    if (trip) this.out.push({ kind: "trip", trip });
+  /**
+   * Emit lastStay (or fold it into a trip when it was a transfer) and the moves
+   * that followed it. The last move, if it ends at `arrival` (the next stay),
+   * is held back as that stay's inbound move.
+   */
+  private settle(moves: Move[], arrival: DPoint | null) {
+    const prev = this.lastStay;
+    if (prev) {
+      const first = moves[0];
+      const departs = first && first.pts[0] === this.lastStayPts[this.lastStayPts.length - 1];
+      if (this.inMove && departs && this.isTransfer(prev)) {
+        moves[0] = joinMoves(this.inMove, prev, this.lastStayPts, first);
+      } else {
+        if (this.inMove) this.emitMove(this.inMove);
+        this.out.push({ kind: "stay", stay: prev });
+      }
+    } else if (this.inMove) {
+      this.emitMove(this.inMove);
+    }
+    this.inMove = null;
+    const tail = moves[moves.length - 1];
+    if (arrival && tail && tail.pts[tail.pts.length - 1] === arrival) this.inMove = moves.pop()!;
+    for (const m of moves) this.emitMove(m);
   }
 
-  /** A move through pts, departing at `from` (the previous stay's end) if known. */
-  private makeTrip(pts: DPoint[], from: number | null): Trip | null {
-    if (pts.length < 2) return null;
-    let distance = 0;
-    for (let i = 1; i < pts.length; i++) distance += haversine(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon);
-    const speeds = moveSpeeds(pts);
-    if (distance < MIN_TRIP_M) return null;
-    const end = pts[pts.length - 1].ts;
-    const start = Math.min(end, Math.max(pts[0].ts, from ?? pts[0].ts));
-    return {
-      start,
-      end,
-      distance,
-      mode: withActivity(classifyMode(speeds, distance, end - start), pts),
-      path: pts.map((p) => [p.lon, p.lat]),
-      count: pts.length,
+  private isTransfer(s: Stay): boolean {
+    return !!this.opts.nearStop && s.end - s.start <= TRANSFER_MAX_S && this.opts.nearStop(s.lat, s.lon, TRANSFER_STOP_M);
+  }
+
+  /**
+   * The moves through pts, departing at `from` (the previous stay's end) if
+   * known. Split where the phone said nothing for LONG_SILENCE_S: that is a
+   * hole in the recording, and a "trip" across it would be invented. Pieces
+   * too short to be a trip are dropped.
+   */
+  private splitMove(pts: DPoint[], from: number | null): Move[] {
+    const out: Move[] = [];
+    const add = (seg: DPoint[], from: number | null) => {
+      if (seg.length < 2) return;
+      let distance = 0;
+      for (let i = 1; i < seg.length; i++) distance += haversine(seg[i - 1].lat, seg[i - 1].lon, seg[i].lat, seg[i].lon);
+      if (distance < MIN_TRIP_M) return;
+      const end = seg[seg.length - 1].ts;
+      out.push({ pts: seg, start: Math.min(end, Math.max(seg[0].ts, from ?? seg[0].ts)), paused: 0, parts: [seg], waits: [] });
     };
+    if (pts.length === 0) return out;
+    let seg: DPoint[] = [pts[0]];
+    let segFrom = from;
+    for (let i = 1; i < pts.length; i++) {
+      const prevT = i === 1 && from != null ? Math.max(pts[0].ts, from) : pts[i - 1].ts;
+      if (pts[i].ts - prevT > LONG_SILENCE_S) {
+        add(seg, segFrom);
+        seg = [];
+        segFrom = null;
+      }
+      seg.push(pts[i]);
+    }
+    add(seg, segFrom);
+    return out;
+  }
+
+  private emitMove(m: Move) {
+    this.out.push({ kind: "trip", trip: toTrip(m) });
   }
 
   /**
@@ -295,10 +429,9 @@ export class Detector {
       this.move.push(...c.pts);
       this.cluster = null;
     }
-    if (this.lastStay) this.out.push({ kind: "stay", stay: this.lastStay });
-    const trip = this.makeTrip(this.move, this.lastStay?.end ?? null);
-    if (trip) this.out.push({ kind: "trip", trip });
+    this.settle(this.splitMove(this.move, this.lastStay?.end ?? null), null);
     this.lastStay = null;
+    this.lastStayPts = [];
     this.move = [];
     return this.out;
   }
@@ -309,9 +442,38 @@ export class Detector {
   }
 }
 
+/** One move through a transfer: arrive by `a`, wait at the stop (`stay`, `stopPts`), leave by `b`. */
+function joinMoves(a: Move, stay: Stay, stopPts: DPoint[], b: Move): Move {
+  const arrived = a.pts[a.pts.length - 1].ts;
+  return {
+    pts: [...a.pts, ...stopPts.slice(1), ...b.pts.slice(1)],
+    start: a.start,
+    paused: a.paused + Math.max(0, b.start - arrived) + b.paused,
+    parts: [...a.parts, ...b.parts],
+    waits: [...a.waits, { start: stay.start, end: stay.end, lat: stay.lat, lon: stay.lon }, ...b.waits],
+  };
+}
+
+function toTrip(m: Move): Trip {
+  const pts = m.pts;
+  let distance = 0;
+  for (let i = 1; i < pts.length; i++) distance += haversine(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon);
+  const end = pts[pts.length - 1].ts;
+  const speeds = m.parts.flatMap(moveSpeeds);
+  return {
+    start: m.start,
+    end,
+    distance,
+    mode: withActivity(classifyMode(speeds, distance, end - m.start - m.paused), pts),
+    path: pts.map((p) => [p.lon, p.lat]),
+    count: pts.length,
+    waits: m.waits,
+  };
+}
+
 /** Convenience for tests and small inputs. */
-export function detect(points: DPoint[]): Output[] {
-  const d = new Detector();
+export function detect(points: DPoint[], opts?: DetectorOptions): Output[] {
+  const d = new Detector(opts);
   for (const p of points) d.push(p);
   return d.finish();
 }

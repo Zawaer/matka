@@ -33,6 +33,7 @@ type TripRow = {
   ended_at: Date;
   distance_m: number;
   mode: string;
+  waits: { startedAt: string; endedAt: string; stop: string | null }[] | null;
 };
 
 const secs = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 1000);
@@ -83,7 +84,7 @@ export async function GET(req: Request) {
     ),
     q<TripRow>(
       `WITH d(s, e) AS (VALUES (${bounds}))
-       SELECT t.id, t.started_at, t.ended_at, t.distance_m, t.mode
+       SELECT t.id, t.started_at, t.ended_at, t.distance_m, t.mode, t.waits
        FROM trips t, d
        WHERE t.user_id = $1 AND t.started_at < d.e AND t.ended_at >= d.s
        ORDER BY t.started_at`,
@@ -138,6 +139,9 @@ export async function GET(req: Request) {
                   })),
                 }
               : {}),
+            // Transfers folded into the trip ("Waited at Kamppi"); the
+            // client reads them as TrackSummary & { waits }.
+            ...(r.waits?.length ? { waits: r.waits } : {}),
           },
         },
       };

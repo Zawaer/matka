@@ -137,3 +137,32 @@ Merged `hardening` into `main`. Decided with the owner:
   follow their track. Tuned on a day of the owner's ground truth (a night bus with a bogus extra leg,
   another ride split by GPS noise, two car trips matched as bus chains); about 6% of trips
   change displayed mode, mostly bus → driving/cycling.
+
+## Update 2026-10-19: transfers, recording gaps, place names
+From a day of the owner's own data (a night bus, a wait at a hub named after a pub, an
+afternoon with recording off shown as one 10-hour visit):
+
+- **Transfers aren't visits.** A stay of at most 20 min whose centre is within 50 m of a
+  GTFS stop (`transit_stops`), with a move on both sides, is folded into one trip; the wait
+  is kept on the trip (`trips.waits`, migration 007) and shown as "Waited at Kamppi · 9 min"
+  between the rides. 50 m because you wait at the platform (a typical wait: 27 m; a parking lot
+  85 m from a stop stays a visit); 20 min because longer is more than a change.
+  No feed loaded = no stops = every stay stays a visit. On the owner's data about one
+  visit in eight was folded, almost all at metro and bus hubs.
+- **Recording gaps.** A silent phone is still assumed still, except when the silence is
+  over 2 h *and* the next fix is 750 m or more away: then recording was off, the stay ends
+  5 min after its last fix and no trip is drawn across the hole (moves are split at any
+  2 h silence). Leaving home after a quiet night gave first fixes 300-500 m out; the
+  recording-off cases were 1 km or more. The timeline shows "No location recorded" for
+  holes of 30 min or more. Dropped: 3 fabricated trips (e.g. "cycling 229 km in 12 h").
+- **Jitter.** Stay centres are weighted by 1/accuracy²; fixes up to 400 m out while the phone
+  reports `still` twice in a row are jitter and don't end the stay. Points without an
+  activity behave as before.
+- **Place names.** Photon is asked for 10 candidates. Roads, bridges, rail, stops, land use
+  and areas are never a name. A POI only wins when it is about as near as the nearest
+  address (so a home above a supermarket stays "Street 5"): any POI within 15 m, a big
+  venue (mall, campus, museum, stadium...) within 60 m. Bars, pubs, nightclubs, adult and
+  gambling venues, clinics and places of worship are never asserted, whatever the time or
+  duration: an address is never wrong. Else "Street 2 B", else the district.
+  `places.geocoder_version` (migration 006) re-geocodes every place when
+  `GEOCODER_VERSION` is bumped; custom names are untouched.
