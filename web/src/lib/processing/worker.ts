@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { pool } from "../db";
-import { importDawarichIfNeeded } from "../dawarichImport";
+import { importDawarichIfNeeded, topUpDawarich } from "../dawarichImport";
+import { sweepAbandonedUploads } from "../google/import";
 import { syncPhotoPoints } from "../photoPoints";
 import { refreshFeeds } from "../transit/feed";
 import { matchPendingTrips } from "../transit/run";
@@ -29,8 +30,9 @@ export async function tick(): Promise<void> {
     ).rows[0].ok;
     if (!locked) return;
     // One-time history import; quiet no-op once finished or when not configured.
+    // After it, a daily top-up of what Dawarich recorded since, into gaps only.
     try {
-      await importDawarichIfNeeded();
+      if (!(await importDawarichIfNeeded())) await topUpDawarich();
     } catch (err) {
       console.error("[import] dawarich import failed, will retry:", err instanceof Error ? err.message : err);
     }
@@ -55,6 +57,8 @@ export async function tick(): Promise<void> {
       }
     }
     await c.query(`DELETE FROM sessions WHERE expires_at < now()`);
+    // Google Timeline uploads abandoned half-way: their temp files go.
+    await sweepAbandonedUploads().catch((err) => console.error("[google] sweep failed:", err));
     // Drain the geocoding backlog a batch at a time.
     let named = 0;
     for (let n = await geocodePending(); n > 0; n = await geocodePending()) named += n;

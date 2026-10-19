@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { saveAiPlaces, saveImmich, savePhotoPoints, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
+import { checkDawarich, saveAiPlaces, saveImmich, savePhotoPoints, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
 
 const input =
   "mt-1.5 block w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-primary";
@@ -176,6 +176,31 @@ export function PhotoPointsForm({ on }: { on: boolean }) {
       <div className="flex items-center gap-3">
         <button className={button} disabled={pending}>
           Save
+        </button>
+        <Result r={r} />
+      </div>
+    </form>
+  );
+}
+
+export function DawarichForm({ lastCheck, ready, timeZone }: { lastCheck: string | null; ready: boolean; timeZone: string }) {
+  const [r, action, pending] = useActionState<FormResult, FormData>(checkDawarich, null);
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <p className="text-sm text-muted">
+        Your Dawarich history was copied in once. Points Dawarich records later are added once a
+        day where Matka has nothing of its own within 10 minutes; Dawarich is only read.
+      </p>
+      <p className="text-xs text-muted">
+        {!ready
+          ? "The first import is still running."
+          : lastCheck
+            ? `Last checked ${new Date(lastCheck).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone })}.`
+            : "Not checked for new points yet."}
+      </p>
+      <div className="flex items-center gap-3">
+        <button className={button} disabled={pending || !ready}>
+          {pending ? "Checking…" : "Check Dawarich for new points"}
         </button>
         <Result r={r} />
       </div>

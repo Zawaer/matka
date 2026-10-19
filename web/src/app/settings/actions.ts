@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { endOtherSessions, requireUser } from "@/lib/auth";
 import { claudeConfigured } from "@/lib/claude";
+import { dawarichStatus, topUpDawarich } from "@/lib/dawarichImport";
 import { encrypt } from "@/lib/crypto";
 import { q } from "@/lib/db";
 import { normalizeImmichUrl } from "@/lib/immich";
@@ -119,6 +120,27 @@ export async function saveImmich(_prev: FormResult, form: FormData): Promise<For
   ]);
   revalidatePath("/settings");
   return { ok: true, message: "Immich connected." };
+}
+
+export async function checkDawarich(): Promise<FormResult> {
+  const user = await requireUser();
+  const status = await dawarichStatus(user.id);
+  if (!status) return { ok: false, message: "Not available on this server." };
+  if (!status.ready) return { ok: false, message: "The first Dawarich import is still running." };
+  const r = await topUpDawarich({ force: true });
+  revalidatePath("/settings");
+  if (!r) return { ok: false, message: "A check is already running; try again in a minute." };
+  if (r.error) return { ok: false, message: `Couldn't read Dawarich: ${r.error}` };
+  if (r.read === 0) return { ok: true, message: "No new points in Dawarich." };
+  const n = (x: number) => x.toLocaleString("en-GB");
+  return {
+    ok: true,
+    message:
+      `${n(r.read)} new points in Dawarich: ${n(r.inserted)} added` +
+      (r.covered ? `, ${n(r.covered)} skipped because Matka already had that time` : "") +
+      (r.duplicate ? `, ${n(r.duplicate)} already present` : "") +
+      ".",
+  };
 }
 
 export async function signOutOthers(): Promise<void> {

@@ -1,0 +1,24 @@
+{
+  "timelineObjects": [
+    {
+      "activitySegment": {
+        "startLocation": { "latitudeE7": 601700000, "longitudeE7": 249400000 },
+        "endLocation": { "latitudeE7": 602000000, "longitudeE7": 249400000 },
+        "duration": { "startTimestampMs": "1552374000000", "endTimestampMs": "1552375800000" },
+        "distance": 3400,
+        "activityType": "IN_BUS",
+        "confidence": "HIGH",
+        "waypointPath": { "waypoints": [{ "latE7": 601800000, "lngE7": 249400000 }] },
+        "simplifiedRawPath": { "points": [{ "latE7": 601850000, "lngE7": 249400000, "timestampMs": "1552374900000", "accuracyMeters": 8 }] }
+      }
+    },
+    {
+      "placeVisit": {
+        "location": { "latitudeE7": 602000000, "longitudeE7": 249400000, "placeId": "ChIJ", "address": "Somewhere", "name": "Work" },
+        "duration": { "startTimestamp": "2019-03-12T07:30:00Z", "endTimestamp": "2019-03-12T15:00:00.123Z" },
+        "centerLatE7": 602000100,
+        "centerLngE7": 249400100
+      }
+    }
+  ]
+}

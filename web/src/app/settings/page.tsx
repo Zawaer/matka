@@ -1,5 +1,8 @@
-import { AiPlacesForm, ImmichForm, PhotoPointsForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
+import { AiPlacesForm, DawarichForm, ImmichForm, PhotoPointsForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
+import { GoogleImport } from "@/components/settings/GoogleImport";
 import { claudeConfigured } from "@/lib/claude";
+import { dawarichStatus } from "@/lib/dawarichImport";
+import { listImports } from "@/lib/google/import";
 import { configuredFeeds } from "@/lib/transit/feed";
 import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
@@ -13,7 +16,7 @@ export const metadata = {
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [[row], [{ sessions }]] = await Promise.all([
+  const [[row], [{ sessions }], googleImports, dawarich] = await Promise.all([
     q<{ immich_url: string | null; has_key: boolean; photo_points: boolean; ai_places: boolean }>(
       `SELECT immich_url, immich_api_key IS NOT NULL AS has_key, photo_points, ai_places FROM users WHERE id = $1`,
       [user.id],
@@ -22,6 +25,8 @@ export default async function SettingsPage() {
       `SELECT count(*) sessions FROM sessions WHERE user_id = $1 AND expires_at > now()`,
       [user.id],
     ),
+    listImports(user.id),
+    dawarichStatus(user.id),
   ]);
   const zones = Intl.supportedValuesOf("timeZone");
   if (!zones.includes(user.timezone)) zones.unshift(user.timezone);
@@ -59,6 +64,16 @@ export default async function SettingsPage() {
             </div>
           )}
         </Section>
+
+        <Section title="Import Google Timeline">
+          <GoogleImport initial={googleImports} timeZone={user.timezone} />
+        </Section>
+
+        {dawarich && (
+          <Section title="Dawarich">
+            <DawarichForm lastCheck={dawarich.lastCheck} ready={dawarich.ready} timeZone={user.timezone} />
+          </Section>
+        )}
 
         <Section title="Devices">
           <p className="text-sm text-muted">Phones that record and upload your location.</p>
