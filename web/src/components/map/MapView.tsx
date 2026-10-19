@@ -138,6 +138,13 @@ export default function MapView() {
     let mql: MediaQueryList | null = null;
     let onThemeChange: (() => void) | null = null;
 
+    // Fetch the data alongside MapLibre and the basemap, not after them.
+    const data = Promise.all([
+      fetch("/api/points", { cache: "no-cache" }),
+      fetch("/api/tracks/geojson", { cache: "no-cache" }),
+    ]);
+    data.catch(() => {}); // handled where it's awaited
+
     (async () => {
       const container = containerRef.current;
       if (!container) return;
@@ -223,11 +230,13 @@ export default function MapView() {
 
       m.on("load", async () => {
         if (cancelled) return;
+        // MapLibre opens the compact attribution at first; start it folded to
+        // the (i) button, which still shows the credits on tap.
+        container
+          .querySelector(".maplibregl-ctrl-attrib")
+          ?.classList.remove("maplibregl-compact-show");
         try {
-          const [pointsRes, tracksRes] = await Promise.all([
-            fetch("/api/points", { cache: "no-store" }),
-            fetch("/api/tracks/geojson", { cache: "no-store" }),
-          ]);
+          const [pointsRes, tracksRes] = await data;
           if (!pointsRes.ok || !tracksRes.ok) {
             throw new Error(
               `points ${pointsRes.status}, tracks ${tracksRes.status}`,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readUser } from "@/lib/auth";
 import { q } from "@/lib/db";
+import { cachedJson } from "@/lib/mapCache";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,11 +37,12 @@ export async function GET(req: Request) {
     where.push(`t.started_at <= to_timestamp($${params.length})`);
   }
 
-  // Simplify to ~5 m so years of trips stay a reasonable payload.
-  const rows = await q<Row>(
-    // With line matching on, a trip mostly covered by transit legs is drawn as
-    // that kind (same rule as lib/transit/run.ts displayMode).
-    `SELECT t.id, ST_AsGeoJSON(ST_Simplify(t.path::geometry, 0.00005), 6) AS geom,
+  return cachedJson(req, user.id, String(user.transitLines), async () => {
+    // Simplify to ~5 m so years of trips stay a reasonable payload.
+    const rows = await q<Row>(
+      // With line matching on, a trip mostly covered by transit legs is drawn as
+      // that kind (same rule as lib/transit/run.ts displayMode).
+      `SELECT t.id, ST_AsGeoJSON(ST_Simplify(t.path::geometry, 0.00005), 5) AS geom,
             CASE WHEN $2 AND l.covered >= 0.5 * t.distance_m THEN l.kind ELSE t.mode END AS mode,
             t.distance_m AS distance, extract(epoch FROM t.ended_at - t.started_at)::int AS duration
      FROM trips t
@@ -50,24 +52,22 @@ export async function GET(req: Request) {
      ) l ON true
      WHERE ${where.join(" AND ")}
      ORDER BY t.started_at`,
-    params,
-  );
+      params,
+    );
 
-  const features = rows.map((r) => ({
-    type: "Feature" as const,
-    geometry: JSON.parse(r.geom),
-    properties: {
-      id: Number(r.id),
-      mode: r.mode,
-      distance: Math.round(r.distance),
-      duration: r.duration,
-    },
-  }));
+    const features = rows.map((r) => ({
+      type: "Feature" as const,
+      geometry: JSON.parse(r.geom),
+      properties: {
+        id: Number(r.id),
+        mode: r.mode,
+        distance: Math.round(r.distance),
+        duration: r.duration,
+      },
+    }));
 
-  return NextResponse.json(
-    { type: "FeatureCollection", features },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+    return { type: "FeatureCollection", features };
+  });
 }
 
 function numParam(raw: string | null): number | null {

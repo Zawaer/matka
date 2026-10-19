@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readUser } from "@/lib/auth";
 import { q } from "@/lib/db";
+import { cachedJson } from "@/lib/mapCache";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,7 +27,10 @@ export async function GET(req: Request) {
   const from = numParam(url.searchParams.get("from"), null);
   const to = numParam(url.searchParams.get("to"), null);
 
-  const where: string[] = ["user_id = $1", "(accuracy IS NULL OR accuracy < $2)"];
+  const where: string[] = [
+    "user_id = $1",
+    "(accuracy IS NULL OR accuracy < $2)",
+  ];
   const params: unknown[] = [user.id, minAccuracy];
   if (from != null) {
     params.push(from);
@@ -42,8 +46,9 @@ export async function GET(req: Request) {
   // (up to 2 h while the phone stays within 200 m, as a distance-filtered phone
   // is silent when still; at most 2 min when it moved or went quiet elsewhere),
   // summed per ~55 m cell. Homes and workplaces glow; roads only trace.
-  const rows = await q<{ lat: number; lon: number; secs: number; n: string }>(
-    `WITH p AS (
+  return cachedJson(req, user.id, "", async () => {
+    const rows = await q<{ lat: number; lon: number; secs: number; n: string }>(
+      `WITH p AS (
        SELECT ts, geom, LEAD(ts) OVER w AS next_ts, LEAD(geom) OVER w AS next_geom
        FROM points WHERE ${whereSql}
        WINDOW w AS (ORDER BY ts)
@@ -59,22 +64,29 @@ export async function GET(req: Request) {
      FROM d GROUP BY 1, 2
      ORDER BY secs DESC
      LIMIT ${MAX_POINTS}`,
-    params,
-  );
-  const total = rows.reduce((a, r) => a + Number(r.n), 0);
+      params,
+    );
+    const total = rows.reduce((a, r) => a + Number(r.n), 0);
 
-  const features = rows.map((r) => ({
-    type: "Feature" as const,
-    geometry: { type: "Point" as const, coordinates: [Number(r.lon), Number(r.lat)] },
-    // h: hours spent in this cell.
-    properties: { h: Math.round((Number(r.secs) / 3600) * 1000) / 1000 },
-  }));
+    const features = rows.map((r) => ({
+      type: "Feature" as const,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [round(Number(r.lon), 3), round(Number(r.lat), 4)],
+      },
+      // h: hours spent in this cell.
+      properties: { h: Math.round((Number(r.secs) / 3600) * 1000) / 1000 },
+    }));
 
-  return NextResponse.json(
-    { type: "FeatureCollection", features, meta: { points: total, cells: features.length } },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+    return {
+      type: "FeatureCollection",
+      features,
+      meta: { points: total, cells: features.length },
+    };
+  });
 }
+
+const round = (x: number, digits: number) => Number(x.toFixed(digits));
 
 function numParam(raw: string | null, fallback: number | null): number | null {
   if (raw == null || raw === "") return fallback;
