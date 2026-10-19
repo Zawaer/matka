@@ -4,6 +4,7 @@
 import type { User } from "../auth";
 import { q } from "../db";
 import { PLACE_NAME_SQL, getPlaces } from "../places";
+import { displayModeJoin, displayModeSql } from "../transit/run";
 import {
   type AwayTrip,
   type Home,
@@ -38,12 +39,9 @@ export async function loadMoves(user: Pick<User, "id" | "transitLines">, from?: 
     `SELECT extract(epoch FROM t.started_at)::float8 * 1000 AS s,
             extract(epoch FROM t.ended_at)::float8 * 1000 AS e,
             t.distance_m::float8 AS distance,
-            CASE WHEN $2 AND l.covered >= 0.5 * t.distance_m THEN l.kind ELSE t.mode END AS mode
+            ${displayModeSql("$2")} AS mode
      FROM trips t
-     LEFT JOIN LATERAL (
-       SELECT sum(d) AS covered, (array_agg(kind ORDER BY d DESC))[1] AS kind
-       FROM (SELECT kind, sum(distance_m) AS d FROM trip_legs WHERE trip_id = t.id GROUP BY kind) k
-     ) l ON $2
+     ${displayModeJoin("$2")}
      WHERE ${where.join(" AND ")}
      ORDER BY t.started_at`,
     params,

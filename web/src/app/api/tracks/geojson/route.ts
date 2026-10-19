@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { cachedJson } from "@/lib/mapCache";
+import { displayModeJoin, displayModeSql } from "@/lib/transit/run";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,15 +42,12 @@ export async function GET(req: Request) {
     // Simplify to ~5 m so years of trips stay a reasonable payload.
     const rows = await q<Row>(
       // With line matching on, a trip mostly covered by transit legs is drawn as
-      // that kind (same rule as lib/transit/run.ts displayMode).
+      // the kind covering most of it (lib/transit/run.ts displayMode).
       `SELECT t.id, ST_AsGeoJSON(ST_Simplify(t.path::geometry, 0.00005), 5) AS geom,
-            CASE WHEN $2 AND l.covered >= 0.5 * t.distance_m THEN l.kind ELSE t.mode END AS mode,
+            ${displayModeSql("$2")} AS mode,
             t.distance_m AS distance, extract(epoch FROM t.ended_at - t.started_at)::int AS duration
      FROM trips t
-     LEFT JOIN LATERAL (
-       SELECT sum(distance_m) AS covered, (array_agg(kind ORDER BY distance_m DESC))[1] AS kind
-       FROM trip_legs WHERE trip_id = t.id
-     ) l ON true
+     ${displayModeJoin("$2")}
      WHERE ${where.join(" AND ")}
      ORDER BY t.started_at`,
       params,

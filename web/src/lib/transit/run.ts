@@ -98,6 +98,21 @@ export function displayMode(mode: string, distanceM: number, legs: Pick<LegRow, 
   return [...byKind].sort((a, b) => b[1] - a[1])[0][0];
 }
 
+/**
+ * displayMode in SQL, for queries over trips aliased `t`: add displayModeJoin(flag)
+ * and select displayModeSql(flag), flag being the SQL for "line matching on"
+ * (the legs aren't read when it is off).
+ * Sums leg distance per kind like displayMode; ties go to the kind seen first
+ * (lowest seq), as displayMode's stable sort over legs in seq order does.
+ */
+export const displayModeJoin = (flag: string) => `LEFT JOIN LATERAL (
+       SELECT sum(d) AS covered, (array_agg(kind ORDER BY d DESC, first_seq))[1] AS kind
+       FROM (SELECT kind, sum(distance_m::float8) AS d, min(seq) AS first_seq
+             FROM trip_legs WHERE trip_id = t.id GROUP BY kind) k
+     ) l ON ${flag}`;
+export const displayModeSql = (flag: string) =>
+  `CASE WHEN ${flag} AND l.covered >= 0.5 * t.distance_m THEN l.kind ELSE t.mode END`;
+
 /** Legs of these trips, grouped by trip id (empty when none). */
 export async function legsByTrip(tripIds: (string | number)[]): Promise<Map<string, LegRow[]>> {
   const out = new Map<string, LegRow[]>();

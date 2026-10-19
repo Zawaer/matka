@@ -238,8 +238,6 @@ export class Detector {
   private inMove: Move | null = null;
   /** A candidate outlier held back until the next fix shows whether it was noise. */
   private suspect: DPoint | null = null;
-  /** Whether the suspect came after a recording gap (see LONG_SILENCE_S). */
-  private suspectAfterGap = false;
   private last: DPoint | null = null;
   readonly out: Output[] = [];
 
@@ -280,19 +278,21 @@ export class Detector {
       c.seen = p.ts;
       return;
     }
-    // Silent while still: the stay lasted until shortly before this fix.
-    // Unless the silence was long and ended far away: recording was off.
-    let end = Math.round(p.ts - d / LEAVE_SPEED_MS);
-    const recordingGap = this.suspect
-      ? this.suspectAfterGap
-      : p.ts - c.seen > LONG_SILENCE_S && d >= FAR_AFTER_SILENCE_M;
-    if (recordingGap) end = Math.min(end, c.seen + GAP_ALLOWANCE_S);
-    c.end = Math.max(c.end, end);
-    if (duration(c) >= MIN_STAY_S && !this.suspect) {
-      // Leaving a real stay: wait one fix before believing it.
-      this.suspect = p;
-      this.suspectAfterGap = recordingGap;
-      return;
+    if (!this.suspect) {
+      // Silent while still: the stay lasted until shortly before this fix.
+      // Unless the silence was long and ended far away: recording was off.
+      // With a suspect held back the end was already set from it, the first
+      // fix away; extending it from this later one would run the stay past
+      // the suspect, which starts what comes next (an overlap).
+      let end = Math.round(p.ts - d / LEAVE_SPEED_MS);
+      const recordingGap = p.ts - c.seen > LONG_SILENCE_S && d >= FAR_AFTER_SILENCE_M;
+      if (recordingGap) end = Math.min(end, c.seen + GAP_ALLOWANCE_S);
+      c.end = Math.max(c.end, end);
+      if (duration(c) >= MIN_STAY_S) {
+        // Leaving a real stay: wait one fix before believing it.
+        this.suspect = p;
+        return;
+      }
     }
     const pending = this.suspect;
     this.suspect = null;
@@ -336,7 +336,7 @@ export class Detector {
       prev.lat = (prev.lat * prev.count + stay.lat * stay.count) / n;
       prev.lon = (prev.lon * prev.count + stay.lon * stay.count) / n;
       prev.count = n;
-      prev.end = stay.end;
+      prev.end = Math.max(prev.end, stay.end);
       this.lastStayPts.push(...this.move.slice(1), ...c.pts);
       this.move = [c.pts[c.pts.length - 1]];
       return;
