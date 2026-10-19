@@ -18,12 +18,12 @@ const PUBLIC = [
 // Read-only data the phone app's viewer may fetch with its device token or
 // the map embed cookie; those routes authenticate with readUser().
 const DEVICE_READABLE = [
-  /^\/api\/(overview|timeline|places|points|tracks\/geojson|day-summary)$/,
+  /^\/api\/(overview|timeline|places|points|tracks\/geojson|day-summary|search)$/,
   /^\/api\/insights\/(modes|world|trips|saved)$/,
   /^\/api\/insights\/trips\/\d{4}-\d{2}-\d{2}$/,
   /^\/api\/places\/\d+\/photos$/,
   /^\/api\/immich\/asset\/[0-9a-fA-F-]+$/,
-  /^\/embed\/map$/,
+  /^\/embed\/(map|day)$/,
 ];
 
 export async function proxy(req: NextRequest) {

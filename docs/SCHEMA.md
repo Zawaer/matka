@@ -9,7 +9,7 @@ Defined by `web/migrations/*.sql`, applied in order by `web/scripts/migrate.mjs`
 | `sessions` | Browser sessions | `id` = SHA-256 of the cookie token |
 | `devices` | Paired collectors | `token_hash` = SHA-256 of the bearer token; `revoked_at` |
 | `points` | Raw fixes | `UNIQUE (user_id, ts)`; `geom geography(Point)`; `source` device/import |
-| `places` | Somewhere the user stays | `custom_name` (user) wins over `geo_name` (Photon); `category` = OSM value |
+| `places` | Somewhere the user stays | Name: `custom_name` (user), else `ai_name` (opt-in AI picker, from `geo_candidates`), else `geo_name` (Photon): `PLACE_NAME_SQL`/`PLACE_CATEGORY_SQL` in `lib/places.ts`; `category` = OSM value |
 | `visits` | A stay at a place | `started_at`/`ended_at`; derived |
 | `trips` | Movement between visits | `distance_m`, `mode` (`ModeKey`), `path geography(LineString)`; derived |
 | `processing_state` | Per user: rebuild from `dirty_from` | NULL = up to date |

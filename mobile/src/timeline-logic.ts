@@ -74,3 +74,13 @@ export function adjacentDays(dates: readonly string[], date: string | null): { p
   }
   return { prev, next };
 }
+
+/** The id a row shares with its stop or line on the day map: "v-<visit id>" or "m-<trip id>". */
+export function selectionKey(it: TimelineItem): string {
+  return it.kind === "visit" ? `v-${it.visit.id}` : `m-${it.track.id}`;
+}
+
+/** Whether the day map has anything to draw (same rule as the web's dayHasMap). */
+export function dayHasMap(items: TimelineItem[]): boolean {
+  return items.some((it) => (it.kind === "visit" ? it.visit.lat != null && it.visit.lon != null : it.track.mode !== "stationary"));
+}

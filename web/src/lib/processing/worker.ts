@@ -4,6 +4,7 @@ import { importDawarichIfNeeded } from "../dawarichImport";
 import { syncPhotoPoints } from "../photoPoints";
 import { refreshFeeds } from "../transit/feed";
 import { matchPendingTrips } from "../transit/run";
+import { pickPlaceNamesWithAi } from "./aiPlaces";
 import { geocodePending } from "./geocode";
 import { processUser } from "./run";
 
@@ -58,6 +59,12 @@ export async function tick(): Promise<void> {
     let named = 0;
     for (let n = await geocodePending(); n > 0; n = await geocodePending()) named += n;
     if (named) console.log(`[geocode] named ${named} places`);
+    // Opt-in AI place picker; one bounded request per tick at most.
+    try {
+      await pickPlaceNamesWithAi();
+    } catch (err) {
+      console.error("[ai-places] failed, will retry:", err instanceof Error ? err.message : err);
+    }
     // Public transport lines: refresh feeds when due (daily check), then match
     // new trips. A bounded number per tick keeps a big backlog from hogging it.
     try {

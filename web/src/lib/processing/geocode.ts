@@ -186,6 +186,13 @@ export type Pick = {
   props: PhotonProps | null;
 };
 
+/** Whether a feature may name a place at all: named, not a road or the like, not a bar, clinic, church… */
+export const assertable = (p: PhotonProps): boolean =>
+  !!p.name &&
+  !SKIP_KEYS.has(p.osm_key ?? "") &&
+  !NEVER_KEYS.has(p.osm_key ?? "") &&
+  !NEVER_VALUES.has(p.osm_value ?? "");
+
 const cityOf = (p: PhotonProps) => p.city ?? p.town ?? p.village ?? null;
 const addressOf = (p: PhotonProps) => (p.street && p.housenumber ? `${p.street} ${p.housenumber}` : null);
 
@@ -201,11 +208,6 @@ export function pickPhotonName(features: PhotonFeature[], lat: number, lon: numb
     .sort((a, b) => a.d - b.d);
 
   const meta = (p: PhotonProps) => ({ city: cityOf(p), country: p.country ?? null });
-  const assertable = (p: PhotonProps) =>
-    !!p.name &&
-    !SKIP_KEYS.has(p.osm_key ?? "") &&
-    !NEVER_KEYS.has(p.osm_key ?? "") &&
-    !NEVER_VALUES.has(p.osm_value ?? "");
   const isVenue = (p: PhotonProps) => VENUE_VALUES.has(p.osm_value ?? "") || VENUE_KEYS.has(p.osm_key ?? "");
 
   // The nearest address is the building you were most likely in. A POI only
@@ -240,6 +242,50 @@ export function pickPhotonName(features: PhotonFeature[], lat: number, lon: numb
   return { name: any.district ?? any.locality ?? cityOf(any), category: null, props: area(any), ...meta(any) };
 }
 
+/** Places with this many assertable POIs nearby are ambiguous enough to ask the AI picker (lib/aiPlaces.ts). */
+export const AI_MIN_CANDIDATES = 2;
+/** How far from the stay a POI may be to be a candidate for the AI picker. */
+export const AI_CANDIDATE_M = VENUE_M;
+const AI_MAX_CANDIDATES = 8;
+
+/** One POI the AI picker may choose: only the kind of feature pickPhotonName could assert. */
+export type GeoCandidate = { name: string; key: string | null; kind: string | null; d: number };
+/**
+ * What geocoding kept for the AI picker (places.geo_candidates): the nearby
+ * POIs, and the nearest address, which is never sent to the model (it only
+ * hears that an address exists and may answer "address").
+ */
+export type GeoCandidates = { pois: GeoCandidate[]; address: string | null };
+
+/**
+ * The plausible POIs around (lat, lon) when there are at least
+ * AI_MIN_CANDIDATES of them within AI_CANDIDATE_M, else null. Uses the same
+ * assertable() rule as pickPhotonName, so the AI can never pick a bar, a
+ * clinic or a church either.
+ */
+export function aiCandidates(features: PhotonFeature[], lat: number, lon: number): GeoCandidates | null {
+  const near = features
+    .filter((f) => f.properties && f.geometry?.coordinates)
+    .map((f) => {
+      const c = f.geometry!.coordinates!;
+      return { p: f.properties!, d: haversine(lat, lon, c[1], c[0]) };
+    })
+    .sort((a, b) => a.d - b.d);
+  const pois: GeoCandidate[] = [];
+  const seen = new Set<string>();
+  for (const { p, d } of near) {
+    if (d > AI_CANDIDATE_M || !assertable(p)) continue;
+    const name = p.name!.trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    pois.push({ name, key: p.osm_key ?? null, kind: p.osm_value ?? null, d: Math.round(d) });
+    if (pois.length === AI_MAX_CANDIDATES) break;
+  }
+  if (pois.length < AI_MIN_CANDIDATES) return null;
+  const addr = near.find((c) => c.d <= ADDRESS_M && addressOf(c.p));
+  return { pois, address: addr ? addressOf(addr.p) : null };
+}
+
 /**
  * Geocodes up to BATCH places that haven't been geocoded with the current
  * rules yet (new places first). Returns how many were done.
@@ -247,10 +293,11 @@ export function pickPhotonName(features: PhotonFeature[], lat: number, lon: numb
 export async function geocodePending(): Promise<number> {
   const base = process.env.PHOTON_URL?.trim().replace(/\/+$/, "");
   if (!base) return 0;
-  const places = await q<{ id: string; lat: number; lon: number }>(
-    `SELECT id, ST_Y(geom::geometry) lat, ST_X(geom::geometry) lon
-     FROM places WHERE geocoded_at IS NULL OR geocoder_version IS DISTINCT FROM $2
-     ORDER BY geocoded_at NULLS FIRST, id LIMIT $1`,
+  const places = await q<{ id: string; lat: number; lon: number; ai: boolean }>(
+    `SELECT p.id, ST_Y(p.geom::geometry) lat, ST_X(p.geom::geometry) lon, u.ai_places AND p.kind IS NULL AS ai
+     FROM places p JOIN users u ON u.id = p.user_id
+     WHERE p.geocoded_at IS NULL OR p.geocoder_version IS DISTINCT FROM $2
+     ORDER BY p.geocoded_at NULLS FIRST, p.id LIMIT $1`,
     [BATCH, GEOCODER_VERSION],
   );
   let done = 0;
@@ -271,12 +318,19 @@ export async function geocodePending(): Promise<number> {
     }
     const body = (await res.json().catch(() => null)) as { features?: PhotonFeature[] } | null;
     const pick = pickPhotonName(body?.features ?? [], p.lat, p.lon);
-    // Only the geocoder's columns: a user's custom_name is left alone.
+    // Candidates for the AI picker only for users who turned it on (Settings).
+    const cands = p.ai ? aiCandidates(body?.features ?? [], p.lat, p.lon) : null;
+    // Only the geocoder's columns: a user's custom_name is left alone. When the
+    // candidates changed, an earlier AI pick no longer stands.
     await q(
       `UPDATE places SET geocoded_at = now(), geocoder_version = $7, geodata = $2,
-              geo_name = $3, category = $4, city = $5, country = $6
+              geo_name = $3, category = $4, city = $5, country = $6,
+              ai_name = CASE WHEN geo_candidates IS DISTINCT FROM $8::jsonb THEN NULL ELSE ai_name END,
+              ai_category = CASE WHEN geo_candidates IS DISTINCT FROM $8::jsonb THEN NULL ELSE ai_category END,
+              ai_version = CASE WHEN geo_candidates IS DISTINCT FROM $8::jsonb THEN NULL ELSE ai_version END,
+              geo_candidates = $8::jsonb
        WHERE id = $1`,
-      [p.id, pick.props, pick.name, pick.category, pick.city, pick.country, GEOCODER_VERSION],
+      [p.id, pick.props, pick.name, pick.category, pick.city, pick.country, GEOCODER_VERSION, cands ? JSON.stringify(cands) : null],
     );
     done++;
   }

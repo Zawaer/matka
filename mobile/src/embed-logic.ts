@@ -93,3 +93,74 @@ export function pageMessageExpired(data: string): boolean {
     return false;
   }
 }
+
+// ---- Day map (Timeline tab) ------------------------------------------------
+// /embed/day shows one timeline day on a map. The app loads it once with a
+// ticket (…&to=day&date=…), then switches days and selections by calling
+// window.matkaDay in the page; the page answers with "matka-day" messages.
+
+export const DAY_MESSAGE = "matka-day";
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const KEY_RE = /^[vm]-\d+$/;
+
+/** The ticket URL, sent on to the day map for `date` in the app's theme. */
+export function dayEmbedUrl(ticketUrl: string, date: string | null, scheme: "light" | "dark"): string {
+  const hash = ticketUrl.indexOf("#");
+  let base = hash < 0 ? ticketUrl : ticketUrl.slice(0, hash);
+  for (let prev = ""; prev !== base; ) {
+    prev = base;
+    base = base.replace(/([?&])(?:to|date)=[^&]*(&|$)/, (_m, pre: string, post: string) => (post ? pre : ""));
+  }
+  const extra = `to=day${date && DATE_RE.test(date) ? `&date=${date}` : ""}`;
+  return withTheme(`${base}${base.includes("?") ? "&" : "?"}${extra}${hash < 0 ? "" : ticketUrl.slice(hash)}`, scheme);
+}
+
+/** Whether a loaded URL is the day map (an older server sends every ticket to /embed/map). */
+export function isDayPage(url: string): boolean {
+  return /^https?:\/\/[^/?#]+\/embed\/day(?:[?#]|$)/i.test(url.trim());
+}
+
+/** JS for injectJavaScript: show `date` on the day map. */
+export function setDayJs(date: string): string {
+  if (!DATE_RE.test(date)) return "true;";
+  return `window.matkaDay && window.matkaDay.setDate(${JSON.stringify(date)}); true;`;
+}
+
+/** JS for injectJavaScript: highlight a row's stop or trip (`v-<id>`, `m-<id>`), or nothing. */
+export function selectDayJs(key: string | null): string {
+  if (key != null && !KEY_RE.test(key)) return "true;";
+  return `window.matkaDay && window.matkaDay.select(${JSON.stringify(key)}); true;`;
+}
+
+export type DayPageEvent =
+  | { event: "ready" }
+  | { event: "day"; date: string; hasMap: boolean }
+  | { event: "select"; key: string }
+  | { event: "error" }
+  | { event: "expired" };
+
+/** Parses a message from /embed/day; null for anything else. */
+export function parseDayMessage(data: string): DayPageEvent | null {
+  let m: Record<string, unknown>;
+  try {
+    const v = JSON.parse(data) as unknown;
+    if (!v || typeof v !== "object") return null;
+    m = v as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (m.type !== DAY_MESSAGE) return null;
+  switch (m.event) {
+    case "ready":
+    case "error":
+    case "expired":
+      return { event: m.event };
+    case "day":
+      return typeof m.date === "string" && DATE_RE.test(m.date) ? { event: "day", date: m.date, hasMap: m.hasMap === true } : null;
+    case "select":
+      return typeof m.key === "string" && KEY_RE.test(m.key) ? { event: "select", key: m.key } : null;
+    default:
+      return null;
+  }
+}

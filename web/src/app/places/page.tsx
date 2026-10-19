@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 import { type PlaceListItem, getPlaces } from "@/lib/places";
 import { PlaceCard } from "@/components/places/PlaceCard";
+import { PlaceSearch } from "@/components/places/PlaceSearch";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,10 @@ export const metadata = {
   title: "Places — Matka",
 };
 
-export default async function PlacesPage() {
+export default async function PlacesPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
   const user = await requireUser();
+  const { q } = await searchParams;
+  const initialQuery = (Array.isArray(q) ? q[0] : q) ?? "";
   let places = [] as Awaited<ReturnType<typeof getPlaces>>;
   let failed = false;
   try {
@@ -50,7 +53,7 @@ export default async function PlacesPage() {
       ) : places.length === 0 ? (
         <EmptyState />
       ) : (
-        <>
+        <PlaceSearch initialQuery={initialQuery}>
           {saved.length > 0 ? (
             <PlaceSection title="Saved" count={saved.length} places={saved} />
           ) : (
@@ -63,7 +66,7 @@ export default async function PlacesPage() {
             </p>
           )}
           <PlaceSection title={saved.length ? "Everywhere else" : null} count={rest.length} places={rest} />
-        </>
+        </PlaceSearch>
       )}
     </div>
   );

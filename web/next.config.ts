@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
   // Self-contained server bundle for the Docker image.
   output: "standalone",
   poweredByHeader: false,
+  // The Agent SDK starts Claude Code's native binary from its own package
+  // directory; it has to stay a real node_modules package, not be bundled.
+  serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

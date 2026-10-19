@@ -32,13 +32,20 @@ export interface PlaceListItem {
   radius: number | null;
 }
 
-/** Display name: the user's rename wins over the geocoder's. */
-export const PLACE_NAME_SQL = `COALESCE(p.custom_name, p.geo_name)`;
+/**
+ * Display name: the user's rename, else the AI picker's choice (opt-in,
+ * lib/processing/aiPlaces.ts), else the geocoder's. The one place this order
+ * is written down; use it wherever a place's name is shown.
+ */
+export const PLACE_NAME_SQL = `COALESCE(p.custom_name, p.ai_name, p.geo_name)`;
+
+/** The category that goes with the name: the AI pick's type while its name is shown. */
+export const PLACE_CATEGORY_SQL = `CASE WHEN p.custom_name IS NULL AND p.ai_name IS NOT NULL THEN p.ai_category ELSE p.category END`;
 
 /** Shared loader so the list page can render server-side without a self-fetch. */
 export async function getPlaces(userId: string): Promise<PlaceListItem[]> {
   const rows = await q<Row>(
-    `SELECT p.id, ${PLACE_NAME_SQL} AS name, p.city, p.country, p.category, p.kind, p.radius_m,
+    `SELECT p.id, ${PLACE_NAME_SQL} AS name, p.city, p.country, ${PLACE_CATEGORY_SQL} AS category, p.kind, p.radius_m,
             count(v.id) AS visit_count,
             COALESCE(sum(extract(epoch FROM v.ended_at - v.started_at)), 0) AS total_time,
             max(v.ended_at) AS last_visit

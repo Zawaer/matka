@@ -21,16 +21,20 @@ services:
       # through the read-only matka_ro role. Falls back to the read-only DATABASE_URL this
       # .env held before Matka had its own database. Harmless to leave once finished.
       DAWARICH_IMPORT_URL: ${DAWARICH_IMPORT_URL:-${DATABASE_URL:-}}
+      # Optional AI place picker (Settings, opt-in per user) on the homelab's shared Claude
+      # accounts. Off while CLAUDE_ACCOUNTS_TOKEN is unset; see docs/DEPLOY.md.
+      CLAUDE_ACCOUNTS_URL: http://claude-accounts:8080
+      CLAUDE_ACCOUNTS_TOKEN: ${CLAUDE_ACCOUNTS_TOKEN:-}
     depends_on:
       matka_db:
         condition: service_healthy
       photon:
         condition: service_started
     networks:
-      - proxy_net        # Caddy reaches matka:3000 by name
+      - proxy_net        # Caddy reaches matka:3000 by name; Matka reaches claude-accounts:8080
       - matka_internal
       - dawarich_dawarich  # only for the one-time import from dawarich_db
-    mem_limit: 768m
+    mem_limit: 1g        # room for a short Claude Code run (AI place picker) next to the server
 
   matka_db:
     image: postgis/postgis:17-3.5

@@ -6,6 +6,7 @@ import { formatDateShort, formatDuration, formatTime } from "@/lib/format";
 import { categoryIcon, placeCategoryLine, placeTitle } from "@/components/places/category";
 import { PhotoGallery } from "@/components/places/PhotoGallery";
 import { KindBadge, KindPicker, SizePicker } from "@/components/places/SavedFields";
+import { PLACE_CATEGORY_SQL } from "@/lib/places";
 import { KIND_META, type PlaceKind } from "@/lib/savedPlaces";
 import { renamePlace, savePlace, unsavePlace } from "./actions";
 
@@ -18,6 +19,7 @@ type PlaceRow = {
   id: string;
   custom_name: string | null;
   geo_name: string | null;
+  ai_name: string | null;
   city: string | null;
   country: string | null;
   category: string | null;
@@ -45,7 +47,7 @@ export default async function PlaceDetailPage({
   if (!/^\d+$/.test(id)) notFound();
 
   const [place] = await q<PlaceRow>(
-    `SELECT p.id, p.custom_name, p.geo_name, p.city, p.country, p.category, p.kind, p.radius_m,
+    `SELECT p.id, p.custom_name, p.geo_name, p.ai_name, p.city, p.country, ${PLACE_CATEGORY_SQL} AS category, p.kind, p.radius_m,
             (SELECT count(*) FROM visits v WHERE v.place_id = p.id) AS visit_count,
             (SELECT COALESCE(sum(extract(epoch FROM v.ended_at - v.started_at)), 0)::float8
                FROM visits v WHERE v.place_id = p.id) AS total_time
@@ -61,8 +63,9 @@ export default async function PlaceDetailPage({
   );
 
   const visitCount = Number(place.visit_count);
-  const name = placeTitle(place.custom_name ?? place.geo_name, place.category);
-  const what = placeCategoryLine(place.custom_name ?? place.geo_name, place.category);
+  const shown = place.custom_name ?? place.ai_name ?? place.geo_name;
+  const name = placeTitle(shown, place.category);
+  const what = placeCategoryLine(shown, place.category);
   const locale = [place.city, place.country].filter(Boolean).join(", ");
 
   return (
@@ -83,6 +86,9 @@ export default async function PlaceDetailPage({
         </span>
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{name}</h1>
+          {!place.custom_name && place.ai_name && (
+            <p className="mt-1 text-xs text-muted">Picked by AI among the places nearby. Rename it if that&rsquo;s wrong.</p>
+          )}
           {place.kind && (
             <p className="mt-1.5">
               <KindBadge kind={place.kind} radius={place.radius_m} />
@@ -103,7 +109,7 @@ export default async function PlaceDetailPage({
               <input
                 name="name"
                 defaultValue={place.custom_name ?? ""}
-                placeholder={place.geo_name ?? "e.g. Home"}
+                placeholder={place.ai_name ?? place.geo_name ?? "e.g. Home"}
                 maxLength={120}
                 className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 py-1.5 outline-none focus:border-primary"
               />

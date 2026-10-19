@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { saveImmich, savePhotoPoints, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
+import { saveAiPlaces, saveImmich, savePhotoPoints, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
 
 const input =
   "mt-1.5 block w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-primary";
@@ -110,6 +110,41 @@ export function TransitForm({ on, available }: { on: boolean; available: boolean
       )}
       <div className="flex items-center gap-3">
         <button className={button} disabled={pending || !available}>
+          Save
+        </button>
+        <Result r={r} />
+      </div>
+    </form>
+  );
+}
+
+export function AiPlacesForm({ on }: { on: boolean }) {
+  const [r, action, pending] = useActionState<FormResult, FormData>(saveAiPlaces, null);
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <label className="flex items-start gap-3 text-sm">
+        <input
+          type="checkbox"
+          name="ai_places"
+          defaultChecked={on}
+          className="mt-0.5 h-4 w-4 accent-[color:var(--mk-primary)]"
+        />
+        <span>
+          <span className="font-medium">Let AI pick between nearby places</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            Where several shops, cafés or venues are next to each other, Claude (Anthropic&rsquo;s AI,
+            through this server&rsquo;s shared account) guesses which one you were at from when and how
+            long you stay. It is sent only the candidates&rsquo; names, types and distances in metres,
+            whether a street address is an option (not the address), and your visits there in local
+            time: how many, the usual start hour and length, and how many fall on weekends or at
+            night. Never coordinates, addresses, dates or your tracks. Saved and renamed places are
+            left out, bars, clinics and places of worship are never suggested, and only confident
+            picks are used. Turning this off removes the picks.
+          </span>
+        </span>
+      </label>
+      <div className="flex items-center gap-3">
+        <button className={button} disabled={pending}>
           Save
         </button>
         <Result r={r} />

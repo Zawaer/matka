@@ -1,4 +1,5 @@
-import { ImmichForm, PhotoPointsForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
+import { AiPlacesForm, ImmichForm, PhotoPointsForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
+import { claudeConfigured } from "@/lib/claude";
 import { configuredFeeds } from "@/lib/transit/feed";
 import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
@@ -13,8 +14,8 @@ export const metadata = {
 export default async function SettingsPage() {
   const user = await requireUser();
   const [[row], [{ sessions }]] = await Promise.all([
-    q<{ immich_url: string | null; has_key: boolean; photo_points: boolean }>(
-      `SELECT immich_url, immich_api_key IS NOT NULL AS has_key, photo_points FROM users WHERE id = $1`,
+    q<{ immich_url: string | null; has_key: boolean; photo_points: boolean; ai_places: boolean }>(
+      `SELECT immich_url, immich_api_key IS NOT NULL AS has_key, photo_points, ai_places FROM users WHERE id = $1`,
       [user.id],
     ),
     q<{ sessions: string }>(
@@ -43,6 +44,12 @@ export default async function SettingsPage() {
         <Section title="Public transport">
           <TransitForm on={user.transitLines} available={configuredFeeds().length > 0} />
         </Section>
+
+        {claudeConfigured() && (
+          <Section title="Place names">
+            <AiPlacesForm on={row.ai_places} />
+          </Section>
+        )}
 
         <Section title="Immich photos">
           <ImmichForm url={row.immich_url} connected={row.has_key} />

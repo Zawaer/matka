@@ -16,10 +16,16 @@ export async function GET(req: Request) {
     });
   }
   // Redirect so the ticket doesn't stay in the WebView's URL/history.
-  // The app may append &theme=light|dark to match its own appearance.
+  // The app may append &theme=light|dark to match its own appearance, and
+  // &to=day[&date=YYYY-MM-DD] for the Timeline's day map instead of the map.
+  const query = new URLSearchParams();
   const theme = params.get("theme");
-  const query = theme === "light" || theme === "dark" ? `?theme=${theme}` : "";
-  const res = NextResponse.redirect(`${appUrl()}/embed/map${query}`, 303);
+  if (theme === "light" || theme === "dark") query.set("theme", theme);
+  const to = params.get("to") === "day" ? "day" : "map";
+  const date = params.get("date");
+  if (to === "day" && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) query.set("date", date);
+  const qs = query.size ? `?${query}` : "";
+  const res = NextResponse.redirect(`${appUrl()}/embed/${to}${qs}`, 303);
   res.cookies.set(EMBED_COOKIE, await signEmbed(claims), cookieOptions(EMBED_MAX_AGE));
   res.headers.set("referrer-policy", "no-referrer");
   return res;

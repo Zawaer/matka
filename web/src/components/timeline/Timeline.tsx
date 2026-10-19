@@ -1,13 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Fragment, useState } from "react";
+import { Fragment, useState, type MouseEvent } from "react";
 import { placeTitle } from "@/components/places/category";
 import { KIND_META } from "@/lib/savedPlaces";
 import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
 import { DaySummaryStrip } from "./DaySummaryStrip";
 import { edgeGaps, gapBetween } from "./gaps";
+import { dayHasMap, selectionKey } from "./dayMap";
+import type { DayMapSelection } from "./DayMap";
 import { KIND_LABEL, badgeColors } from "@/lib/transit/colors";
 import {
   formatDuration,
@@ -23,6 +26,15 @@ type TimelineResponse = {
   minDate: string | null;
   maxDate: string | null;
 };
+
+// MapLibre is big: load the day map only once a day with something to draw shows up.
+const DayMap = dynamic(() => import("./DayMap"), {
+  ssr: false,
+  loading: () => <div className="mk-card h-[260px] animate-pulse bg-surface-2/60 md:h-[340px]" aria-hidden />,
+});
+
+/** Rows scrolled to from the map stop below the sticky map and above the phone's tab bar. */
+const ROW_SCROLL_MARGIN = "scroll-mt-[340px] scroll-mb-20 md:scroll-mt-[380px] md:scroll-mb-4";
 
 const fetcher = (url: string): Promise<TimelineResponse> =>
   fetch(url).then((r) => {
@@ -57,6 +69,28 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
     ? edgeGaps(items, data.day, { minDate: data.minDate, maxDate: data.maxDate })
     : { before: null, after: null };
 
+  // The map stays mounted (and keeps its one MapLibre instance) from the
+  // first day that has something to draw; an empty day only hides it.
+  const showMap = !!data && !error && dayHasMap(items);
+  const [mapMounted, setMapMounted] = useState(false);
+  if (showMap && !mapMounted) setMapMounted(true);
+
+  // A selection belongs to the day it was made on.
+  const [sel, setSel] = useState<(DayMapSelection & { date: string }) | null>(null);
+  const selected: DayMapSelection = sel && data && sel.date === data.day.date ? sel : null;
+  const selectFromList = (key: string) => {
+    if (!data) return;
+    setSel(selected?.key === key ? null : { key, from: "list", date: data.day.date });
+  };
+  const selectFromMap = (key: string) => {
+    if (!data) return;
+    setSel({ key, from: "map", date: data.day.date });
+    requestAnimationFrame(() =>
+      document.getElementById(`tl-${key}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+    );
+  };
+  let visitNo = 0;
+
   return (
     <div>
       <DayHeader
@@ -75,7 +109,19 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
         />
       )}
 
-      <div className="mt-6">
+      {mapMounted && data ? (
+        <div
+          className={
+            showMap
+              ? "sticky top-[49px] z-20 -mx-5 mt-3 bg-bg px-5 pb-1 pt-3 md:top-0 md:-mx-10 md:px-10 md:pt-4"
+              : "hidden"
+          }
+        >
+          <DayMap day={data.day} selected={selected} onSelect={selectFromMap} />
+        </div>
+      ) : null}
+
+      <div className={showMap ? "mt-4" : "mt-6"}>
         {error ? (
           <Notice
             title="Couldn't load this day"
@@ -100,7 +146,14 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
               return (
                 <Fragment key={rowKey(item, i)}>
                   {gap && <GapRow from={gap.from} to={gap.to} />}
-                  <TimelineRow item={item} isFirst={i === 0} isLast={i === items.length - 1} />
+                  <TimelineRow
+                    item={item}
+                    num={item.kind === "visit" && showMap ? ++visitNo : undefined}
+                    isFirst={i === 0}
+                    isLast={i === items.length - 1}
+                    selected={selected?.key === selectionKey(item)}
+                    onSelect={showMap ? selectFromList : undefined}
+                  />
                 </Fragment>
               );
             })}
@@ -211,19 +264,41 @@ function NavButton({
 
 /* ---------------- Rows ---------------- */
 
+type Pick = { selected: boolean; onClick?: (e: MouseEvent) => void; id: string };
+
 function TimelineRow({
   item,
+  num,
   isFirst,
   isLast,
+  selected,
+  onSelect,
 }: {
   item: TimelineItem;
+  /** The stop's number on the day map. */
+  num?: number;
   isFirst: boolean;
   isLast: boolean;
+  selected: boolean;
+  /** Set when the day map is shown: a click on the row shows it there. */
+  onSelect?: (key: string) => void;
 }) {
+  const key = selectionKey(item);
+  const pick: Pick = {
+    selected,
+    id: `tl-${key}`,
+    onClick: onSelect
+      ? (e) => {
+          // Links and buttons in the row keep doing their own thing.
+          if ((e.target as Element).closest("a, button, input")) return;
+          onSelect(key);
+        }
+      : undefined,
+  };
   return item.kind === "visit" ? (
-    <VisitRow visit={item.visit} isFirst={isFirst} isLast={isLast} />
+    <VisitRow visit={item.visit} num={num} isFirst={isFirst} isLast={isLast} pick={pick} />
   ) : (
-    <MoveRow track={item.track} />
+    <MoveRow track={item.track} pick={pick} />
   );
 }
 
@@ -252,24 +327,42 @@ function Rail({
 
 function VisitRow({
   visit,
+  num,
   isFirst,
   isLast,
+  pick,
 }: {
   visit: Visit;
+  num?: number;
   isFirst: boolean;
   isLast: boolean;
+  pick: Pick;
 }) {
   const name = placeTitle(visit.placeName, visit.category);
   const unknown = !visit.placeName;
   const kind = visit.placeKind ? KIND_META[visit.placeKind] : null;
 
   return (
-    <li className="flex gap-3 sm:gap-4">
+    <li
+      id={pick.id}
+      onClick={pick.onClick}
+      className={`flex gap-3 sm:gap-4 ${ROW_SCROLL_MARGIN} ${pick.onClick ? "cursor-pointer" : ""}`}
+    >
       <Rail topLine={!isFirst} bottomLine={!isLast}>
         <span
-          className="z-10 flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 bg-surface text-primary shadow-sm"
+          className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 bg-surface text-primary shadow-sm"
           title={kind?.label}
         >
+          {num != null && (
+            <span
+              className={`absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums ${
+                pick.selected ? "bg-primary text-surface" : "border border-primary bg-surface text-primary"
+              }`}
+              aria-label={`Stop ${num}`}
+            >
+              {num}
+            </span>
+          )}
           {kind ? (
             <span className="text-base leading-none" aria-hidden>
               {kind.icon}
@@ -282,7 +375,11 @@ function VisitRow({
         </span>
       </Rail>
 
-      <div className="mk-card my-1.5 flex-1 p-4">
+      <div
+        className={`mk-card my-1.5 flex-1 p-4 transition-shadow ${
+          pick.selected ? "!border-primary ring-2 ring-primary/40" : ""
+        }`}
+      >
         <div className="flex items-start justify-between gap-3">
           <h3
             className={`min-w-0 break-words font-medium ${
@@ -360,7 +457,7 @@ function LegLine({ leg: l }: { leg: TransitLeg }) {
   );
 }
 
-function MoveRow({ track }: { track: TrackSummary }) {
+function MoveRow({ track, pick }: { track: TrackSummary; pick: Pick }) {
   const meta = MODE_META[track.mode];
   const parts = [
     formatDistance(track.distance),
@@ -368,19 +465,27 @@ function MoveRow({ track }: { track: TrackSummary }) {
   ].filter((p) => p && p !== "—");
 
   return (
-    <li className="flex gap-3 sm:gap-4">
+    <li
+      id={pick.id}
+      onClick={pick.onClick}
+      className={`flex gap-3 sm:gap-4 ${ROW_SCROLL_MARGIN} ${pick.onClick ? "cursor-pointer" : ""}`}
+    >
       <div className="relative flex w-10 shrink-0 flex-col items-center">
         <span
-          className="w-0.5 flex-1"
+          className={pick.selected ? "w-1 flex-1 rounded-full" : "w-0.5 flex-1"}
           style={{
             backgroundImage: `linear-gradient(${meta.color} 60%, transparent 0%)`,
-            backgroundSize: "2px 10px",
+            backgroundSize: pick.selected ? "4px 10px" : "2px 10px",
             backgroundRepeat: "repeat-y",
           }}
         />
       </div>
 
-      <div className="flex flex-1 flex-col gap-1.5 py-2">
+      <div
+        className={`-ml-2 flex flex-1 flex-col gap-1.5 rounded-xl px-2 py-2 transition-colors ${
+          pick.selected ? "bg-surface-2" : pick.onClick ? "hover:bg-surface-2/50" : ""
+        }`}
+      >
         <div className="flex items-center gap-2">
           <span
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm"

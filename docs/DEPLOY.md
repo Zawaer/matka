@@ -73,7 +73,43 @@ Every variable is documented in `web/.env.example`. Required in production:
 | `MATKA_ALLOWED_USERS` | See above |
 
 Optional: `PHOTON_URL` (self-hosted Photon for place names), `MATKA_DEFAULT_TIMEZONE`,
-`MATKA_WORKER=off` (disable the worker on a replica), `MATKA_WORKER_INTERVAL_MS`.
+`MATKA_WORKER=off` (disable the worker on a replica), `MATKA_WORKER_INTERVAL_MS`,
+`CLAUDE_ACCOUNTS_URL` and `CLAUDE_ACCOUNTS_TOKEN` (the AI place picker, below).
+
+### AI place picker (optional)
+
+Where Photon finds several shops, cafés or venues next to each other, Matka can let a
+small Claude model pick the one you were most likely at from when and how long you stay
+there. It runs on the shared accounts of a
+[claude-accounts](https://github.com/Zawaer/claude-accounts) service (which picks an
+account, hands over its setup token and hears back about rate limits) through the Claude
+Agent SDK; the image carries Claude Code's binary for that (about 280 MB).
+
+It is off unless both variables are set, and then each user turns it on under
+**Settings → Place names**. Per ambiguous place the model is sent only the candidate
+names, their OSM types and distances in metres, whether a street address is an option
+(not the address), and the visit pattern in local time (count, usual start hour and
+length, weekend and night share). Never coordinates, addresses, dates or tracks. Saved
+and renamed places are skipped; bars, clinics and places of worship are never candidates;
+only confident picks (`ai_name`) are shown, and a rename always wins.
+
+Homelab, once:
+
+```bash
+# 1. A token for Matka in the claude-accounts service
+cd ~/claude-accounts
+TOKEN=$(openssl rand -hex 24)
+# add it to API_TOKENS (comma-separated) in that .env:
+sed -i -e "s/^API_TOKENS=\(..*\)$/API_TOKENS=\1,$TOKEN/" -e "s/^API_TOKENS=$/API_TOKENS=$TOKEN/" .env
+docker compose up -d
+# 2. The same token for Matka
+echo "CLAUDE_ACCOUNTS_TOKEN=$TOKEN" >> ~/matka/.env
+docker compose up -d --build matka
+```
+
+Limits: one request (up to 20 places) per worker tick, `MATKA_AI_REQUESTS_PER_DAY`
+(default 40), a 60 s timeout (`MATKA_AI_TIMEOUT_MS`), and a pause until the reset after a
+rate limit. Model: `MATKA_AI_MODEL` (default `claude-haiku-5-5`).
 
 ## 3. Reverse proxy
 

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
 import { fmtDistance, fmtDuration, fmtTime, isLikelyDrift, isNamed, localDay } from "../format";
@@ -13,7 +13,8 @@ import { getDaySummary, stripModes, type DaySummary } from "../daySummary";
 import { DaySummaryStrip } from "../ui/DaySummary";
 import { modeMeta } from "../design/modes";
 import { LEG_BADGE } from "../design/transit";
-import { adjacentDays, gapBetween, subRows, type Gap } from "../timeline-logic";
+import { adjacentDays, dayHasMap, gapBetween, selectionKey, subRows, type Gap } from "../timeline-logic";
+import { DayMapCard, type DayMapSelection } from "../ui/DayMapCard";
 
 const RAIL = 28;
 
@@ -104,6 +105,14 @@ export default function TimelineScreen() {
   const moving = moves.reduce((a, m) => a + (m.duration ?? 0), 0);
   const day = date ? localDay(date) : null;
 
+  // The day map, and the row picked in the list or on the map (per day).
+  const hasMap = dayHasMap(items);
+  const [sel, setSel] = useState<(DayMapSelection & { date: string }) | null>(null);
+  const selected: DayMapSelection = sel && sel.date === date ? sel : null;
+  const pick = (key: string) => date && setSel(selected?.key === key ? null : { key, from: "list", date });
+  const visitNo = new Map<string, number>();
+  if (hasMap) for (const it of items) if (it.kind === "visit") visitNo.set(selectionKey(it), visitNo.size + 1);
+
   const s = useStyles((th) => ({
     nav: { flexDirection: "row", alignItems: "center", gap: th.space.md },
     summary: { paddingVertical: th.space.md, gap: th.space.md },
@@ -114,6 +123,9 @@ export default function TimelineScreen() {
     row: { flexDirection: "row", gap: th.space.md },
     rail: { width: RAIL, alignItems: "center" },
     line: { position: "absolute", width: 2, backgroundColor: th.c.borderStrong, borderRadius: 1 },
+    num: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 5, alignItems: "center", justifyContent: "center", backgroundColor: th.c.primary, borderWidth: 2, borderColor: th.c.bg },
+    picked: { borderColor: th.c.primary, borderWidth: 2 },
+    pickedMove: { backgroundColor: th.c.surfaceAlt, borderRadius: th.radius.md, marginHorizontal: -th.space.sm, paddingHorizontal: th.space.sm },
     node: { width: 16, height: 16, borderRadius: 8, backgroundColor: th.c.primary, borderWidth: 3, borderColor: th.c.bg, boxShadow: `0 0 0 2px ${th.c.primary}` },
     visit: { flex: 1, marginVertical: 5, flexDirection: "row", alignItems: "center", gap: th.space.md, padding: th.space.md + 2 },
     move: { flex: 1, flexDirection: "row", alignItems: "center", gap: th.space.md, paddingVertical: th.space.sm },
@@ -145,6 +157,15 @@ export default function TimelineScreen() {
           <RoundButton icon="chevron-right" label="Next day" onPress={() => next && setWant(next)} disabled={!next} />
         </View>
       )}
+
+      {resp && date ? (
+        <DayMapCard
+          date={date}
+          visible={hasMap}
+          selected={selected}
+          onSelect={(key) => setSel({ key, from: "map", date })}
+        />
+      ) : null}
 
       {authLost && !resp ? null : err && !resp ? (
         <ErrorState message={err} onRetry={reload} />
@@ -231,15 +252,31 @@ export default function TimelineScreen() {
       const v = it.visit;
       const named = isNamed(v.placeName);
       const cat = v.category ? categoryMeta(v.category).label : null;
+      const key = selectionKey(it);
+      const num = visitNo.get(key);
       return (
-        <View style={s.row}>
+        <Pressable
+          style={s.row}
+          onPress={hasMap ? () => pick(key) : undefined}
+          disabled={!hasMap}
+          accessibilityRole={hasMap ? "button" : undefined}
+          accessibilityState={hasMap ? { selected: selected?.key === key } : undefined}
+        >
           <View style={s.rail}>
             <View style={[s.line, { top: first ? 26 : 0, bottom: last ? undefined : 0, height: last ? 26 : undefined }]} />
-            <View style={{ marginTop: 18 }}>
-              <View style={s.node} />
-            </View>
+            {num != null ? (
+              <View style={[s.num, { marginTop: 15 }]}>
+                <Text variant="caption" tabular style={{ color: t.c.onPrimary, fontSize: 11, lineHeight: 14, fontWeight: "800" }}>
+                  {num}
+                </Text>
+              </View>
+            ) : (
+              <View style={{ marginTop: 18 }}>
+                <View style={s.node} />
+              </View>
+            )}
           </View>
-          <Card style={s.visit}>
+          <Card style={[s.visit, selected?.key === key ? s.picked : null]}>
             <View style={{ flex: 1, gap: 2 }}>
               <Text variant="headline" numberOfLines={2}>
                 {named ? v.placeName : (cat ?? "Unnamed place")}
@@ -253,19 +290,28 @@ export default function TimelineScreen() {
               {fmtDuration(v.duration)}
             </Text>
           </Card>
-        </View>
+        </Pressable>
       );
     }
     const m = it.track;
     const meta = modeMeta(m.mode);
     const color = t.mode(m.mode);
     const drift = isLikelyDrift(m.mode, m.distance, m.duration);
+    const key = selectionKey(it);
+    const canPick = hasMap && m.mode !== "stationary";
+    const picked = selected?.key === key;
     return (
-      <View style={s.row}>
+      <Pressable
+        style={s.row}
+        onPress={canPick ? () => pick(key) : undefined}
+        disabled={!canPick}
+        accessibilityRole={canPick ? "button" : undefined}
+        accessibilityState={canPick ? { selected: picked } : undefined}
+      >
         <View style={s.rail}>
-          <View style={[s.line, { top: 0, bottom: 0, width: 5, backgroundColor: color, borderRadius: 3 }]} />
+          <View style={[s.line, { top: 0, bottom: 0, width: picked ? 7 : 5, backgroundColor: color, borderRadius: 4 }]} />
         </View>
-        <View style={s.move}>
+        <View style={[s.move, picked ? s.pickedMove : null]}>
           <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${color}26`, alignItems: "center", justifyContent: "center" }}>
             <Icon name={meta.icon} size={19} color={color} />
           </View>
@@ -289,7 +335,7 @@ export default function TimelineScreen() {
             )}
           </View>
         </View>
-      </View>
+      </Pressable>
     );
   }
 }

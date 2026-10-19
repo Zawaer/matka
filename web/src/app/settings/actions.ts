@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { endOtherSessions, requireUser } from "@/lib/auth";
+import { claudeConfigured } from "@/lib/claude";
 import { encrypt } from "@/lib/crypto";
 import { q } from "@/lib/db";
 import { normalizeImmichUrl } from "@/lib/immich";
@@ -29,6 +30,35 @@ export async function saveTransit(_prev: FormResult, form: FormData): Promise<Fo
   return {
     ok: true,
     message: on ? "On. Trips are matched in the background over the next minutes." : "Off. Lines are hidden.",
+  };
+}
+
+export async function saveAiPlaces(_prev: FormResult, form: FormData): Promise<FormResult> {
+  const user = await requireUser();
+  if (!claudeConfigured()) return { ok: false, message: "Not available on this server." };
+  const on = form.get("ai_places") === "on";
+  await q(`UPDATE users SET ai_places = $2 WHERE id = $1`, [user.id, on]);
+  if (on) {
+    // Look the places up again to collect their nearby candidates; names stay meanwhile.
+    await q(
+      `UPDATE places SET geocoder_version = NULL
+       WHERE user_id = $1 AND kind IS NULL AND custom_name IS NULL AND geo_candidates IS NULL`,
+      [user.id],
+    );
+  } else {
+    await q(
+      `UPDATE places SET geo_candidates = NULL, ai_name = NULL, ai_category = NULL, ai_confidence = NULL,
+                         ai_version = NULL, ai_checked_at = NULL, ai_visits = NULL
+       WHERE user_id = $1`,
+      [user.id],
+    );
+  }
+  revalidatePath("/", "layout");
+  return {
+    ok: true,
+    message: on
+      ? "On. Places are checked in the background over the next hours."
+      : "Off. Names picked by AI were removed.",
   };
 }
 

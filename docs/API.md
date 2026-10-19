@@ -117,6 +117,7 @@ ISO-8601 UTC; durations seconds; distances metres.
 | `GET /api/places` | `{ places: [{id, name, city, country, category, visitCount, totalTime, lastVisit, kind, radius}] }`, saved places first, then most visited; `name` may be null (unknown), `category` is an OSM value like `cafe`, `kind` is what the place was saved as (`home, family, school, work, other`) or null. |
 | `GET /api/day-summary?date=YYYY-MM-DD` | `{ date, distance, duration, modes: [{mode, distance, duration, count}] }` for one local day, modes largest distance first. A trip crossing midnight is split between the days by time (distance pro rata). |
 | `GET /api/insights/modes[?month=YYYY-MM]` | `{ month, distance, duration, modes: [{mode, distance, duration, count, history: [{month, distance, duration}]}], historyMonths, firstMonth, lastMonth }`. Default month: the latest with trips. `history` is the six months ending at `month`, oldest first; `modes` lists every mode used in those six months (zeros included) in a fixed order. |
+| `GET /api/search?q=…` | `{ query, places: [{id, name, kind, category, city, country, visitCount, totalTime, firstVisit, lastVisit, lastVisitDate, recentDates, match}], areas: [{type, name, country, places, visits, duration, lastVisit, href}] }`: places whose name (or old geocoded name), street, saved kind, type, city or country contain every word of `q`, case- and accent-insensitive; best name match first (exact, prefix, word prefix, substring), then most visits, most recent. At most 30 places. `firstVisit`/`lastVisit` are the starts of the first and latest visit; `lastVisitDate` and `recentDates` (up to 5, newest first) are local dates (`YYYY-MM-DD`) for `/timeline?date=`. `match` is `name, address, kind, category` or `area` (only the city/country matched). `areas` are cities (`type: "city"`, with their `country`) and countries whose own name matches, with totals and the web page in `href`. An empty `q` returns nothing. |
 | `GET /api/insights/saved[?month=YYYY-MM]` | `{ month, saved, rows: [{placeId, name, kind, seconds, nights}] }`: time per saved place in the month (default: the current one), most time first. `saved` is how many places are saved at all; `kind` is `home, family, school, work` or `other`; `nights` counts nights (keyed by the morning) whose 00:00–06:00 was mostly spent there. Places with no time that month are left out. |
 | `GET /api/insights/trips` | `{ home: {lat, lon, nights, city, country, saved} \| null, trips: [{id, name, startDate, endDate, days, nights, departure, arrival, cities: [{city, country, duration, firstSeen, away}], countries, distance, duration, modes, cover}] }`, newest first. `cover` is an Immich asset id (or `null`); fetch it via `/api/immich/asset/<id>`. |
 | `GET /api/insights/trips/:id` | `{ trip }` as above plus `dayList: [{date, distance, duration, modes, cities}]` and `photos` (up to 8 more asset ids for a strip); `404` for an unknown id. |
@@ -156,6 +157,16 @@ Never put the token in a URL. Instead:
 2. Load that URL in the WebView, optionally with `&theme=light` or `&theme=dark` appended so the map
    matches the app's appearance. The server sets an httpOnly cookie (12 h, read-only, dies when the device
    is revoked) and redirects to `/embed/map`, a full-screen map without the web navigation.
+   With `&to=day` (optionally `&date=YYYY-MM-DD`) it redirects to `/embed/day` instead: one day of
+   the timeline on a map (the day's trips in mode colours, its stops numbered in timeline order),
+   for the app's Timeline tab. Once the cookie is set, the app switches days without reloading:
+   - app → page: `window.matkaDay.setDate("YYYY-MM-DD")`, `window.matkaDay.select(key | null)`
+     (pans to and highlights a row's stop or trip);
+   - page → app: `ReactNativeWebView.postMessage` JSON `{ "type": "matka-day", "event": … }` with
+     event `ready` (bridge installed), `day` (`date`, `hasMap`: false when there's nothing to draw),
+     `select` (`key`: a stop or line was tapped), `error`, or `expired` (the cookie died).
+
+   Keys are `v-<visit id>` and `m-<trip id>` from `GET /api/timeline`.
 3. Expiry looks like this:
    - an expired or invalid ticket → `401` plain text ("This map link has expired…");
    - an expired or revoked map cookie → `200` HTML page saying "Session expired", and the map's

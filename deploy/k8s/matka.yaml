@@ -18,6 +18,8 @@ stringData:
   OIDC_CLIENT_SECRET: change-me
   # Optional one-time history import, run automatically by the worker (docs/DEPLOY.md):
   # DAWARICH_IMPORT_URL: postgresql://matka_ro:<pw>@<dawarich-db>:5432/dawarich_development
+  # Optional AI place picker (docs/DEPLOY.md): a token for a claude-accounts service.
+  # CLAUDE_ACCOUNTS_TOKEN: <token from that service's API_TOKENS>
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -35,6 +37,8 @@ data:
   #   MATKA_AUTH: key   (and MATKA_LOGIN_KEY in the Secret, >= 32 chars)
   # Who receives imported Dawarich history (email or OIDC sub; sign in once first):
   # DAWARICH_IMPORT_TO: you@example.com
+  # Optional AI place picker, with CLAUDE_ACCOUNTS_TOKEN in the Secret:
+  # CLAUDE_ACCOUNTS_URL: http://claude-accounts:8080
 ---
 apiVersion: apps/v1
 kind: StatefulSet

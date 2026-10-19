@@ -6,7 +6,10 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# claude-accounts-client is vendored (file: dependency), so it has to be here for npm ci.
+COPY vendor ./vendor
+RUN npm ci \
+ && mkdir -p /claude-bin && cp -r node_modules/@anthropic-ai/claude-agent-sdk-linux-* /claude-bin/
 
 FROM node:22-alpine AS build
 WORKDIR /app
@@ -21,9 +24,14 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0
-RUN addgroup -S -g 1001 matka && adduser -S -u 1001 -G matka matka
+# libgcc/libstdc++: Claude Code's musl binary (AI place picker) links against them.
+RUN apk add --no-cache libgcc libstdc++ \
+ && addgroup -S -g 1001 matka && adduser -S -u 1001 -G matka matka
 COPY --from=build --chown=matka:matka /app/.next/standalone ./
 COPY --from=build --chown=matka:matka /app/.next/static ./.next/static
+# Claude Code's native binary for the optional AI place picker (lib/claude.ts):
+# the SDK looks it up at runtime, so the standalone trace doesn't include it.
+COPY --from=deps --chown=matka:matka /claude-bin/ ./node_modules/@anthropic-ai/
 COPY --from=build --chown=matka:matka /app/public ./public
 COPY --chown=matka:matka migrations ./migrations
 COPY --chown=matka:matka scripts ./scripts
