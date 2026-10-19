@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { q } from "@/lib/db";
-import { authenticateDevice } from "@/lib/devices";
+import { authenticateDevice, touchHeartbeat } from "@/lib/devices";
 import { MAX_BYTES, MAX_POINTS, parseBatch } from "@/lib/ingest";
 import { insertPoints } from "@/lib/points";
 
@@ -60,6 +60,8 @@ export async function POST(req: Request) {
     console.error("[/api/ingest] insert failed:", err);
     return NextResponse.json({ error: "internal" }, { status: 500 });
   }
+  // Best effort: the points are stored either way.
+  await touchHeartbeat(device.id).catch((err) => console.error("[/api/ingest] heartbeat_at:", err));
 
   return NextResponse.json({
     received: points.length,

@@ -1,6 +1,8 @@
 // Defines the background-location task at module scope. This must run before
 // anything else so a headless launch (app killed, OS delivers locations) finds it.
 import "./src/tracking";
+// The recording watchdog's periodic background task, likewise.
+import "./src/watchdog";
 
 import { registerRootComponent } from "expo";
 

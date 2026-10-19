@@ -104,6 +104,34 @@ Status for the collector UI.
 `points` / `last` are totals for the account (all devices); `last` is the
 newest stored fix or `null`.
 
+## `POST /api/devices/heartbeat`
+
+The collector's recording watchdog checks in (the Matka app: from its periodic
+background job, ~every 15 min while recording, and when the app is opened), so
+the web Devices page can warn when a phone that should be recording goes quiet.
+
+```jsonc
+{
+  "recording": true,              // required: the user turned recording on
+  "mode": "standby",              // required: active | standby | off ("off" whenever recording is false)
+  "lastFixAt": "2026-10-19T11:33:00Z", // newest fix on the phone (ISO-8601 or epoch s/ms), or null
+  "queued": 42,                   // points waiting to upload
+  "appVersion": "1.0.0 (1)",      // free text, ≤ 64 chars
+  "recoveries": 1,                // watchdog restarts in the last 24 h
+  "problem": null                 // recording wanted but impossible: "permission" | "not_running" | null
+}
+```
+
+Responses: `200 {"ok":true}`; `400` for a malformed body (wrong JSON, missing
+`recording`/`mode`; invalid optional fields are ignored); `401` as above; `413`
+above 4 KB. A server from before heartbeats answers `404`: the collector just
+tries again later. Every accepted `POST /api/ingest` also counts as contact
+(`devices.heartbeat_at`), but only a heartbeat updates the status.
+
+The Devices page shows, per device: "Recording · last location 12 min ago ·
+standby", "Recording is off on this phone", or a red "No contact for 5 h while
+recording was on" once neither a heartbeat nor an upload arrived for 3 h.
+
 ## Viewer (read-only)
 
 The app's viewer screens read with the same `Authorization: Bearer <token>`.

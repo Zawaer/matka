@@ -4,6 +4,7 @@
 // TaskManager tasks must be defined at module scope so that a headless
 // (app-not-running) launch can find the task.
 
+import * as BackgroundTask from "expo-background-task";
 import * as Battery from "expo-battery";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
@@ -20,8 +21,13 @@ import {
 import { customDeferral, parseCustom, serializeCustom, type CustomSettings } from "./preset-logic";
 import { INITIAL_STATE, parseSmartState, step, type Fix, type Mode } from "./smart-logic";
 import { maybeUploadFromTask } from "./uploader";
+import { addRecovery, parseRecoveries, type Recovery } from "./watchdog-logic";
 
 export const TASK = "matka-bg-location";
+/** Periodic watchdog (expo-background-task); defined in watchdog.ts. */
+export const WATCHDOG_TASK = "matka-watchdog";
+/** Minutes; Android's WorkManager floor is 15. The OS decides when it actually runs. */
+const WATCHDOG_INTERVAL_MIN = 15;
 
 export type PresetKey = "low" | "balanced" | "precise" | "max" | "custom";
 
@@ -321,6 +327,61 @@ async function startUpdates(preset: PresetKey): Promise<void> {
   await db.setKv("applied_fg", "1");
   await db.setKv("applied_preset", key);
   await db.setKv("applied_mode", mode);
+  // The watchdog's "no fixes for too long" clock starts here, not at an old fix.
+  await db.setNum("tracking_started_at", Date.now());
+}
+
+// ---- Watchdog support --------------------------------------------------------
+
+/** Schedules the periodic watchdog (idempotent). Never throws: recording works without it. */
+export async function registerWatchdog(): Promise<void> {
+  try {
+    if (await TaskManager.isTaskRegisteredAsync(WATCHDOG_TASK)) return;
+    await BackgroundTask.registerTaskAsync(WATCHDOG_TASK, { minimumInterval: WATCHDOG_INTERVAL_MIN });
+  } catch (e) {
+    await db.setKv("watchdog_error", `${new Date().toISOString()} register: ${String(e)}`).catch(() => undefined);
+  }
+}
+
+export async function unregisterWatchdog(): Promise<void> {
+  try {
+    if (await TaskManager.isTaskRegisteredAsync(WATCHDOG_TASK)) await BackgroundTask.unregisterTaskAsync(WATCHDOG_TASK);
+  } catch {
+    // not registered / module missing in an old build
+  }
+}
+
+export async function getRecoveries(): Promise<Recovery[]> {
+  return parseRecoveries(await db.getKv("watchdog_recoveries"));
+}
+
+export async function recordRecovery(r: Recovery): Promise<void> {
+  await db.setKv("watchdog_recoveries", JSON.stringify(addRecovery(await getRecoveries(), r)));
+}
+
+/**
+ * The watchdog's fix (watchdog-logic.ts decides which). In the foreground a
+ * full stop + start with the foreground service. In the background Android
+ * may refuse to (re)start the foreground service, so: "start"/"reregister"
+ * hand the options to the task (which re-subscribes the location request and
+ * keeps a running service), "restart" stops first. applied_fg "0" makes the
+ * next app open re-add the service properly.
+ */
+export function recoverUpdates(action: "start" | "reregister" | "restart"): Promise<void> {
+  return serialSmart(async () => {
+    const preset = await getPreset();
+    if (AppState.currentState === "active") {
+      await startUpdates(preset);
+      return;
+    }
+    const mode = await wantedMode(preset);
+    const { options, key } = await presetOptions(preset);
+    if (action === "restart" && (await isTrackingRunning())) await Location.stopLocationUpdatesAsync(TASK);
+    await applyOptions(mode === "standby" ? STANDBY_OPTIONS : options);
+    if (Platform.OS === "android") await db.setKv("applied_fg", "0");
+    await db.setKv("applied_preset", key);
+    await db.setKv("applied_mode", mode);
+  });
 }
 
 // ---- Smart tracking --------------------------------------------------------
@@ -400,6 +461,7 @@ export async function startTracking(): Promise<StartResult> {
     return { ok: false, error: `Couldn't start location updates: ${String(e)}` };
   }
   await db.setKv("tracking_enabled", "1");
+  await registerWatchdog();
   // Motion activity (bike vs bus): asked for once; tracking works without it.
   await db.setKv("activity_status", await startActivityUpdates(true));
   return { ok: true };
@@ -410,6 +472,7 @@ export async function stopTracking(): Promise<void> {
   await db.setKv("smart_state", null);
   if (await isTrackingRunning()) await Location.stopLocationUpdatesAsync(TASK);
   await stopActivityUpdates();
+  await unregisterWatchdog();
 }
 
 /** Leaves standby (the next still spell re-enters it) and restarts with the current preset. */
@@ -444,6 +507,8 @@ export async function resumeTracking(): Promise<string | null> {
   }
   // Re-subscribe to motion activity without prompting (updates don't survive a reboot).
   await db.setKv("activity_status", await startActivityUpdates(false));
+  await registerWatchdog(); // installs from before the watchdog existed get it here
+
   const preset = await getPreset();
   const running = await isTrackingRunning();
   const [applied, appliedMode, appliedFg] = await Promise.all([
@@ -455,11 +520,17 @@ export async function resumeTracking(): Promise<string | null> {
   const mode = await wantedMode(preset);
   // applied_fg "0": a background switch had to drop the foreground-service option; re-add it.
   if (!running || applied !== key || (appliedMode ?? "active") !== mode || appliedFg === "0") {
+    const lastFixAt = await db.getNum("last_fix_at");
     try {
       await startUpdates(preset);
     } catch (e) {
+      if (!running) {
+        await recordRecovery({ at: Date.now(), reason: "not_running", action: "start", lastFixAt, ok: false, error: String(e) });
+      }
       return `Couldn't restart location updates: ${String(e)}`;
     }
+    // Wanted but not registered: the OS dropped the updates. Shown on the Recorder screen.
+    if (!running) await recordRecovery({ at: Date.now(), reason: "not_running", action: "start", lastFixAt, ok: true });
   }
   await evaluateSmart().catch(() => undefined);
   return null;

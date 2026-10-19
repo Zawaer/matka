@@ -70,3 +70,12 @@ export async function getStatus(p: Pairing): Promise<StatusResult> {
     },
   };
 }
+
+/** `POST /api/devices/heartbeat`: tells the server whether this phone is recording (docs/API.md). */
+export function postHeartbeat(p: Pairing, body: object): Promise<PostResult> {
+  return request(`${p.server}/api/devices/heartbeat`, {
+    method: "POST",
+    headers: { ...authHeaders(p.token), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}

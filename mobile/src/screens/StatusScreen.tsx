@@ -11,6 +11,15 @@ import { Screen, ScreenHeader } from "../ui/Screen";
 import { Text } from "../ui/Text";
 import type { CollectorState } from "../ui/useCollectorState";
 import { refreshServerStatus, uploadNow } from "../uploader";
+import { describeRecovery } from "../watchdog-logic";
+
+/** "14:02" today, else "Fri 16 Oct 14:02". */
+function clock(ms: number): string {
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === new Date().toDateString()) return time;
+  return `${d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })} ${time}`;
+}
 
 type Props = {
   state: CollectorState | null;
@@ -85,6 +94,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
   const permTone: Tone = perm?.background === "granted" ? (perm.precise ? "ok" : "warn") : "bad";
 
   const trackingProblem = state.trackingEnabled && !state.trackingRunning;
+  const recentRecoveries = state.recoveries.slice(0, 3);
   const errorIsStale =
     state.lastErrorAt != null && state.lastSuccessAt != null && state.lastSuccessAt > state.lastErrorAt;
 
@@ -157,7 +167,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
           />
         </View>
         <Row label="Location permission" value={permText} tone={permTone} />
-        <Row label="Last fix" value={ago(state.lastFixAt)} tone={state.lastFixAt ? undefined : "dim"} />
+        <Row label="Last location" value={ago(state.lastFixAt)} tone={state.lastFixAt ? undefined : "dim"} />
         {state.activityStatus ? (
           <Row
             label="Motion detection"
@@ -171,12 +181,24 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
             tone={state.activityStatus === "on" ? "ok" : "dim"}
           />
         ) : null}
+        {recentRecoveries.length > 0 ? (
+          <View style={{ gap: 2 }}>
+            <Text variant="caption" color="textSecondary">
+              Recording watchdog · the phone stopped location updates
+            </Text>
+            {recentRecoveries.map((r) => (
+              <Text key={r.at} variant="callout" style={{ color: r.ok ? t.c.textSecondary : t.c.tint.amber.fg }}>
+                {describeRecovery(r, clock)}
+              </Text>
+            ))}
+          </View>
+        ) : null}
       </Panel>
 
       <Panel title="Upload">
         <Row label="Queued on phone" value={count(state.queued)} tone={state.queued > 5000 ? "warn" : undefined} />
         {state.oldestQueued ? <Row label="Oldest queued" value={ago(state.oldestQueued)} /> : null}
-        <Row label="Last successful upload" value={ago(state.lastSuccessAt)} tone={state.lastSuccessAt ? "ok" : "dim"} />
+        <Row label="Last upload" value={ago(state.lastSuccessAt)} tone={state.lastSuccessAt ? "ok" : "dim"} />
         {state.failures > 0 && !state.authLost ? (
           <Row label="Retrying" value={`${inFuture(state.nextRetryAt)} (${state.failures} failed)`} tone="warn" />
         ) : null}
@@ -212,6 +234,11 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
             <Row label="Device" value={state.server?.device ?? "—"} />
             <Row label="Points on server" value={count(state.server?.points)} />
             <Row label="Newest on server" value={state.server?.last ? ago(Date.parse(state.server.last)) : "—"} />
+            <Row
+              label="Last check-in"
+              value={state.heartbeatAt ? ago(state.heartbeatAt) : state.heartbeatError ? "failed" : "never"}
+              tone={state.heartbeatAt ? undefined : "dim"}
+            />
             <Text variant="caption" color="textMuted">
               Checked {ago(state.serverAt)}
             </Text>

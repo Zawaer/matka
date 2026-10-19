@@ -198,8 +198,19 @@ deletes the token from the phone; also revoke the device on the web Devices page
   "No restrictions", Huawei, OnePlus …) can kill the service anyway; see
   <https://dontkillmyapp.com> for your phone and set Matka to unrestricted.
 - Don't swipe Matka away from Recents on phones that treat that as force-stop.
-- **After a reboot, open Matka once.** Android does not restart the location
-  service by itself after boot; the app resumes tracking on launch when it was on.
+- **After a reboot** recording comes back by itself: expo-task-manager's boot
+  receiver re-registers the location task natively (no JS needed), and the
+  watchdog's WorkManager job (which also survives reboots) checks it, re-adds
+  motion detection and restarts updates if needed within ~15–30 min (once the
+  phone has network). Android may refuse to start the foreground service from
+  the background; updates then still arrive, throttled, until Matka is next
+  opened, which re-adds the service. Opening Matka once after a reboot is still
+  the quickest way to get full-rate recording back.
+- **Force-stop kills everything.** If the OS (or "deep optimisation" on
+  OnePlus/Oppo) force-stops Matka, Android cancels its location requests *and*
+  its scheduled jobs, so nothing on the phone can restart it until the app is
+  opened. That is what the server-side warning on the web **Devices** page is
+  for ("No contact for 5 h while recording was on").
 - iOS: Location **Always** + Precise, Background App Refresh on.
 
 ### Presets (Settings)
@@ -226,6 +237,40 @@ from the stay, or a fix with speed above 1 m/s switches straight back to the
 preset. Only the task's options change; the foreground service keeps running.
 The status screen shows "Standby — phone still". Logic: `src/smart-logic.ts`.
 
+### Recording watchdog
+
+Android can stop background location without telling the app (the 19 Oct
+incident: nothing from 11:33 to 20:03 with recording on). `src/watchdog.ts`
+checks the recorder from a periodic `expo-background-task` job (registered
+when recording starts, minimum interval 15 min; the OS picks the actual time
+and needs network), when the app comes to the foreground, and on motion
+events (at most every 2 min). Each check:
+
+1. **Not registered** although recording is on → start the updates again with
+   the current preset / standby options.
+2. **Registered but silent** → re-register (hand the options to the task
+   again, which re-subscribes the location request); if a re-register didn't
+   bring a fix, stop and start. "Silent" means no fix for
+   - 20 min while motion detection said "moving" in the last 30 min,
+   - 45 min outside standby when smart tracking + motion detection are on (a
+     still phone would be in standby),
+   - 2 h outside standby otherwise (smart tracking off, Low power, no motion
+     sensor: a still phone legitimately gets no fixes),
+   - 6 h in standby,
+
+   counted from the newest of the last fix, the last (re)start and the last
+   recovery. Every failed attempt doubles the wait (up to 6 h); at most one
+   recovery per 5 min and 12 per day.
+3. Background run only: flushes the upload queue and re-subscribes motion
+   detection (lost on reboot).
+4. Sends a heartbeat to `POST /api/devices/heartbeat` (always from the
+   background job, at most every 15 min otherwise), so the web Devices page
+   can tell a quiet phone from a broken one.
+
+Each recovery (time, reason, outcome) is kept in the kv store
+(`watchdog_recoveries`) and the last week's are listed on the Recorder screen.
+Logic and thresholds: `src/watchdog-logic.ts`.
+
 ## Status screen
 
 | Item | Meaning |
@@ -236,13 +281,15 @@ The status screen shows "Standby — phone still". Logic: `src/smart-logic.ts`.
 | **Battery optimisation is on** (Android) | The OS may throttle recording/uploads. Tap the button to exempt Matka. |
 | Tracking: **Recording** / **Off** / **On — not running** | "On — not running" means tracking is wanted but the location service isn't registered (e.g. after a permission change); open the app with permission granted to restart. |
 | Location permission | always (precise) · always (approximate) · only while in use · denied · not asked |
-| Last fix | Time of the newest fix put in the queue. |
+| Last location | Time of the newest fix put in the queue. |
+| Recording watchdog | Recent automatic restarts, e.g. "Restarted recording at 14:02 — updates had stopped" or "Re-registered location updates at 15:10 — no location for 46 min". Amber when the restart failed. |
 | Queued on phone | Points not yet confirmed by the server. Amber above 5000. |
 | Oldest queued | Age of the oldest unsent point. |
-| Last successful upload | Last time the server accepted a batch. |
+| Last upload | Last time the server accepted a batch. |
 | Retrying in … (n failed) | Uploads failed n times in a row (5xx / network); next automatic attempt. **Upload now** retries immediately. |
 | Last error | Most recent upload problem; shown greyed out once a later upload succeeded. |
 | Server / Device / Points on server / Newest on server | From `GET /api/ingest`: the device name you gave when pairing and the account totals. "Checked …" is when this was last fetched (on every app foreground). |
+| Last check-in | Last heartbeat the server accepted (see *Recording watchdog*); "failed" if none got through yet (e.g. a server from before heartbeats). |
 
 ## Development
 

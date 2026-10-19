@@ -10,6 +10,7 @@ import { SESSION_COOKIE, authDisabled, isLiveSession } from "@/lib/session";
 const PUBLIC = [
   /^\/pair\/?$/,
   /^\/api\/ingest$/,
+  /^\/api\/devices\/heartbeat$/,
   /^\/api\/health$/,
   /^\/api\/device\//,
   /^\/auth\//,

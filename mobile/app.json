@@ -94,7 +94,8 @@
       "expo-font",
       "./plugins/withUserCerts.js",
       "./plugins/withLowMemoryGradle.js",
-      "./plugins/withReleaseSigning.js"
+      "./plugins/withReleaseSigning.js",
+      "expo-background-task"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

@@ -1,5 +1,6 @@
 import { randomToken, sha256 } from "./crypto";
 import { q } from "./db";
+import type { DeviceStatus } from "./heartbeat";
 import { isPermittedUser } from "./keyAuth";
 
 export type Device = {
@@ -8,6 +9,10 @@ export type Device = {
   created_at: Date;
   last_seen_at: Date | null;
   revoked_at: Date | null;
+  /** Last heartbeat or upload (migration 017). */
+  heartbeat_at: Date | null;
+  /** The last heartbeat's body (lib/heartbeat.ts DeviceStatus), unvalidated jsonb. */
+  status: unknown;
 };
 
 export type DeviceAuth = { id: string; name: string; userId: string };
@@ -16,7 +21,7 @@ const TOKEN_RE = /^Bearer (mtk_[A-Za-z0-9_-]{43})$/;
 
 export async function listDevices(userId: string): Promise<Device[]> {
   return q<Device>(
-    `SELECT id, name, created_at, last_seen_at, revoked_at
+    `SELECT id, name, created_at, last_seen_at, revoked_at, heartbeat_at, status
      FROM devices WHERE user_id = $1
      ORDER BY revoked_at IS NOT NULL, created_at DESC`,
     [userId],
@@ -48,6 +53,20 @@ export async function revokeDevice(userId: string, id: string): Promise<void> {
  */
 export async function deleteDevice(userId: string, id: string): Promise<void> {
   await q(`DELETE FROM devices WHERE id = $1 AND user_id = $2 AND revoked_at IS NOT NULL`, [id, userId]);
+}
+
+/** Stores a heartbeat (POST /api/devices/heartbeat). */
+export async function recordHeartbeat(deviceId: string, status: DeviceStatus): Promise<void> {
+  await q(`UPDATE devices SET heartbeat_at = now(), status = $2 WHERE id = $1`, [deviceId, JSON.stringify(status)]);
+}
+
+/** An upload is contact too. Throttled like last_seen_at. */
+export async function touchHeartbeat(deviceId: string): Promise<void> {
+  await q(
+    `UPDATE devices SET heartbeat_at = now()
+     WHERE id = $1 AND (heartbeat_at IS NULL OR heartbeat_at < now() - interval '1 minute')`,
+    [deviceId],
+  );
 }
 
 /** Resolves `Authorization: Bearer mtk_…` to an active device, or null. */

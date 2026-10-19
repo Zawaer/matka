@@ -2,6 +2,7 @@ import { PairDevice } from "@/components/devices/PairDevice";
 import { appUrl, isDeviceSafeUrl } from "@/lib/appUrl";
 import { requireUser } from "@/lib/auth";
 import { listDevices, type Device } from "@/lib/devices";
+import { deviceHealth, type Health } from "@/lib/heartbeat";
 import { remove, revoke } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -37,8 +38,17 @@ export default async function DevicesPage() {
   );
 }
 
+const HEALTH_CLASS: Record<Health["tone"], string> = {
+  ok: "text-primary",
+  warn: "text-amber-500",
+  bad: "font-medium text-red-500",
+  muted: "text-muted",
+};
+
 function DeviceRow({ device: d, tz }: { device: Device; tz: string }) {
   const revoked = d.revoked_at != null;
+  // Recording health from the app's heartbeats (null for older apps).
+  const health = revoked ? null : deviceHealth(d);
   return (
     <div className="mk-card flex items-center gap-4 px-5 py-4">
       <div className={`min-w-0 flex-1 ${revoked ? "opacity-60" : ""}`}>
@@ -50,6 +60,7 @@ function DeviceRow({ device: d, tz }: { device: Device; tz: string }) {
               ? `Last upload ${fmt(d.last_seen_at, tz)}`
               : `Paired ${fmt(d.created_at, tz)} · not seen yet`}
         </div>
+        {health ? <div className={`text-sm ${HEALTH_CLASS[health.tone]}`}>{health.text}</div> : null}
       </div>
       {revoked ? (
         <form action={remove}>

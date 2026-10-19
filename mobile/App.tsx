@@ -18,6 +18,7 @@ import { SessionContext, type InsightsSegment, type Session, type Tab } from "./
 import { Text } from "./src/ui/Text";
 import { useCollectorState, type CollectorState } from "./src/ui/useCollectorState";
 import { markPairingLost, refreshServerStatus, uploadNow } from "./src/uploader";
+import { runWatchdog, sendHeartbeat } from "./src/watchdog";
 
 
 const TABS: { key: Tab; label: string; icon: IconName; iconOn: IconName }[] = [
@@ -45,11 +46,14 @@ function Root() {
   const [unpairedView, setUnpairedView] = useState<"pair" | "status" | "settings">("pair");
   const { state, refresh } = useCollectorState();
 
-  // Launch + every return to the foreground: make sure tracking runs, flush
-  // the queue, refresh the server status.
+  // Launch + every return to the foreground: make sure tracking runs (and
+  // hasn't gone silent), flush the queue, check in with the server, refresh
+  // the server status.
   const onForeground = useCallback(async () => {
     await resumeTracking().catch(() => null);
+    await runWatchdog("foreground").catch(() => null);
     await uploadNow("foreground").catch(() => null);
+    await sendHeartbeat().catch(() => null);
     await refreshServerStatus().catch(() => null);
     await refresh();
   }, [refresh]);

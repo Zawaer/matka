@@ -5,6 +5,7 @@ import * as db from "../db";
 import type { Pairing } from "../pairing";
 import { isBatteryOptimized } from "../system";
 import { parseCustom, type CustomSettings } from "../preset-logic";
+import { parseRecoveries, type Recovery } from "../watchdog-logic";
 import {
   getPermissions,
   getPreset,
@@ -40,6 +41,12 @@ export type CollectorState = {
   nextRetryAt: number | null;
   failures: number;
   batteryOptimized: boolean | null;
+  /** Watchdog recoveries of the last week, newest first. */
+  recoveries: Recovery[];
+  /** Last heartbeat the server accepted, and the error of the last failed one. */
+  heartbeatAt: number | null;
+  heartbeatError: string | null;
+  watchdogCheckedAt: number | null;
 };
 
 const num = (v: string | undefined) => {
@@ -90,6 +97,10 @@ export async function readState(): Promise<CollectorState> {
     nextRetryAt: num(kv.next_retry_at),
     failures: num(kv.failures) ?? 0,
     batteryOptimized,
+    recoveries: parseRecoveries(kv.watchdog_recoveries).filter((r) => Date.now() - r.at < 7 * 86_400_000),
+    heartbeatAt: num(kv.heartbeat_sent_at),
+    heartbeatError: kv.heartbeat_error ?? null,
+    watchdogCheckedAt: num(kv.watchdog_checked_at),
   };
 }
 
