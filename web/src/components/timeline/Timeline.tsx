@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { Fragment, useState } from "react";
-import { categoryLabel } from "@/components/places/category";
+import { placeTitle } from "@/components/places/category";
 import { KIND_META } from "@/lib/savedPlaces";
 import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
 import { DaySummaryStrip } from "./DaySummaryStrip";
+import { edgeGaps, gapBetween } from "./gaps";
 import { KIND_LABEL, badgeColors } from "@/lib/transit/colors";
 import {
   formatDuration,
@@ -32,6 +33,13 @@ const fetcher = (url: string): Promise<TimelineResponse> =>
 export function Timeline({ initialDate = null }: { initialDate?: string | null }) {
   // `null` lets the API pick the latest day that has data.
   const [date, setDate] = useState<string | null>(initialDate);
+  // Keep the day in the address bar, so a reload or a shared link opens it.
+  // replaceState, not a navigation: the page is client-driven and the server
+  // render would only start over from the same day.
+  const pick = (d: string) => {
+    setDate(d);
+    window.history.replaceState(window.history.state, "", `/timeline?date=${d}`);
+  };
 
   const { data, error, isLoading } = useSWR<TimelineResponse>(
     date ? `/api/timeline?date=${date}` : `/api/timeline`,
@@ -45,6 +53,9 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
 
   const prevDate = [...dates].reverse().find((d) => d < current) ?? null;
   const nextDate = dates.find((d) => d > current) ?? null;
+  const edges = data
+    ? edgeGaps(items, data.day, { minDate: data.minDate, maxDate: data.maxDate })
+    : { before: null, after: null };
 
   return (
     <div>
@@ -54,7 +65,7 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
         maxDate={data?.maxDate ?? undefined}
         prevDate={prevDate}
         nextDate={nextDate}
-        onPick={setDate}
+        onPick={pick}
       />
 
       {current && (
@@ -83,6 +94,7 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
           />
         ) : (
           <ol className="relative">
+            {edges.before && <GapRow from={edges.before.from} to={edges.before.to} />}
             {items.map((item, i) => {
               const gap = i > 0 ? gapBetween(items[i - 1], item) : null;
               return (
@@ -92,29 +104,12 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
                 </Fragment>
               );
             })}
+            {edges.after && <GapRow from={edges.after.from} to={edges.after.to} />}
           </ol>
         )}
       </div>
     </div>
   );
-}
-
-/** Shorter silences are the phone lying still or a short tunnel, not worth a row. */
-const MIN_GAP_S = 30 * 60;
-
-const startOf = (it: TimelineItem) => (it.kind === "visit" ? it.visit.startedAt : it.track.startedAt);
-const endOf = (it: TimelineItem) => (it.kind === "visit" ? it.visit.endedAt : it.track.endedAt);
-
-/**
- * Time between two items with nothing recorded (location recording off). The
- * server no longer stretches a visit or invents a trip across such a hole, so
- * say so instead of leaving the jump unexplained.
- */
-function gapBetween(a: TimelineItem, b: TimelineItem): { from: string; to: string } | null {
-  const from = endOf(a);
-  const to = startOf(b);
-  if (!from || !to) return null;
-  return (new Date(to).getTime() - new Date(from).getTime()) / 1000 >= MIN_GAP_S ? { from, to } : null;
 }
 
 function rowKey(item: TimelineItem, i: number) {
@@ -264,7 +259,7 @@ function VisitRow({
   isFirst: boolean;
   isLast: boolean;
 }) {
-  const name = visit.placeName ?? categoryLabel(visit.category);
+  const name = placeTitle(visit.placeName, visit.category);
   const unknown = !visit.placeName;
   const kind = visit.placeKind ? KIND_META[visit.placeKind] : null;
 

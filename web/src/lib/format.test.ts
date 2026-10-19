@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { formatDateRange, formatDay, formatKm, formatMonth } from "./format";
+import { formatDateCompact, formatDateRange, formatDay, formatKm, formatMonth } from "./format";
 
 describe("format", () => {
   it("formats kilometres", () => {
     expect(formatKm(340)).toBe("340 m");
     expect(formatKm(8_440)).toBe("8.4 km");
     expect(formatKm(1_234_567)).toBe("1,235 km");
+  });
+
+  it("formats a compact date in the user's zone", () => {
+    expect(formatDateCompact("2026-10-18T22:30:00Z", "Europe/Helsinki")).toBe("19 Oct 2026");
+    expect(formatDateCompact(null)).toBe("—");
   });
 
   it("formats date ranges", () => {

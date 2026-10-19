@@ -52,9 +52,12 @@ export async function GET(req: Request) {
 
   const dates = (
     await q<{ date: string }>(
-      `SELECT DISTINCT to_char((started_at AT TIME ZONE $2)::date, 'YYYY-MM-DD') AS date
-       FROM (SELECT started_at FROM visits WHERE user_id = $1
-             UNION ALL SELECT started_at FROM trips WHERE user_id = $1) s
+      // Every local day a visit or trip overlaps, not only the days they
+      // start on: a day spent at home from the evening before has data too.
+      `SELECT DISTINCT to_char(d, 'YYYY-MM-DD') AS date
+       FROM (SELECT started_at, ended_at FROM visits WHERE user_id = $1
+             UNION ALL SELECT started_at, ended_at FROM trips WHERE user_id = $1) s,
+            generate_series((started_at AT TIME ZONE $2)::date, (ended_at AT TIME ZONE $2)::date, interval '1 day') d
        ORDER BY 1`,
       [user.id, tz],
     )
@@ -73,7 +76,7 @@ export async function GET(req: Request) {
 
   // [start, end) of the local day, as instants.
   const bounds = `($2::date::timestamp AT TIME ZONE $3), (($2::date + 1)::timestamp AT TIME ZONE $3)`;
-  const [visits, trips] = await Promise.all([
+  const [visits, trips, [b]] = await Promise.all([
     q<VisitRow>(
       `WITH d(s, e) AS (VALUES (${bounds}))
        SELECT v.id, v.started_at, v.ended_at, v.place_id, ${PLACE_NAME_SQL} AS place_name,
@@ -90,6 +93,10 @@ export async function GET(req: Request) {
        WHERE t.user_id = $1 AND t.started_at < d.e AND t.ended_at >= d.s
        ORDER BY t.started_at`,
       [user.id, date, tz],
+    ),
+    q<{ s: Date; e: Date }>(
+      `SELECT ($1::date::timestamp AT TIME ZONE $2) AS s, (($1::date + 1)::timestamp AT TIME ZONE $2) AS e`,
+      [date, tz],
     ),
   ]);
 
@@ -151,6 +158,11 @@ export async function GET(req: Request) {
   ];
   items.sort((a, b) => a.at - b.at);
 
-  const day: TimelineDay = { date, items: items.map((x) => x.item) };
+  const day: TimelineDay = {
+    date,
+    start: b.s.toISOString(),
+    end: b.e.toISOString(),
+    items: items.map((x) => x.item),
+  };
   return NextResponse.json({ day, dates, minDate, maxDate });
 }

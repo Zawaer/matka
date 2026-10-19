@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { formatDuration } from "@/lib/format";
-import { categoryIcon, categoryLabel } from "./category";
+import { categoryIcon, placeCategoryLine, placeTitle } from "./category";
 import type { PlaceListItem } from "@/lib/places";
 import { KIND_META, formatRadius } from "@/lib/savedPlaces";
 
 export function PlaceCard({ place }: { place: PlaceListItem }) {
-  const name =
-    place.name && place.name !== "Unknown Location"
-      ? place.name
-      : categoryLabel(place.category);
+  const name = placeTitle(place.name, place.category);
+  const what = placeCategoryLine(place.name, place.category);
   const locale = [place.city, place.country].filter(Boolean).join(", ");
 
   return (
@@ -34,9 +32,10 @@ export function PlaceCard({ place }: { place: PlaceListItem }) {
                 {place.radius ? ` · ${formatRadius(place.radius)}` : ""}
               </span>
             ) : (
-              categoryLabel(place.category)
+              what
             )}
-            {locale ? ` · ${locale}` : ""}
+            {locale ? `${place.kind || what ? " · " : ""}${locale}` : ""}
+            {!place.kind && !what && !locale ? "Not named yet" : ""}
           </p>
         </div>
       </div>

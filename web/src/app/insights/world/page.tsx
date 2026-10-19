@@ -4,7 +4,7 @@ import { Stat } from "@/components/insights/charts";
 import { COVER_BACKDROP, CoverPhoto } from "@/components/insights/Cover";
 import { requireUser } from "@/lib/auth";
 import { getCovers } from "@/lib/covers";
-import { formatDateShort, formatLongDuration } from "@/lib/format";
+import { formatDateCompact, formatLongDuration } from "@/lib/format";
 import { cityCoverSpecs, cityKey } from "@/lib/insights/coverSpecs";
 import { getWorld } from "@/lib/insights/load";
 import { type WorldEntry, type WorldSort, isWorldSort } from "@/lib/insights/world";
@@ -181,7 +181,7 @@ function Row({
       </div>
       <div className="shrink-0 text-right">
         <p className="text-sm tabular-nums">{formatLongDuration(e.duration)}</p>
-        <p className="text-xs text-muted">Last {formatDateShort(e.lastVisit, tz)}</p>
+        <p className="text-xs text-muted">Last {formatDateCompact(e.lastVisit, tz)}</p>
       </div>
     </Link>
   );

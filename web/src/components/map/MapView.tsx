@@ -198,6 +198,11 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
       map = m;
       mapRef.current = m;
 
+      // OpenFreeMap's styles ask for icons their sprites lack ("circle-11",
+      // "wood-pattern"); a blank stand-in keeps maplibre from warning on every load.
+      m.setMissingStyleImageResolver((id) => {
+        if (!m.hasImage(id)) m.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
+      });
       m.addControl(
         new maplibregl.NavigationControl({ showCompass: false }),
         "top-right",

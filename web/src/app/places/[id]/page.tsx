@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { formatDateShort, formatDuration, formatTime } from "@/lib/format";
-import { categoryIcon, categoryLabel } from "@/components/places/category";
+import { categoryIcon, placeCategoryLine, placeTitle } from "@/components/places/category";
 import { PhotoGallery } from "@/components/places/PhotoGallery";
 import { KindBadge, KindPicker, SizePicker } from "@/components/places/SavedFields";
 import { KIND_META, type PlaceKind } from "@/lib/savedPlaces";
@@ -61,7 +61,8 @@ export default async function PlaceDetailPage({
   );
 
   const visitCount = Number(place.visit_count);
-  const name = place.custom_name ?? place.geo_name ?? categoryLabel(place.category);
+  const name = placeTitle(place.custom_name ?? place.geo_name, place.category);
+  const what = placeCategoryLine(place.custom_name ?? place.geo_name, place.category);
   const locale = [place.city, place.country].filter(Boolean).join(", ");
 
   return (
@@ -87,10 +88,9 @@ export default async function PlaceDetailPage({
               <KindBadge kind={place.kind} radius={place.radius_m} />
             </p>
           )}
-          <p className="mt-1 text-muted">
-            {categoryLabel(place.category)}
-            {locale ? ` · ${locale}` : ""}
-          </p>
+          {(what || locale) && (
+            <p className="mt-1 text-muted">{[what, locale].filter(Boolean).join(" · ")}</p>
+          )}
           <p className="mt-2 text-sm text-muted">
             <span className="font-medium text-text">{visitCount}</span>{" "}
             {visitCount === 1 ? "visit" : "visits"} · {formatDuration(place.total_time)} total

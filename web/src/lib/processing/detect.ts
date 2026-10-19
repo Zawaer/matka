@@ -183,8 +183,13 @@ export function classifyMode(speeds: number[], distance: number, seconds: number
  * bike and a city bus both average 15-25 km/h. Needs a clear majority among
  * the fixes that carry an activity, and at least 3 of them; rail and flights
  * (told apart by speed and distance) stay as they are.
+ *
+ * A label can't overrule a speed no body keeps up: a move averaging 25 km/h
+ * isn't a walk even when most fixes say "walking" (the walk to and from the
+ * metro is sampled densely, the ride underground hardly at all). Above
+ * MAX_ACTIVITY_KMH for the label, the speed's mode stands.
  */
-export function withActivity(mode: ModeKey, pts: Pick<DPoint, "activity">[]): ModeKey {
+export function withActivity(mode: ModeKey, pts: Pick<DPoint, "activity">[], avgKmh?: number): ModeKey {
   if (mode === "train" || mode === "flying" || mode === "boat") return mode;
   const counts = new Map<string, number>();
   let n = 0;
@@ -196,6 +201,8 @@ export function withActivity(mode: ModeKey, pts: Pick<DPoint, "activity">[]): Mo
   if (n < 3) return mode;
   const [top, k] = [...counts].sort((a, b) => b[1] - a[1])[0];
   if (k < 0.6 * n) return mode;
+  const limit = MAX_ACTIVITY_KMH[top];
+  if (limit != null && avgKmh != null && avgKmh > limit) return mode;
   if (top === "on_bicycle") return "cycling";
   if (top === "running") return "running";
   if (top === "walking") return mode === "driving" ? mode : "walking";
@@ -453,6 +460,9 @@ export class Detector {
   }
 }
 
+/** Fastest plausible average (km/h) of a whole move for the phone's self-powered labels. */
+const MAX_ACTIVITY_KMH: Record<string, number> = { walking: 10, running: 20, on_bicycle: 40 };
+
 /** One move through a transfer: arrive by `a`, wait at the stop (`stay`, `stopPts`), leave by `b`. */
 function joinMoves(a: Move, stay: Stay, stopPts: DPoint[], b: Move): Move {
   const arrived = a.pts[a.pts.length - 1].ts;
@@ -471,11 +481,12 @@ function toTrip(m: Move): Trip {
   for (let i = 1; i < pts.length; i++) distance += haversine(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon);
   const end = pts[pts.length - 1].ts;
   const speeds = m.parts.flatMap(moveSpeeds);
+  const moving = end - m.start - m.paused;
   return {
     start: m.start,
     end,
     distance,
-    mode: withActivity(classifyMode(speeds, distance, end - m.start - m.paused), pts),
+    mode: withActivity(classifyMode(speeds, distance, moving), pts, moving > 0 ? (distance / moving) * 3.6 : undefined),
     path: pts.map((p) => [p.lon, p.lat]),
     count: pts.length,
     waits: m.waits,

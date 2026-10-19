@@ -46,6 +46,9 @@ export interface TrackSummary {
 /** One ordered day on the timeline: visits + the moves between them. */
 export interface TimelineDay {
   date: string; // YYYY-MM-DD in the user's timezone
+  /** The local day's [start, end) as instants (absent when there's no history). */
+  start?: string;
+  end?: string;
   items: TimelineItem[];
 }
 

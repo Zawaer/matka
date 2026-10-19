@@ -389,4 +389,13 @@ describe("withActivity", async () => {
     expect(withActivity("train", pts("in_vehicle", "in_vehicle", "in_vehicle"))).toBe("train");
     expect(withActivity("flying", pts("still", "still", "still"))).toBe("flying");
   });
+  it("doesn't call a move a walk, run or ride at a speed nobody keeps up", () => {
+    const walks = pts("walking", "walking", "walking", "walking", "in_vehicle");
+    // Metro ride with densely sampled walks at either end: 25 km/h overall.
+    expect(withActivity("cycling", walks, 25)).toBe("cycling");
+    expect(withActivity("cycling", walks, 6)).toBe("walking");
+    expect(withActivity("cycling", pts("running", "running", "running"), 30)).toBe("cycling");
+    expect(withActivity("driving", pts("on_bicycle", "on_bicycle", "on_bicycle"), 60)).toBe("driving");
+    expect(withActivity("driving", pts("on_bicycle", "on_bicycle", "on_bicycle"), 22)).toBe("cycling");
+  });
 });

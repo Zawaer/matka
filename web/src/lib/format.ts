@@ -82,6 +82,12 @@ export function formatDay(date: string): string {
   return ymd(date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
 }
 
+/** "19 Oct 2026": a date without the weekday, for tight list rows. */
+export function formatDateCompact(iso: string | Date | null | undefined, timeZone?: string): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone });
+}
+
 export function formatDateShort(iso: string | Date | null | undefined, timeZone?: string): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-GB", {

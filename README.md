@@ -20,5 +20,10 @@ DATABASE_URL=postgresql://matka:matka@localhost:5544/matka npm run migrate
 npm run dev
 ```
 
+Demo data: `DATABASE_URL=… node scripts/seed-demo.mjs --reset --save` fills the key-mode
+owner's account with ~3 months of made-up history around Helsinki (commutes, weekends in town,
+trips to Tampere, Tallinn and Berlin, a recording gap), deterministic per `--seed`; the worker
+turns it into visits and trips on its next tick. Options are in the script's header. Dev only.
+
 Tests: `npm test`. DB integration tests run when `TEST_DATABASE_URL` points at a scratch
 PostGIS database; it gets wiped.
