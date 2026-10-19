@@ -45,6 +45,7 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Static assets carry nothing private.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)"],
+  // Static assets carry nothing private (incl. MapLibre's worker, which the
+  // app's map WebView loads with only its embed cookie).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|maplibre-gl-worker\\.mjs$|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)"],
 };

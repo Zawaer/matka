@@ -148,6 +148,9 @@ export default function MapView() {
 
       // maplibre-gl v6 is ESM with named exports only.
       const maplibregl = await import("maplibre-gl");
+      // Our own copy of the worker (scripts/copy-maplibre-worker.mjs): the
+      // bundler can't serve the one MapLibre looks for next to its module.
+      maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
       if (cancelled) return;
 
       let dark = computeDark();
