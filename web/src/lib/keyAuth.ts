@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { isAllowedUser } from "./oidc";
 
 /**
  * Two ways to sign in, chosen with MATKA_AUTH:
@@ -15,6 +16,15 @@ export const authMode = (): AuthMode => (process.env.MATKA_AUTH === "key" ? "key
 /** The single user of a key-mode instance. */
 export const KEY_OWNER_SUB = "key:owner";
 export const MIN_KEY_LENGTH = 32;
+
+/**
+ * Whether a stored user may use this instance at all, for every way in:
+ * browser sessions, paired devices and map embeds. Key mode admits only its
+ * owner; OIDC mode checks MATKA_ALLOWED_USERS on every request.
+ */
+export function isPermittedUser(u: { sub: string; email: string | null; email_verified: boolean }): boolean {
+  return authMode() === "key" ? u.sub === KEY_OWNER_SUB : isAllowedUser(u);
+}
 
 export function loginKeyConfigured(): boolean {
   return (process.env.MATKA_LOGIN_KEY ?? "").length >= MIN_KEY_LENGTH;

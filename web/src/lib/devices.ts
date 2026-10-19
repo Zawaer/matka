@@ -1,6 +1,6 @@
 import { randomToken, sha256 } from "./crypto";
 import { q } from "./db";
-import { isAllowedUser } from "./oidc";
+import { isPermittedUser } from "./keyAuth";
 
 export type Device = {
   id: string;
@@ -56,8 +56,8 @@ export async function authenticateDevice(req: Request): Promise<DeviceAuth | nul
     [sha256(m[1])],
   );
   if (!device) return null;
-  // Someone removed from the allowlist loses their devices too.
-  if (!isAllowedUser({ sub: device.oidc_sub, email: device.email, email_verified: device.email_verified })) {
+  // Someone removed from the allowlist (or not the key-mode owner) loses their devices too.
+  if (!isPermittedUser({ sub: device.oidc_sub, email: device.email, email_verified: device.email_verified })) {
     return null;
   }
   // Throttled so a chatty collector doesn't write this row on every batch.

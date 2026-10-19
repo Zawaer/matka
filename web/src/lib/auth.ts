@@ -4,8 +4,7 @@ import { NextResponse } from "next/server";
 import { cache } from "react";
 import { randomToken, sha256 } from "./crypto";
 import { q } from "./db";
-import { KEY_OWNER_SUB, authMode } from "./keyAuth";
-import { isAllowedUser } from "./oidc";
+import { isPermittedUser } from "./keyAuth";
 import {
   SESSION_ABSOLUTE_MAX_AGE,
   SESSION_COOKIE,
@@ -34,13 +33,8 @@ type UserRow = User & { oidc_sub: string; email_verified: boolean };
  */
 function allowed(u: UserRow | undefined): User | null {
   if (!u) return null;
-  if (!authDisabled()) {
-    // Key mode has exactly one user; OIDC mode checks the allowlist.
-    const ok =
-      authMode() === "key"
-        ? u.oidc_sub === KEY_OWNER_SUB
-        : isAllowedUser({ sub: u.oidc_sub, email: u.email, email_verified: u.email_verified });
-    if (!ok) return null;
+  if (!authDisabled() && !isPermittedUser({ sub: u.oidc_sub, email: u.email, email_verified: u.email_verified })) {
+    return null;
   }
   return { id: u.id, name: u.name, email: u.email, timezone: u.timezone, transitLines: u.transitLines };
 }
