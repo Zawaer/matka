@@ -6,8 +6,11 @@
 // - Each local night is sampled at 00:00–06:00: the visit overlapping that
 //   window most (at least an hour), else the median of the points recorded in
 //   it, else unknown.
-// - Home is where most nights are spent (the largest 1 km cluster of samples).
-// - A night is "away" when its sample is more than `awayKm` from home. A trip is
+// - Home is every place the user saved as home or family (a parent's home you
+//   also sleep at); without any, where most nights are spent (the largest
+//   1 km cluster of samples).
+// - A night is "away" when its sample is more than `awayKm` from the nearest
+//   home. A night at a saved home is never away. A trip is
 //   a run of away nights; up to `maxGapNights` unknown nights inside a run are
 //   bridged (phone off).
 // - The trip starts when you last left the home area before the first away
@@ -54,7 +57,25 @@ export const DEFAULT_AWAY: AwayOptions = {
   minNightOverlap: 60 * 60_000,
 };
 
-export type Home = { lat: number; lon: number; nights: number; city: string | null; country: string | null };
+export type Home = {
+  lat: number;
+  lon: number;
+  nights: number;
+  city: string | null;
+  country: string | null;
+  /** Names of the saved homes, most nights first; empty when home was detected. */
+  saved: string[];
+};
+
+/** A place the user saved as home or family. */
+export type SavedHome = {
+  placeId: number;
+  lat: number;
+  lon: number;
+  name: string | null;
+  city: string | null;
+  country: string | null;
+};
 
 export type TripCity = {
   city: string;
@@ -169,7 +190,40 @@ export function detectHome(samples: Sample[], o: AwayOptions = DEFAULT_AWAY): Ho
     if (c) cities.set(c, { n: (cities.get(c)?.n ?? 0) + 1, country: s.visit?.country ?? null });
   }
   const top = [...cities].sort((a, b) => b[1].n - a[1].n)[0];
-  return { lat, lon, nights: best.length, city: top?.[0] ?? null, country: top?.[1].country ?? null };
+  return { lat, lon, nights: best.length, city: top?.[0] ?? null, country: top?.[1].country ?? null, saved: [] };
+}
+
+/** Home from saved homes: nights at (or within homeKm of) any of them; the busiest one leads. */
+export function savedHome(samples: Sample[], homes: SavedHome[], o: AwayOptions = DEFAULT_AWAY): Home | null {
+  if (homes.length === 0) return null;
+  const counts = new Map<number, number>();
+  let nights = 0;
+  for (const s of samples) {
+    let at: SavedHome | null = homes.find((h) => h.placeId === s.visit?.placeId) ?? null;
+    if (!at) {
+      let best = o.homeKm;
+      for (const h of homes) {
+        const d = km(h.lat, h.lon, s.lat, s.lon);
+        if (d <= best) {
+          best = d;
+          at = h;
+        }
+      }
+    }
+    if (!at) continue;
+    nights++;
+    counts.set(at.placeId, (counts.get(at.placeId) ?? 0) + 1);
+  }
+  const ranked = [...homes].sort((a, b) => (counts.get(b.placeId) ?? 0) - (counts.get(a.placeId) ?? 0));
+  const top = ranked[0];
+  return {
+    lat: top.lat,
+    lon: top.lon,
+    nights,
+    city: top.city,
+    country: top.country,
+    saved: ranked.map((h) => h.name ?? h.city ?? "Home"),
+  };
 }
 
 /** "Stockholm", "Kitee and Helsinki", "Tolosenmäki, Kitee and Helsinki". */
@@ -194,18 +248,24 @@ export function tripName(cities: TripCity[], countries: string[]): string {
 type Run = { first: Sample; last: Sample; nights: number };
 
 export function detectAwayTrips(
-  input: { visits: StayVisit[]; moves: Move[]; nightPoints: NightPoint[]; tz: string },
+  input: { visits: StayVisit[]; moves: Move[]; nightPoints: NightPoint[]; tz: string; homes?: SavedHome[] },
   opts: Partial<AwayOptions> = {},
 ): { home: Home | null; trips: AwayTrip[] } {
   const o = { ...DEFAULT_AWAY, ...opts };
   const { tz } = input;
   const visits = [...input.visits].sort((a, b) => a.start - b.start);
   const samples = sampleNights(visits, input.nightPoints, tz, o);
-  const home = detectHome(samples, o);
+  const saved = input.homes ?? [];
+  const home = saved.length ? savedHome(samples, saved, o) : detectHome(samples, o);
   if (!home) return { home: null, trips: [] };
 
-  const fromHome = (x: { lat: number; lon: number }) => km(home.lat, home.lon, x.lat, x.lon);
-  const isAway = (x: { lat: number; lon: number }) => fromHome(x) > o.awayKm;
+  // Distance to the nearest home; a visit at a saved home is home however far.
+  const homes: { lat: number; lon: number }[] = saved.length ? saved : [home];
+  const homeIds = new Set(saved.map((h) => h.placeId));
+  const placeOf = (x: Sample | StayVisit) => ("visit" in x ? x.visit?.placeId : x.placeId);
+  const fromHome = (x: { lat: number; lon: number }) => Math.min(...homes.map((h) => km(h.lat, h.lon, x.lat, x.lon)));
+  const atSavedHome = (x: Sample | StayVisit) => homeIds.has(placeOf(x) ?? -1);
+  const isAway = (x: Sample | StayVisit) => !atSavedHome(x) && fromHome(x) > o.awayKm;
 
   // Runs of away nights, bridging short unknown gaps.
   const byDate = new Map(samples.map((s) => [s.date, s]));
@@ -247,7 +307,7 @@ export function detectAwayTrips(
     // "Home" for this trip: the home cluster, or wherever you slept before leaving.
     const before = [...samples].reverse().find((s) => s.date < run.first.date && !isAway(s));
     const atHome = (v: StayVisit) =>
-      fromHome(v) <= o.homeKm || (before != null && km(before.lat, before.lon, v.lat, v.lon) <= o.homeKm);
+      atSavedHome(v) || fromHome(v) <= o.homeKm || (before != null && km(before.lat, before.lon, v.lat, v.lon) <= o.homeKm);
 
     // Departure: when you last left home (else the home area) before the first
     // away night, at most two days earlier.

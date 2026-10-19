@@ -3,8 +3,17 @@
 
 import type { User } from "../auth";
 import { q } from "../db";
-import { getPlaces } from "../places";
-import { type AwayTrip, type Home, type NightPoint, type StayVisit, DEFAULT_AWAY, detectAwayTrips } from "./awayTrips";
+import { PLACE_NAME_SQL, getPlaces } from "../places";
+import {
+  type AwayTrip,
+  type Home,
+  type NightPoint,
+  type SavedHome,
+  type StayVisit,
+  DEFAULT_AWAY,
+  detectAwayTrips,
+} from "./awayTrips";
+import { type SavedPlaceInfo, savedPlaceMonth } from "./savedTime";
 import { type Move, daySummary, monthModes } from "./summary";
 import { addMonths, dayBounds, localMonth, monthBounds } from "./time";
 import { type WorldSort, cityPlaces, groupWorld } from "./world";
@@ -114,6 +123,17 @@ async function loadNightPoints(userId: string, tz: string): Promise<NightPoint[]
   );
 }
 
+/** Places saved as home or family. */
+async function loadSavedHomes(userId: string): Promise<SavedHome[]> {
+  const rows = await q<{ id: string; lat: number; lon: number; name: string | null; city: string | null; country: string | null }>(
+    `SELECT p.id, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lon, ${PLACE_NAME_SQL} AS name,
+            p.city, p.country
+     FROM places p WHERE p.user_id = $1 AND p.kind IN ('home', 'family') ORDER BY p.saved_at, p.id`,
+    [userId],
+  );
+  return rows.map((r) => ({ ...r, placeId: Number(r.id) }));
+}
+
 // Recomputed on read (a few hundred ms over years of data); cached per user
 // until a new trip or visit lands.
 const tripCache = new Map<string, { key: string; value: { home: Home | null; trips: AwayTrip[] } }>();
@@ -124,19 +144,53 @@ export async function getAwayTrips(user: User): Promise<{ home: Home | null; tri
     `SELECT concat_ws('/', (SELECT max(id) FROM trips WHERE user_id = $1), (SELECT count(*) FROM trips WHERE user_id = $1),
               (SELECT max(id) FROM visits WHERE user_id = $1), (SELECT count(*) FROM visits WHERE user_id = $1),
               (SELECT count(*) FROM trips WHERE user_id = $1 AND transit_checked IS NOT NULL),
-              (SELECT max(geocoded_at) FROM places WHERE user_id = $1), $2::text, $3::text) AS key`,
+              (SELECT max(geocoded_at) FROM places WHERE user_id = $1),
+              (SELECT string_agg(id || ':' || kind || ':' || COALESCE(custom_name, ''), ',' ORDER BY id)
+                 FROM places WHERE user_id = $1 AND kind IN ('home', 'family')),
+              $2::text, $3::text) AS key`,
     [user.id, user.timezone, user.transitLines],
   );
   const hit = tripCache.get(user.id);
   if (hit?.key === key) return hit.value;
-  const [visits, moves, nightPoints] = await Promise.all([
+  const [visits, moves, nightPoints, homes] = await Promise.all([
     loadStays(user.id),
     loadMoves(user),
     loadNightPoints(user.id, user.timezone),
+    loadSavedHomes(user.id),
   ]);
-  const value = detectAwayTrips({ visits, moves, nightPoints, tz: user.timezone });
+  const value = detectAwayTrips({ visits, moves, nightPoints, tz: user.timezone, homes });
   tripCache.set(user.id, { key, value });
   return value;
+}
+
+/** Time and nights per saved place in a month (Insights card). */
+export async function getSavedPlacesMonth(user: User, month: string) {
+  const places = (
+    await q<{ id: string; name: string | null; kind: SavedPlaceInfo["kind"] }>(
+      `SELECT p.id, ${PLACE_NAME_SQL} AS name, p.kind FROM places p WHERE p.user_id = $1 AND p.kind IS NOT NULL`,
+      [user.id],
+    )
+  ).map((r) => ({ placeId: Number(r.id), name: r.name, kind: r.kind }));
+  if (places.length === 0) return { saved: 0, rows: [] };
+  // A day either side for nights and visits crossing the month's edges.
+  const [from, to] = monthBounds(month, user.timezone);
+  const visits = await q<{ place_id: string; s: number; e: number }>(
+    `SELECT v.place_id, extract(epoch FROM v.started_at)::float8 * 1000 AS s,
+            extract(epoch FROM v.ended_at)::float8 * 1000 AS e
+     FROM visits v JOIN places p ON p.id = v.place_id
+     WHERE v.user_id = $1 AND p.kind IS NOT NULL AND v.ended_at > $2 AND v.started_at < $3
+     ORDER BY v.started_at`,
+    [user.id, new Date(from - 86_400_000), new Date(to + 86_400_000)],
+  );
+  return {
+    saved: places.length,
+    rows: savedPlaceMonth(
+      places,
+      visits.map((v) => ({ placeId: Number(v.place_id), start: v.s, end: v.e })),
+      month,
+      user.timezone,
+    ),
+  };
 }
 
 /** Cities and countries, sorted. */

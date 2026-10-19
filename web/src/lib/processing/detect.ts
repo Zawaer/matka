@@ -96,6 +96,12 @@ export type Output = { kind: "stay"; stay: Stay } | { kind: "trip"; trip: Trip }
 export type DetectorOptions = {
   /** Whether a public transport stop lies within `radiusM` (absent: no transfer detection). */
   nearStop?: (lat: number, lon: number, radiusM: number) => boolean;
+  /**
+   * The saved place (any stable key) whose radius a stay centred here lies in,
+   * or null. Two stays inside the same saved place separated by less than
+   * MERGE_GAP_S are one visit however far apart (buildings on a campus).
+   */
+  savedPlaceAt?: (lat: number, lon: number) => string | null;
 };
 
 /** A move not yet turned into a Trip. */
@@ -324,11 +330,7 @@ export class Detector {
       count: c.pts.length,
     };
     const prev = this.lastStay;
-    if (
-      prev &&
-      stay.start - prev.end < MERGE_GAP_S &&
-      haversine(prev.lat, prev.lon, stay.lat, stay.lon) <= STAY_RADIUS_M
-    ) {
+    if (prev && stay.start - prev.end < MERGE_GAP_S && this.samePlace(prev, stay)) {
       // Same place, brief excursion (or noise): extend the previous stay.
       const n = prev.count + stay.count;
       prev.lat = (prev.lat * prev.count + stay.lat * stay.count) / n;
@@ -369,6 +371,15 @@ export class Detector {
     const tail = moves[moves.length - 1];
     if (arrival && tail && tail.pts[tail.pts.length - 1] === arrival) this.inMove = moves.pop()!;
     for (const m of moves) this.emitMove(m);
+  }
+
+  /** Whether two stays are the same place: within STAY_RADIUS_M, or inside the same saved place. */
+  private samePlace(a: Stay, b: Stay): boolean {
+    if (haversine(a.lat, a.lon, b.lat, b.lon) <= STAY_RADIUS_M) return true;
+    const at = this.opts.savedPlaceAt;
+    if (!at) return false;
+    const k = at(a.lat, a.lon);
+    return k != null && k === at(b.lat, b.lon);
   }
 
   private isTransfer(s: Stay): boolean {

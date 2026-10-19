@@ -11,6 +11,8 @@ const HOME: Loc = { lat: 60.23, lon: 24.78, city: "Espoo", country: "Finland" };
 const WORK: Loc = { lat: 60.17, lon: 24.94, city: "Helsinki", country: "Finland" };
 const AIRPORT: Loc = { lat: 60.317, lon: 24.963, city: "Vantaa", country: "Finland" };
 const STHLM: Loc = { lat: 59.33, lon: 18.07, city: "Stockholm", country: "Sweden" };
+const DAD: Loc = { lat: 60.4518, lon: 22.2666, city: "Turku", country: "Finland" }; // ~150 km
+const DAD_TOWN: Loc = { lat: 60.41, lon: 22.36, city: "Turku", country: "Finland" }; // ~7 km from DAD
 const UPPSALA: Loc = { lat: 59.86, lon: 17.64, city: "Uppsala", country: "Sweden" };
 
 let pid = 0;
@@ -116,6 +118,61 @@ describe("detectAwayTrips", () => {
     ];
     const { trips } = detectAwayTrips({ visits, moves: [], nightPoints: [], tz: TZ });
     expect(trips.map((t) => t.name)).toEqual(["Uppsala", "Stockholm"]);
+  });
+});
+
+describe("detectAwayTrips with saved homes", () => {
+  /** Alternate weeks: mom's (HOME) then dad's (DAD), `weeks` times from `first`. */
+  function twoHomes(first: string, weeks: number): StayVisit[] {
+    const out: StayVisit[] = [];
+    for (let i = 0; i < weeks * 7; i++) {
+      const d = addDays(first, i);
+      out.push(stay(Math.floor(i / 7) % 2 === 0 ? HOME : DAD, d, -2, 10));
+    }
+    return out;
+  }
+  const saved = (loc: Loc, name: string) => {
+    if (!ids.has(loc)) ids.set(loc, ++pid);
+    return { placeId: ids.get(loc)!, lat: loc.lat, lon: loc.lon, name, city: loc.city, country: loc.country };
+  };
+
+  it("weeks at the other parent's are trips without saved homes", () => {
+    const { trips } = detectAwayTrips({ visits: twoHomes("2026-03-01", 6), moves: [], nightPoints: [], tz: TZ });
+    expect(trips.length).toBeGreaterThan(0);
+    expect(trips.every((t) => t.name === "Turku")).toBe(true);
+  });
+
+  it("never counts a night at a saved home or family place as away", () => {
+    const homes = [saved(HOME, "Mom's"), saved(DAD, "Dad's")];
+    const { home, trips } = detectAwayTrips({ visits: twoHomes("2026-03-01", 6), moves: [], nightPoints: [], tz: TZ, homes });
+    expect(trips).toEqual([]);
+    expect(home?.saved.sort()).toEqual(["Dad's", "Mom's"]);
+    expect(home?.nights).toBe(6 * 7);
+  });
+
+  it("measures away from the nearest home", () => {
+    const homes = [saved(HOME, "Mom's"), saved(DAD, "Dad's")];
+    const visits = [
+      ...twoHomes("2026-03-01", 2), // ends at dad's
+      stay(DAD_TOWN, "2026-03-14", 20, 12), // a friend's, 7 km from dad's: not away
+      stay(DAD, "2026-03-15", 10, 1),
+      stay(STHLM, "2026-03-15", 20, 14), // away from both
+      stay(DAD, "2026-03-16", 16, 16),
+      ...twoHomes("2026-03-18", 1),
+    ];
+    const { trips } = detectAwayTrips({ visits, moves: [], nightPoints: [], tz: TZ, homes });
+    expect(trips).toHaveLength(1);
+    const t = trips[0];
+    expect([t.name, t.startDate, t.endDate, t.nights]).toEqual(["Stockholm", "2026-03-15", "2026-03-16", 1]);
+    // Left from dad's, back at dad's.
+    expect(t.departure).toBe(startOfDay("2026-03-15", TZ) + 11 * H);
+    expect(t.arrival).toBe(startOfDay("2026-03-16", TZ) + 16 * H);
+  });
+
+  it("falls back to the detected home when none is saved", () => {
+    const { home } = detectAwayTrips({ visits: homeDays("2026-04-01", 5), moves: [], nightPoints: [], tz: TZ, homes: [] });
+    expect(home?.city).toBe("Espoo");
+    expect(home?.saved).toEqual([]);
   });
 });
 

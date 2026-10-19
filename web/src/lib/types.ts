@@ -2,6 +2,7 @@
 // distances metres.
 
 import type { ModeKey } from "./modes";
+import type { PlaceKind } from "./savedPlaces";
 
 export interface Visit {
   id: number;
@@ -12,6 +13,8 @@ export interface Visit {
   /** Rename or geocoded name; null when unknown. */
   placeName: string | null;
   category: string | null;
+  /** Saved place kind (home, family, school, work, other), or null when not saved. */
+  placeKind: PlaceKind | null;
   lat: number;
   lon: number;
 }

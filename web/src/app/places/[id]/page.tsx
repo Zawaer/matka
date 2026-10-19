@@ -5,7 +5,9 @@ import { q } from "@/lib/db";
 import { formatDateShort, formatDuration, formatTime } from "@/lib/format";
 import { categoryIcon, categoryLabel } from "@/components/places/category";
 import { PhotoGallery } from "@/components/places/PhotoGallery";
-import { renamePlace } from "./actions";
+import { KindBadge, KindPicker, SizePicker } from "@/components/places/SavedFields";
+import { KIND_META, type PlaceKind } from "@/lib/savedPlaces";
+import { renamePlace, savePlace, unsavePlace } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ type PlaceRow = {
   city: string | null;
   country: string | null;
   category: string | null;
+  kind: PlaceKind | null;
+  radius_m: number | null;
   visit_count: string;
   total_time: number;
 };
@@ -41,7 +45,7 @@ export default async function PlaceDetailPage({
   if (!/^\d+$/.test(id)) notFound();
 
   const [place] = await q<PlaceRow>(
-    `SELECT p.id, p.custom_name, p.geo_name, p.city, p.country, p.category,
+    `SELECT p.id, p.custom_name, p.geo_name, p.city, p.country, p.category, p.kind, p.radius_m,
             (SELECT count(*) FROM visits v WHERE v.place_id = p.id) AS visit_count,
             (SELECT COALESCE(sum(extract(epoch FROM v.ended_at - v.started_at)), 0)::float8
                FROM visits v WHERE v.place_id = p.id) AS total_time
@@ -74,10 +78,15 @@ export default async function PlaceDetailPage({
           className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-surface-2 text-2xl"
           aria-hidden
         >
-          {categoryIcon(place.category)}
+          {place.kind ? KIND_META[place.kind].icon : categoryIcon(place.category)}
         </span>
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{name}</h1>
+          {place.kind && (
+            <p className="mt-1.5">
+              <KindBadge kind={place.kind} radius={place.radius_m} />
+            </p>
+          )}
           <p className="mt-1 text-muted">
             {categoryLabel(place.category)}
             {locale ? ` · ${locale}` : ""}
@@ -86,6 +95,7 @@ export default async function PlaceDetailPage({
             <span className="font-medium text-text">{visitCount}</span>{" "}
             {visitCount === 1 ? "visit" : "visits"} · {formatDuration(place.total_time)} total
           </p>
+          {!place.kind && (
           <details className="mt-3 text-sm">
             <summary className="cursor-pointer text-muted hover:text-text">Rename</summary>
             <form action={renamePlace} className="mt-2 flex max-w-md gap-2">
@@ -106,8 +116,11 @@ export default async function PlaceDetailPage({
             </form>
             <p className="mt-1 text-xs text-muted">Leave empty to use the looked-up name.</p>
           </details>
+          )}
         </div>
       </header>
+
+      <SavePanel place={place} />
 
       <section className="mb-10">
         <h2 className="mb-3 text-sm font-semibold text-muted">Photos</h2>
@@ -137,5 +150,55 @@ export default async function PlaceDetailPage({
         )}
       </section>
     </div>
+  );
+}
+
+/** Save (or edit, or unsave) the place: its name, kind and size. */
+function SavePanel({ place }: { place: PlaceRow }) {
+  const saved = place.kind != null;
+  return (
+    <section className="mk-card mb-10 p-5" aria-labelledby="save-place">
+      <div className="mb-4">
+        <h2 id="save-place" className="font-semibold">
+          {saved ? "Saved place" : "Save this place"}
+        </h2>
+        <p className="mt-0.5 text-sm text-muted">
+          {saved
+            ? "Visits within its size snap here, even across buildings."
+            : "Label it Home, Family, School… so visits nearby snap to it and trips know your homes."}
+        </p>
+      </div>
+      <form action={savePlace} className="flex max-w-xl flex-col gap-4">
+        <input type="hidden" name="id" value={place.id} />
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-muted">Name</span>
+          <input
+            name="name"
+            defaultValue={place.custom_name ?? ""}
+            placeholder={place.geo_name ?? "e.g. Mom's"}
+            maxLength={120}
+            className="rounded-lg border border-border bg-surface-2 px-3 py-2 outline-none focus:border-primary"
+          />
+        </label>
+        <KindPicker defaultValue={place.kind} />
+        <SizePicker defaultValue={place.radius_m} />
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="submit" className="rounded-lg bg-primary px-4 py-2 font-medium text-white">
+            {saved ? "Save changes" : "Save place"}
+          </button>
+          {saved && (
+            <button
+              type="submit"
+              formAction={unsavePlace}
+              formNoValidate
+              className="rounded-lg border border-border px-4 py-2 font-medium text-muted hover:text-text"
+            >
+              Unsave
+            </button>
+          )}
+          <span className="text-xs text-muted">Changing the size re-sorts your visits in a minute or so.</span>
+        </div>
+      </form>
+    </section>
   );
 }

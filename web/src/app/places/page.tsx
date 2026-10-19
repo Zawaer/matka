@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
-import { getPlaces } from "@/lib/places";
+import Link from "next/link";
+import { type PlaceListItem, getPlaces } from "@/lib/places";
 import { PlaceCard } from "@/components/places/PlaceCard";
 
 export const dynamic = "force-dynamic";
@@ -19,13 +20,25 @@ export default async function PlacesPage() {
     failed = true;
   }
 
+  // getPlaces lists saved places first.
+  const saved = places.filter((p) => p.kind);
+  const rest = places.filter((p) => !p.kind);
+
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
-      <header className="mb-8">
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
+        <div>
         <h1 className="text-3xl font-semibold tracking-tight">Places</h1>
         <p className="mt-1 text-muted">
           Where you spend your time — with photos from each visit.
         </p>
+        </div>
+        <Link
+          href="/map?save=1"
+          className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:border-primary/60 hover:text-text"
+        >
+          + Save a place on the map
+        </Link>
       </header>
 
       {failed ? (
@@ -37,13 +50,40 @@ export default async function PlacesPage() {
       ) : places.length === 0 ? (
         <EmptyState />
       ) : (
-        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {places.map((p) => (
-            <PlaceCard key={p.id} place={p} />
-          ))}
-        </section>
+        <>
+          {saved.length > 0 ? (
+            <PlaceSection title="Saved" count={saved.length} places={saved} />
+          ) : (
+            <p className="mb-6 text-sm text-muted">
+              Tip: open a place and save it as Home, Family, School or Work — or{" "}
+              <Link href="/map?save=1" className="text-primary hover:underline">
+                save one on the map
+              </Link>
+              .
+            </p>
+          )}
+          <PlaceSection title={saved.length ? "Everywhere else" : null} count={rest.length} places={rest} />
+        </>
       )}
     </div>
+  );
+}
+
+function PlaceSection({ title, count, places }: { title: string | null; count: number; places: PlaceListItem[] }) {
+  if (places.length === 0) return null;
+  return (
+    <section className="mb-8">
+      {title && (
+        <h2 className="mb-3 text-sm font-semibold text-muted">
+          {title} · {count}
+        </h2>
+      )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {places.map((p) => (
+          <PlaceCard key={p.id} place={p} />
+        ))}
+      </div>
+    </section>
   );
 }
 

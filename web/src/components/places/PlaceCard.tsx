@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatDuration } from "@/lib/format";
 import { categoryIcon, categoryLabel } from "./category";
 import type { PlaceListItem } from "@/lib/places";
+import { KIND_META, formatRadius } from "@/lib/savedPlaces";
 
 export function PlaceCard({ place }: { place: PlaceListItem }) {
   const name =
@@ -20,14 +21,21 @@ export function PlaceCard({ place }: { place: PlaceListItem }) {
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-xl"
           aria-hidden
         >
-          {categoryIcon(place.category)}
+          {place.kind ? KIND_META[place.kind].icon : categoryIcon(place.category)}
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-medium group-hover:text-primary">
             {name}
           </h3>
           <p className="truncate text-xs text-muted">
-            {categoryLabel(place.category)}
+            {place.kind ? (
+              <span className="font-medium text-primary">
+                {KIND_META[place.kind].label}
+                {place.radius ? ` · ${formatRadius(place.radius)}` : ""}
+              </span>
+            ) : (
+              categoryLabel(place.category)
+            )}
             {locale ? ` · ${locale}` : ""}
           </p>
         </div>

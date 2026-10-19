@@ -3,7 +3,10 @@ import { MonthPicker } from "@/components/insights/MonthPicker";
 import { ModeHistory, ModeIcon, ShareBar, Stat, modeMeta } from "@/components/insights/charts";
 import { requireUser } from "@/lib/auth";
 import { formatDuration, formatKm, formatMonth } from "@/lib/format";
-import { getMonthModes } from "@/lib/insights/load";
+import Link from "next/link";
+import { getMonthModes, getSavedPlacesMonth } from "@/lib/insights/load";
+import type { SavedPlaceMonth } from "@/lib/insights/savedTime";
+import { KIND_META, isHomeKind } from "@/lib/savedPlaces";
 import { addMonths, isMonth } from "@/lib/insights/time";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +17,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const user = await requireUser();
   const { month: raw } = await searchParams;
   const data = await getMonthModes(user, raw && isMonth(raw) ? raw : undefined);
+  const saved = await getSavedPlacesMonth(user, data.month);
 
   // Every month from the first with travel to now (or the picked month).
   const months: string[] = [];
@@ -69,6 +73,8 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
             </section>
           )}
 
+          <SavedPlacesCard saved={saved.saved} rows={saved.rows} />
+
           <section className="mt-5 grid gap-3 md:grid-cols-2">
             {[...used, ...quiet].map((m) => (
               <article key={m.mode} className={`mk-card p-4 ${m.distance === 0 && m.duration === 0 ? "opacity-70" : ""}`}>
@@ -96,5 +102,61 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
         </>
       )}
     </div>
+  );
+}
+
+const hours = (s: number) => `${s >= 36_000 ? Math.round(s / 3600) : Math.round(s / 360) / 10} h`;
+const nights = (n: number) => `${n} ${n === 1 ? "night" : "nights"}`;
+
+/** "School 62 h · Mom's 9 nights · Dad's 12 nights" for the month. */
+function SavedPlacesCard({ saved, rows }: { saved: number; rows: SavedPlaceMonth[] }) {
+  return (
+    <section className="mk-card mt-5 p-5">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-semibold text-muted">Saved places</h3>
+        <Link href="/places" className="text-xs text-muted hover:text-text">
+          {saved ? "Manage" : "Save places"} →
+        </Link>
+      </div>
+      {saved === 0 ? (
+        <p className="text-sm text-muted">
+          Save your homes, school or work on the Places page to see how much time you spend at each.
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted">No time at your saved places this month.</p>
+      ) : (
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {rows.map((r) => {
+            const home = isHomeKind(r.kind);
+            return (
+              <li key={r.placeId}>
+                <Link
+                  href={`/places/${r.placeId}`}
+                  className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5 transition-colors hover:bg-surface-2/70"
+                >
+                  <span className="text-xl leading-none" aria-hidden>
+                    {KIND_META[r.kind].icon}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{r.name ?? KIND_META[r.kind].label}</span>
+                    {r.name && r.name !== KIND_META[r.kind].label && (
+                      <span className="block text-xs text-muted">{KIND_META[r.kind].label}</span>
+                    )}
+                  </span>
+                  <span className="text-right">
+                    <span className="block font-semibold tabular-nums">
+                      {home && r.nights > 0 ? nights(r.nights) : hours(r.seconds)}
+                    </span>
+                    <span className="block text-xs text-muted tabular-nums">
+                      {home && r.nights > 0 ? hours(r.seconds) : r.nights > 0 ? nights(r.nights) : "\u00a0"}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

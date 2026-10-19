@@ -4,7 +4,7 @@ import { q } from "@/lib/db";
 import { isModeKey } from "@/lib/modes";
 import { PLACE_NAME_SQL } from "@/lib/places";
 import { displayMode, legsByTrip } from "@/lib/transit/run";
-import type { TimelineDay, TimelineItem } from "@/lib/types";
+import type { TimelineDay, TimelineItem, Visit } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,6 +23,7 @@ type VisitRow = {
   place_id: string;
   place_name: string | null;
   category: string | null;
+  kind: Visit["placeKind"];
   lat: number;
   lon: number;
 };
@@ -76,7 +77,7 @@ export async function GET(req: Request) {
     q<VisitRow>(
       `WITH d(s, e) AS (VALUES (${bounds}))
        SELECT v.id, v.started_at, v.ended_at, v.place_id, ${PLACE_NAME_SQL} AS place_name,
-              p.category, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lon
+              p.category, p.kind, ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lon
        FROM visits v JOIN places p ON p.id = v.place_id, d
        WHERE v.user_id = $1 AND v.started_at < d.e AND v.ended_at >= d.s
        ORDER BY v.started_at`,
@@ -107,6 +108,7 @@ export async function GET(req: Request) {
           placeId: Number(r.place_id),
           placeName: r.place_name,
           category: r.category,
+          placeKind: r.kind,
           lat: r.lat,
           lon: r.lon,
         },

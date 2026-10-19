@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useState } from "react";
 import { categoryLabel } from "@/components/places/category";
+import { KIND_META } from "@/lib/savedPlaces";
 import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
 import { KIND_LABEL, badgeColors } from "@/lib/transit/colors";
@@ -257,14 +258,24 @@ function VisitRow({
 }) {
   const name = visit.placeName ?? categoryLabel(visit.category);
   const unknown = !visit.placeName;
+  const kind = visit.placeKind ? KIND_META[visit.placeKind] : null;
 
   return (
     <li className="flex gap-3 sm:gap-4">
       <Rail topLine={!isFirst} bottomLine={!isLast}>
-        <span className="z-10 flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 bg-surface text-primary shadow-sm">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            <path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
-          </svg>
+        <span
+          className="z-10 flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 bg-surface text-primary shadow-sm"
+          title={kind?.label}
+        >
+          {kind ? (
+            <span className="text-base leading-none" aria-hidden>
+              {kind.icon}
+            </span>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
+            </svg>
+          )}
         </span>
       </Rail>
 
@@ -284,6 +295,7 @@ function VisitRow({
           </span>
         </div>
         <p className="mt-1 text-sm text-muted">
+          {kind && kind.label !== name && <span className="font-medium text-primary">{kind.label} · </span>}
           {formatTime(visit.startedAt)}
           {visit.endedAt ? ` – ${formatTime(visit.endedAt)}` : ""}
         </p>

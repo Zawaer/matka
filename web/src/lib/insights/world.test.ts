@@ -12,6 +12,8 @@ const place = (city: string | null, country: string | null, visits: number, hour
   visitCount: visits,
   totalTime: hours * 3600,
   lastVisit: last,
+  kind: null,
+  radius: null,
 });
 
 const PLACES = [

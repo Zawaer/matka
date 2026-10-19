@@ -5,7 +5,7 @@ import { COVER_BACKDROP, CoverPhoto, CoverScrim } from "@/components/insights/Co
 import { requireUser } from "@/lib/auth";
 import { type Cover, getCovers } from "@/lib/covers";
 import { formatDateRange, formatKm } from "@/lib/format";
-import type { AwayTrip } from "@/lib/insights/awayTrips";
+import { type AwayTrip, joinNames } from "@/lib/insights/awayTrips";
 import { tripCoverSpec } from "@/lib/insights/coverSpecs";
 import { getAwayTrips } from "@/lib/insights/load";
 
@@ -33,12 +33,21 @@ export default async function TripsPage() {
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
       <InsightsHeader active="trips" subtitle="Nights spent more than 30 km from home, found automatically." />
 
-      {home && (
+      {home && home.saved.length > 0 ? (
         <p className="mb-5 text-sm text-muted">
-          Home: <span className="text-text">{home.city ?? "your most frequent night spot"}</span>, where you spent{" "}
+          Home: <span className="text-text">{joinNames(home.saved)}</span> (saved places), where you spent{" "}
           {home.nights} nights.
         </p>
-      )}
+      ) : home ? (
+        <p className="mb-5 text-sm text-muted">
+          Home: <span className="text-text">{home.city ?? "your most frequent night spot"}</span>, where you spent{" "}
+          {home.nights} nights.{" "}
+          <Link href="/places" className="underline decoration-dotted hover:text-text">
+            Save your homes
+          </Link>{" "}
+          to set it yourself.
+        </p>
+      ) : null}
 
       {trips.length === 0 ? (
         <div className="mk-card px-6 py-14 text-center text-sm text-muted">

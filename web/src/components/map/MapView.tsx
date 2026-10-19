@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Map as MlMap, LngLatBoundsLike } from "maplibre-gl";
+import type { Map as MlMap, LngLatBoundsLike, Marker } from "maplibre-gl";
+import { createSavedPlace } from "@/app/places/actions";
+import { KindPicker, SizePicker } from "@/components/places/SavedFields";
 import { MODE_META, type ModeKey } from "@/lib/modes";
+import { PLACE_SIZES } from "@/lib/savedPlaces";
 
 type FC = GeoJSON.FeatureCollection;
 
@@ -76,6 +80,24 @@ function extendBounds(acc: [number, number, number, number] | null, fc: FC) {
   return b;
 }
 
+type Pin = { lat: number; lon: number };
+
+/** A circle of `radius` metres around a pin, as a polygon (for the size preview). */
+function circle(pin: Pin | null, radius: number): FC {
+  if (!pin) return { type: "FeatureCollection", features: [] };
+  const dLat = radius / 111_320;
+  const dLon = radius / (111_320 * Math.cos((pin.lat * Math.PI) / 180));
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * 2 * Math.PI;
+    ring.push([pin.lon + dLon * Math.cos(a), pin.lat + dLat * Math.sin(a)]);
+  }
+  return {
+    type: "FeatureCollection",
+    features: [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [ring] } }],
+  };
+}
+
 const HEATMAP_PAINT = {
   // Hours spent per ~55 m cell (api/points). Anywhere you've been shows (so
   // regular routes still glow faintly), but time spent is what makes it hot:
@@ -111,7 +133,7 @@ const HEATMAP_PAINT = {
   ],
 } as const;
 
-export default function MapView() {
+export default function MapView({ initialSave = false }: { initialSave?: boolean }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
   const pointsRef = useRef<FC | null>(null);
@@ -125,6 +147,19 @@ export default function MapView() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showHeat, setShowHeat] = useState(true);
   const [showRoutes, setShowRoutes] = useState(true);
+
+  // "Save a place": tap the map to drop a pin, then name it.
+  const [saveMode, setSaveMode] = useState(initialSave);
+  const saveModeRef = useRef(initialSave);
+  const [pin, setPin] = useState<Pin | null>(null);
+  const pinRef = useRef<Pin | null>(null);
+  const [radius, setRadius] = useState<number>(PLACE_SIZES[0].radius);
+  const radiusRef = useRef(radius);
+  const markerRef = useRef<Marker | null>(null);
+  const mlRef = useRef<typeof import("maplibre-gl") | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedPlace, setSavedPlace] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,6 +184,7 @@ export default function MapView() {
       // bundler can't serve the one MapLibre looks for next to its module.
       maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
       if (cancelled) return;
+      mlRef.current = maplibregl;
 
       let dark = computeDark();
 
@@ -166,6 +202,17 @@ export default function MapView() {
         new maplibregl.NavigationControl({ showCompass: false }),
         "top-right",
       );
+      m.on("click", (e) => {
+        if (!saveModeRef.current) return;
+        setPin({ lat: e.lngLat.lat, lon: e.lngLat.lng });
+        // Zoomed out, a tap is only roughly right: zoom in so the pin (tap
+        // again to move it) and its size circle can be checked.
+        // On a phone, keep the pin above the form sheet.
+        if (m.getZoom() < 14)
+          m.easeTo({ center: e.lngLat, zoom: 15, offset: [0, window.innerWidth < 640 ? -150 : 0], duration: 600 });
+        setSavedPlace(null);
+        setSaveError(null);
+      });
       m.on("error", (e) => {
         console.warn("[MapView] maplibre error", e?.error ?? e);
       });
@@ -208,8 +255,28 @@ export default function MapView() {
             },
           });
         }
+        if (!m.getSource("pin-radius")) {
+          m.addSource("pin-radius", { type: "geojson", data: circle(pinRef.current, radiusRef.current) });
+          m.addLayer({
+            id: "pin-radius-fill",
+            type: "fill",
+            source: "pin-radius",
+            paint: { "fill-color": resolveColor("var(--mk-primary)"), "fill-opacity": 0.18 },
+          });
+          m.addLayer({
+            id: "pin-radius-line",
+            type: "line",
+            source: "pin-radius",
+            paint: { "line-color": resolveColor("var(--mk-primary)"), "line-width": 2, "line-dasharray": [2, 1.5] },
+          });
+        }
         // Heat on top: under the route lines it disappears where it matters.
         if (m.getLayer("heatmap") && m.getLayer("routes")) m.moveLayer("heatmap");
+        // The pin's size preview above everything.
+        if (m.getLayer("pin-radius-fill")) {
+          m.moveLayer("pin-radius-fill");
+          m.moveLayer("pin-radius-line");
+        }
         if (m.getLayer("heatmap"))
           m.setLayoutProperty(
             "heatmap",
@@ -287,6 +354,57 @@ export default function MapView() {
     };
   }, []);
 
+  // Pin marker and size circle follow the form.
+  useEffect(() => {
+    pinRef.current = pin;
+    radiusRef.current = radius;
+    const map = mapRef.current;
+    const ml = mlRef.current;
+    if (!map || !ml) return;
+    (map.getSource("pin-radius") as { setData?: (d: FC) => void } | undefined)?.setData?.(circle(pin, radius));
+    if (!pin) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      return;
+    }
+    if (!markerRef.current) {
+      markerRef.current = new ml.Marker({ color: resolveColor("var(--mk-primary)") }).setLngLat([pin.lon, pin.lat]).addTo(map);
+    } else markerRef.current.setLngLat([pin.lon, pin.lat]);
+  }, [pin, radius]);
+
+  useEffect(() => {
+    saveModeRef.current = saveMode;
+    const map = mapRef.current;
+    if (map) map.getCanvas().style.cursor = saveMode ? "crosshair" : "";
+  }, [saveMode, status]);
+
+  async function onSave(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!pin) return;
+    const f = new FormData(e.currentTarget);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const name = String(f.get("name") ?? "");
+      const res = await createSavedPlace({
+        lat: pin.lat,
+        lon: pin.lon,
+        name,
+        kind: String(f.get("kind") ?? ""),
+        radius: Number(f.get("radius")),
+      });
+      if (!res.ok) setSaveError(res.error);
+      else {
+        setSavedPlace({ id: res.id, name: name.trim() || "Place" });
+        setPin(null);
+      }
+    } catch {
+      setSaveError("Couldn't save. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   useEffect(() => {
     showHeatRef.current = showHeat;
     const map = mapRef.current;
@@ -313,20 +431,93 @@ export default function MapView() {
     <div className="relative h-full w-full overflow-hidden">
       <div ref={containerRef} className="h-full w-full" />
 
-      <div className="pointer-events-auto absolute left-3 top-3 z-10 flex gap-1 rounded-xl border border-border bg-surface/90 p-1 shadow-lg backdrop-blur">
-        <ToggleButton
-          active={showHeat}
-          onClick={() => setShowHeat((v) => !v)}
-          label="Heatmap"
-        />
-        <ToggleButton
-          active={showRoutes}
-          onClick={() => setShowRoutes((v) => !v)}
-          label="Routes"
-        />
+      <div className="pointer-events-none absolute left-3 right-14 top-3 z-10 flex flex-wrap gap-2">
+        <div className="pointer-events-auto flex gap-1 rounded-xl border border-border bg-surface/90 p-1 shadow-lg backdrop-blur">
+          <ToggleButton
+            active={showHeat}
+            onClick={() => setShowHeat((v) => !v)}
+            label="Heatmap"
+          />
+          <ToggleButton
+            active={showRoutes}
+            onClick={() => setShowRoutes((v) => !v)}
+            label="Routes"
+          />
+        </div>
+        <div className="pointer-events-auto flex rounded-xl border border-border bg-surface/90 p-1 shadow-lg backdrop-blur">
+          <ToggleButton
+            active={saveMode}
+            onClick={() => {
+              setSaveMode(!saveMode);
+              setPin(null);
+              setSavedPlace(null);
+              setSaveError(null);
+            }}
+            label={saveMode ? "Done" : "＋ Save a place"}
+          />
+        </div>
       </div>
 
-      {showRoutes && (
+      {saveMode && !pin && (
+        <div className="absolute inset-x-3 bottom-3 z-10 mx-auto max-w-sm sm:left-3 sm:right-auto sm:top-16 sm:bottom-auto sm:mx-0 sm:w-[22rem]">
+          <div className="mk-card px-4 py-3 text-sm shadow-lg">
+            {savedPlace ? (
+              <p>
+                Saved <span className="font-medium">{savedPlace.name}</span>.{" "}
+                <Link href={`/places/${savedPlace.id}`} className="text-primary hover:underline">
+                  Open it
+                </Link>{" "}
+                or tap the map to save another.
+              </p>
+            ) : (
+              <p className="text-muted">Tap the map where the place is — zoom in for the exact spot.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {saveMode && pin && (
+        <div className="absolute inset-x-3 bottom-3 z-20 mx-auto max-w-sm sm:left-3 sm:right-auto sm:top-16 sm:bottom-auto sm:mx-0 sm:w-[22rem]">
+          <form
+            onSubmit={onSave}
+            onChange={(e) => {
+              const t = e.target as unknown as HTMLInputElement;
+              if (t.name === "radius") setRadius(Number(t.value));
+            }}
+            className="mk-card flex max-h-[70dvh] flex-col gap-3 overflow-y-auto p-4 shadow-lg"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-semibold">Save this spot</h2>
+              <button
+                type="button"
+                onClick={() => setPin(null)}
+                className="rounded-lg px-2 py-1 text-sm text-muted hover:text-text"
+              >
+                Cancel
+              </button>
+            </div>
+            <input
+              name="name"
+              placeholder="Name, e.g. Mom's"
+              maxLength={120}
+              autoComplete="off"
+              className="rounded-lg border border-border bg-surface-2 px-3 py-2 outline-none focus:border-primary"
+            />
+            <KindPicker compact />
+            <SizePicker compact defaultValue={radius} />
+            {saveError && <p className="text-sm text-red-400">{saveError}</p>}
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-primary px-4 py-2 font-medium text-white disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save place"}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {showRoutes && !saveMode && (
         <div className="absolute bottom-3 left-3 z-10 hidden max-w-[70%] flex-wrap gap-x-3 gap-y-1 rounded-xl border border-border bg-surface/90 px-3 py-2 text-xs text-muted shadow-lg backdrop-blur sm:flex">
           {(["walking", "cycling", "driving", "train", "bus"] as ModeKey[]).map(
             (k) => (
