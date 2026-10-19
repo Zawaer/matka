@@ -77,43 +77,37 @@ function extendBounds(acc: [number, number, number, number] | null, fc: FC) {
 }
 
 const HEATMAP_PAINT = {
-  // Hours spent per ~55 m cell (api/points), on a roughly logarithmic scale so
-  // home doesn't drown out everywhere else: a few minutes barely shows, an hour
-  // is clearly there, a few hundred hours (home) is the hottest.
+  // Hours spent per ~55 m cell (api/points). Anywhere you've been shows (so
+  // regular routes still glow faintly), but time spent is what makes it hot:
+  // roughly logarithmic so home doesn't drown out everywhere else.
   "heatmap-weight": [
     "interpolate",
     ["linear"],
     ["get", "h"],
-    0, 0,
-    0.05, 0.04,
-    0.5, 0.18,
-    3, 0.4,
-    20, 0.65,
+    0, 0.03,
+    0.05, 0.06,
+    0.5, 0.15,
+    3, 0.35,
+    20, 0.6,
     100, 0.85,
     500, 1,
   ],
-  "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 3, 0.7, 9, 1.2, 14, 2, 17, 3],
-  "heatmap-radius": ["interpolate", ["exponential", 1.6], ["zoom"], 3, 4, 8, 10, 12, 18, 16, 34],
-  "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0.9, 16, 0.7],
+  "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 3, 0.6, 9, 0.9, 14, 1.3, 17, 2],
+  "heatmap-radius": ["interpolate", ["exponential", 1.5], ["zoom"], 3, 5, 8, 10, 12, 18, 16, 32],
+  "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0.9, 16, 0.75],
   "heatmap-color": [
-    // Violet -> magenta -> coral -> amber: legible on both the dark and light basemap.
+    // Thermal: deep red -> orange -> yellow -> near-white at the hottest.
+    // Reads as heat on both the dark and the light basemap.
     "interpolate",
     ["linear"],
     ["heatmap-density"],
-    0,
-    "rgba(110,92,255,0)",
-    0.1,
-    "rgba(110,92,255,0.42)",
-    0.3,
-    "#6a5cff",
-    0.5,
-    "#c0489b",
-    0.7,
-    "#f0583f",
-    0.9,
-    "#ff8a1f",
-    1,
-    "#ffb000",
+    0, "rgba(140,20,60,0)",
+    0.06, "rgba(140,20,60,0.45)",
+    0.2, "rgba(200,30,50,0.75)",
+    0.4, "#e8402a",
+    0.6, "#fb8c1a",
+    0.8, "#fdd835",
+    1, "#fff8d6",
   ],
 } as const;
 
@@ -214,6 +208,8 @@ export default function MapView() {
             },
           });
         }
+        // Heat on top: under the route lines it disappears where it matters.
+        if (m.getLayer("heatmap") && m.getLayer("routes")) m.moveLayer("heatmap");
         if (m.getLayer("heatmap"))
           m.setLayoutProperty(
             "heatmap",
