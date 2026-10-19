@@ -4,6 +4,7 @@ import { loadPairing } from "../credentials";
 import * as db from "../db";
 import type { Pairing } from "../pairing";
 import { isBatteryOptimized } from "../system";
+import { parseCustom, type CustomSettings } from "../preset-logic";
 import {
   getPermissions,
   getPreset,
@@ -22,6 +23,10 @@ export type CollectorState = {
   trackingRunning: boolean;
   permissions: PermissionState | null;
   preset: PresetKey;
+  custom: CustomSettings;
+  smartTracking: boolean;
+  /** Smart tracking has put location updates on low-power standby (phone still). */
+  standby: boolean;
   queued: number;
   oldestQueued: number | null;
   droppedOverflow: number;
@@ -70,6 +75,9 @@ export async function readState(): Promise<CollectorState> {
     trackingRunning,
     permissions,
     preset,
+    custom: parseCustom(kv.custom_preset),
+    smartTracking: kv.smart_tracking !== "0",
+    standby: trackingEnabled && trackingRunning && kv.smart_tracking !== "0" && kv.applied_mode === "standby",
     queued,
     oldestQueued,
     droppedOverflow: num(kv.dropped_overflow) ?? 0,

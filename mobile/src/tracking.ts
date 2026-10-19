@@ -7,15 +7,23 @@
 import * as Battery from "expo-battery";
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
-import { PermissionsAndroid, Platform } from "react-native";
+import { AppState, PermissionsAndroid, Platform } from "react-native";
 import * as db from "./db";
 import { batteryPercent, fixToPoint, type QueuedPoint } from "./points";
-import { currentActivity, startActivityUpdates, stopActivityUpdates } from "../modules/matka-activity";
+import {
+  addActivityListener,
+  currentActivity,
+  latestActivity,
+  startActivityUpdates,
+  stopActivityUpdates,
+} from "../modules/matka-activity";
+import { customDeferral, parseCustom, serializeCustom, type CustomSettings } from "./preset-logic";
+import { INITIAL_STATE, parseSmartState, step, type Fix, type Mode } from "./smart-logic";
 import { maybeUploadFromTask } from "./uploader";
 
 export const TASK = "matka-bg-location";
 
-export type PresetKey = "low" | "balanced" | "precise";
+export type PresetKey = "low" | "balanced" | "precise" | "max" | "custom";
 
 export type Preset = {
   key: PresetKey;
@@ -69,9 +77,9 @@ export const PRESETS: Record<PresetKey, Preset> = {
   precise: {
     key: "precise",
     label: "Precise",
-    description: "GPS, a point every ≥10 s / 10 m. Detailed routes, noticeably more battery.",
+    description: "Best GPS, a point every ≥10 s / 10 m. Detailed routes, noticeably more battery.",
     options: {
-      accuracy: Location.Accuracy.High,
+      accuracy: Location.Accuracy.Highest,
       timeInterval: 10_000,
       distanceInterval: 10,
       deferredUpdatesInterval: 60_000,
@@ -82,7 +90,72 @@ export const PRESETS: Record<PresetKey, Preset> = {
       foregroundService: FOREGROUND_SERVICE,
     },
   },
+  max: {
+    key: "max",
+    label: "Max detail",
+    description: "Best GPS, a point every ~2 s / 5 m. For hikes, runs, or a perfect route. Drains the battery fast.",
+    options: {
+      // iOS: navigation-grade accuracy. Android maps this to high accuracy, same as High.
+      accuracy: Location.Accuracy.BestForNavigation,
+      timeInterval: 2_000,
+      distanceInterval: 5,
+      deferredUpdatesInterval: 15_000,
+      deferredUpdatesDistance: 0,
+      pausesUpdatesAutomatically: false,
+      activityType: Location.ActivityType.Fitness,
+      showsBackgroundLocationIndicator: false,
+      foregroundService: FOREGROUND_SERVICE,
+    },
+  },
+  custom: {
+    key: "custom",
+    label: "Custom",
+    description: "Pick accuracy, distance and time yourself.",
+    // Placeholder: the real options come from customOptions() with the stored choices.
+    options: { accuracy: Location.Accuracy.High, foregroundService: FOREGROUND_SERVICE },
+  },
 };
+
+const CUSTOM_ACCURACY: Record<CustomSettings["accuracy"], Location.Accuracy> = {
+  balanced: Location.Accuracy.Balanced,
+  high: Location.Accuracy.High,
+  highest: Location.Accuracy.Highest,
+};
+
+export function customOptions(c: CustomSettings): Location.LocationTaskOptions {
+  const deferral = customDeferral(c);
+  return {
+    accuracy: CUSTOM_ACCURACY[c.accuracy],
+    timeInterval: c.time,
+    distanceInterval: c.distance,
+    deferredUpdatesInterval: deferral.interval,
+    deferredUpdatesDistance: deferral.distance,
+    pausesUpdatesAutomatically: false,
+    activityType: c.time <= 10_000 ? Location.ActivityType.Fitness : Location.ActivityType.Other,
+    showsBackgroundLocationIndicator: false,
+    foregroundService: FOREGROUND_SERVICE,
+  };
+}
+
+/**
+ * Smart tracking's standby: Wi-Fi/cell positioning only (GPS sleeps), and a
+ * fix only after ~100 m of movement, delivered at once so the task can
+ * switch back quickly.
+ */
+const STANDBY_OPTIONS: Location.LocationTaskOptions = {
+  accuracy: Location.Accuracy.Balanced,
+  timeInterval: 120_000,
+  distanceInterval: 100,
+  deferredUpdatesInterval: 0,
+  deferredUpdatesDistance: 0,
+  pausesUpdatesAutomatically: false,
+  activityType: Location.ActivityType.Other,
+  showsBackgroundLocationIndicator: false,
+  foregroundService: FOREGROUND_SERVICE,
+};
+
+/** "Low power" is already about as frugal as standby, so smart tracking leaves it alone. */
+const smartApplies = (preset: PresetKey) => preset !== "low";
 
 export const DEFAULT_PRESET: PresetKey = "balanced";
 
@@ -110,6 +183,17 @@ TaskManager.defineTask<{ locations?: Location.LocationObject[] }>(TASK, async ({
       .filter((p): p is QueuedPoint => p != null);
     await db.enqueue(points);
     if (points.length > 0) await db.setNum("last_fix_at", Math.max(...points.map((p) => p.ts)));
+    await evaluateSmart(
+      locations.map(
+        (l): Fix => ({
+          ts: l.timestamp,
+          lat: l.coords.latitude,
+          lon: l.coords.longitude,
+          accuracy: l.coords.accuracy ?? null,
+          speed: l.coords.speed ?? null,
+        }),
+      ),
+    ).catch((e) => db.setKv("last_task_error", `${new Date().toISOString()} smart: ${String(e)}`));
     await maybeUploadFromTask();
   } catch (e) {
     // Never let an exception escape the task; the fixes already queued are safe.
@@ -188,16 +272,128 @@ export async function isTrackingRunning(): Promise<boolean> {
   }
 }
 
+export async function getCustom(): Promise<CustomSettings> {
+  return parseCustom(await db.getKv("custom_preset"));
+}
+
+/** Smart tracking is on unless the user turned it off. */
+export async function isSmartTracking(): Promise<boolean> {
+  return (await db.getKv("smart_tracking")) !== "0";
+}
+
+async function presetOptions(preset: PresetKey): Promise<{ options: Location.LocationTaskOptions; key: string }> {
+  if (preset !== "custom") return { options: PRESETS[preset].options, key: preset };
+  const c = await getCustom();
+  return { options: customOptions(c), key: `custom:${serializeCustom(c)}` };
+}
+
+/** The mode smart tracking wants right now ("active" when it's off or doesn't apply). */
+async function wantedMode(preset: PresetKey): Promise<Mode> {
+  if (!smartApplies(preset) || !(await isSmartTracking())) return "active";
+  return parseSmartState(await db.getKv("smart_state")).mode;
+}
+
+/**
+ * Hands new options to the running task. Re-registering an existing task only
+ * updates its options (the foreground service keeps running). Android refuses
+ * the foregroundService option while the app is in the background, so from
+ * the background the options go without it; the service is not stopped by
+ * that, and resumeTracking re-adds it when the app is next opened.
+ */
+async function applyOptions(options: Location.LocationTaskOptions): Promise<void> {
+  try {
+    await Location.startLocationUpdatesAsync(TASK, options);
+    await db.setKv("applied_fg", "1");
+  } catch (e) {
+    if (Platform.OS !== "android" || AppState.currentState === "active") throw e;
+    const { foregroundService: _omit, ...rest } = options;
+    await Location.startLocationUpdatesAsync(TASK, rest);
+    await db.setKv("applied_fg", "0");
+  }
+}
+
+/** Full (re)start from the foreground: user actions and app launch. */
 async function startUpdates(preset: PresetKey): Promise<void> {
+  const mode = await wantedMode(preset);
+  const { options, key } = await presetOptions(preset);
   if (await isTrackingRunning()) await Location.stopLocationUpdatesAsync(TASK);
-  await Location.startLocationUpdatesAsync(TASK, PRESETS[preset].options);
-  await db.setKv("applied_preset", preset);
+  await Location.startLocationUpdatesAsync(TASK, mode === "standby" ? STANDBY_OPTIONS : options);
+  await db.setKv("applied_fg", "1");
+  await db.setKv("applied_preset", key);
+  await db.setKv("applied_mode", mode);
+}
+
+// ---- Smart tracking --------------------------------------------------------
+
+// The task, the activity listener and the Settings screen can all touch the
+// smart state concurrently; run those read-modify-writes one at a time.
+let smartChain: Promise<unknown> = Promise.resolve();
+function serialSmart<T>(fn: () => Promise<T>): Promise<T> {
+  const p = smartChain.then(fn, fn);
+  smartChain = p.catch(() => undefined);
+  return p;
+}
+
+/**
+ * Folds the latest activity reading and any new fixes into the smart-tracking
+ * state and switches between the preset and standby when it says so. Never
+ * stops the task: only its options change.
+ */
+export function evaluateSmart(fixes: Fix[] = []): Promise<void> {
+  const run = async () => {
+    if (!(await isTrackingEnabled()) || !(await isSmartTracking())) return;
+    const preset = await getPreset();
+    const prev = parseSmartState(await db.getKv("smart_state"));
+    const now = Date.now();
+    const { state, switchTo } = step(prev, { activity: latestActivity(), fixes }, now);
+    if (!smartApplies(preset)) {
+      await db.setKv("smart_state", JSON.stringify({ ...state, mode: "active" }));
+      return;
+    }
+    let next = state;
+    if (switchTo && (await isTrackingRunning())) {
+      try {
+        const { options, key } = await presetOptions(preset);
+        await applyOptions(switchTo === "standby" ? STANDBY_OPTIONS : options);
+        await db.setKv("applied_preset", key);
+        await db.setKv("applied_mode", switchTo);
+        await db.setNum("smart_switched_at", now);
+      } catch (e) {
+        // Keep the old mode; lastSwitchAt makes the retry wait a little.
+        next = { ...state, mode: prev.mode, anchor: prev.anchor };
+        await db.setKv("last_task_error", `${new Date().toISOString()} smart switch: ${String(e)}`);
+      }
+    } else if (switchTo) {
+      next = { ...state, mode: prev.mode, anchor: prev.anchor };
+    }
+    await db.setKv("smart_state", JSON.stringify(next));
+  };
+  return serialSmart(run);
+}
+
+// Activity changes wake us up (new native builds) so standby starts and ends
+// without waiting for a fix. Older builds never fire this; fixes still work.
+addActivityListener(() => {
+  evaluateSmart().catch(() => undefined);
+});
+
+export function setSmartTracking(on: boolean): Promise<void> {
+  return serialSmart(async () => {
+    await db.setKv("smart_tracking", on ? "1" : "0");
+    const keep = parseSmartState(await db.getKv("smart_state"));
+    await db.setKv(
+      "smart_state",
+      JSON.stringify({ ...INITIAL_STATE, stillSince: keep.stillSince, lastFix: keep.lastFix, lastSwitchAt: Date.now() }),
+    );
+    if ((await isTrackingEnabled()) && (await isTrackingRunning())) await startUpdates(await getPreset());
+  });
 }
 
 /** User turned tracking on: ask for permissions, start, and remember the choice. */
 export async function startTracking(): Promise<StartResult> {
   const perm = await requestPermissions();
   if (!perm.ok) return perm;
+  await db.setKv("smart_state", null); // start from "recording"; standby needs a fresh still spell
   try {
     await startUpdates(await getPreset());
   } catch (e) {
@@ -211,13 +407,28 @@ export async function startTracking(): Promise<StartResult> {
 
 export async function stopTracking(): Promise<void> {
   await db.setKv("tracking_enabled", "0");
+  await db.setKv("smart_state", null);
   if (await isTrackingRunning()) await Location.stopLocationUpdatesAsync(TASK);
   await stopActivityUpdates();
 }
 
+/** Leaves standby (the next still spell re-enters it) and restarts with the current preset. */
+function restartActive(): Promise<void> {
+  return serialSmart(async () => {
+    const keep = parseSmartState(await db.getKv("smart_state"));
+    await db.setKv("smart_state", JSON.stringify({ ...keep, mode: "active", anchor: null, lastSwitchAt: Date.now() }));
+    if ((await isTrackingEnabled()) && (await isTrackingRunning())) await startUpdates(await getPreset());
+  });
+}
+
 export async function setPreset(preset: PresetKey): Promise<void> {
   await db.setKv("preset", preset);
-  if ((await isTrackingEnabled()) && (await isTrackingRunning())) await startUpdates(preset);
+  await restartActive();
+}
+
+export async function setCustom(c: CustomSettings): Promise<void> {
+  await db.setKv("custom_preset", serializeCustom(c));
+  if ((await getPreset()) === "custom") await restartActive();
 }
 
 /**
@@ -235,13 +446,21 @@ export async function resumeTracking(): Promise<string | null> {
   await db.setKv("activity_status", await startActivityUpdates(false));
   const preset = await getPreset();
   const running = await isTrackingRunning();
-  const applied = await db.getKv("applied_preset");
-  if (!running || applied !== preset) {
+  const [applied, appliedMode, appliedFg] = await Promise.all([
+    db.getKv("applied_preset"),
+    db.getKv("applied_mode"),
+    db.getKv("applied_fg"),
+  ]);
+  const { key } = await presetOptions(preset);
+  const mode = await wantedMode(preset);
+  // applied_fg "0": a background switch had to drop the foreground-service option; re-add it.
+  if (!running || applied !== key || (appliedMode ?? "active") !== mode || appliedFg === "0") {
     try {
       await startUpdates(preset);
     } catch (e) {
       return `Couldn't restart location updates: ${String(e)}`;
     }
   }
+  await evaluateSmart().catch(() => undefined);
   return null;
 }

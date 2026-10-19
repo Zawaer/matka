@@ -1,7 +1,7 @@
 import Native, { type NativeActivity, type PermissionResponse } from "./src/MatkaActivityModule";
 
 export type Activity = "still" | "walking" | "running" | "on_bicycle" | "in_vehicle";
-export type { PermissionResponse };
+export type { NativeActivity, PermissionResponse };
 
 const KNOWN: readonly string[] = ["still", "walking", "running", "on_bicycle", "in_vehicle"];
 /**
@@ -31,6 +31,27 @@ export function isActivityAvailable(): boolean {
 export function currentActivity(at = Date.now()): Activity | null {
   try {
     return usableActivity(Native?.latest(), at);
+  } catch {
+    return null;
+  }
+}
+
+/** The latest raw reading, whatever its age or confidence (smart tracking judges it itself). */
+export function latestActivity(): NativeActivity | null {
+  try {
+    return Native?.latest() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Calls `listener` on each new reading while this JS runtime is alive. Returns
+ * null when the native module is missing or too old to emit events.
+ */
+export function addActivityListener(listener: (a: NativeActivity) => void): { remove(): void } | null {
+  try {
+    return Native?.addListener ? Native.addListener("onActivity", listener) : null;
   } catch {
     return null;
   }

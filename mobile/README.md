@@ -206,13 +206,23 @@ deletes the token from the phone; also revoke the device on the web Devices page
 | --- | --- | --- | --- |
 | Low power | Balanced (Wi-Fi/cell) | 2 min / 100 m | 10 min or 500 m |
 | **Balanced** (default) | High (GPS) | 30 s / 25 m | 2 min or 100 m |
-| Precise | High (GPS) | 10 s / 10 m | 1 min or 50 m |
+| Precise | Highest (best GPS) | 10 s / 10 m | 1 min or 50 m |
+| Max detail | BestForNavigation (iOS; high accuracy on Android) | 2 s / 5 m | 15 s |
+| Custom | Wi-Fi/cell, GPS or best GPS | 2 s–2 min / 5–100 m, chosen in Settings | 4× the interval/distance, at most 2 min or 100 m |
 
 Fixes are only produced while you move at least the given distance, so a
 phone lying on a desk records almost nothing. On iOS the Low power preset also
 lets the system pause updates when you're stationary (`pausesUpdatesAutomatically`);
 iOS may then wait for significant movement or the app being opened to resume,
 which is why the other presets leave pausing off.
+
+**Smart tracking** (Settings, on by default; not used with Low power): once
+motion detection has said "still" with confidence for 3 minutes, location
+updates switch to a standby (Wi-Fi/cell, a fix only after ~100 m, delivered at
+once) so GPS sleeps. A moving activity reading, a standby fix more than ~100 m
+from the stay, or a fix with speed above 1 m/s switches straight back to the
+preset. Only the task's options change; the foreground service keeps running.
+The status screen shows "Standby — phone still". Logic: `src/smart-logic.ts`.
 
 ## Status screen
 

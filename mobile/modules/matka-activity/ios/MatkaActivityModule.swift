@@ -17,27 +17,33 @@ public class MatkaActivityModule: Module {
     return ["status": status, "granted": s == .authorized, "canAskAgain": s == .notDetermined, "expires": "never"]
   }
 
-  private func store(_ a: CMMotionActivity) {
+  /// Stores the reading and returns it (as sent to JS), or nil if it has no known type.
+  private func store(_ a: CMMotionActivity) -> [String: Any?]? {
     let type: String
     if a.automotive { type = "in_vehicle" }
     else if a.cycling { type = "on_bicycle" }
     else if a.running { type = "running" }
     else if a.walking { type = "walking" }
     else if a.stationary { type = "still" }
-    else { return }
+    else { return nil }
     let confidence: Int
     switch a.confidence {
     case .high: confidence = 80
     case .medium: confidence = 55
     default: confidence = 25
     }
+    let at = a.startDate.timeIntervalSince1970 * 1000
     defaults.set(type, forKey: "matka_activity.type")
     defaults.set(confidence, forKey: "matka_activity.confidence")
-    defaults.set(a.startDate.timeIntervalSince1970 * 1000, forKey: "matka_activity.at")
+    defaults.set(at, forKey: "matka_activity.at")
+    return ["type": type, "confidence": confidence, "at": at]
   }
 
   public func definition() -> ModuleDefinition {
     Name("MatkaActivity")
+
+    /// Each new reading, { type, confidence, at }, for smart tracking.
+    Events("onActivity")
 
     Function("isAvailable") { CMMotionActivityManager.isActivityAvailable() }
 
@@ -55,7 +61,9 @@ public class MatkaActivityModule: Module {
     AsyncFunction("startAsync") { (_: Double) -> Bool in
       guard CMMotionActivityManager.isActivityAvailable() else { return false }
       self.manager.startActivityUpdates(to: OperationQueue.main) { a in
-        if let a = a { self.store(a) }
+        if let a = a, let reading = self.store(a) {
+          self.sendEvent("onActivity", reading)
+        }
       }
       return true
     }

@@ -10,6 +10,8 @@ type Native = {
   startAsync(intervalMs: number): Promise<boolean>;
   stopAsync(): Promise<void>;
   latest(): NativeActivity | null;
+  /** "onActivity" fires for each new reading (builds from 2026-10 on; older builds never fire it). */
+  addListener(event: "onActivity", listener: (a: NativeActivity) => void): { remove(): void };
 };
 
 /** null when the installed app build predates the module (e.g. an older dev client). */

@@ -6,7 +6,7 @@ import android.content.Intent
 import com.google.android.gms.location.ActivityRecognitionResult
 import com.google.android.gms.location.DetectedActivity
 
-/** Receives Activity Recognition results and keeps the latest one. */
+/** Receives Activity Recognition results, keeps the latest one and forwards it to JS. */
 class ActivityReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     if (!ActivityRecognitionResult.hasResult(intent)) return
@@ -32,6 +32,12 @@ class ActivityReceiver : BroadcastReceiver() {
       .putInt(KEY_CONFIDENCE, best.confidence)
       .putLong(KEY_AT, result.time)
       .apply()
+    // Wake the JS side (smart tracking) if a JS runtime is alive.
+    try {
+      onReading?.invoke(mapOf("type" to name, "confidence" to best.confidence, "at" to result.time.toDouble()))
+    } catch (e: Exception) {
+      // No JS listener or runtime gone: the stored reading is still read on the next fix.
+    }
   }
 
   companion object {
@@ -39,6 +45,10 @@ class ActivityReceiver : BroadcastReceiver() {
     private const val KEY_TYPE = "type"
     private const val KEY_CONFIDENCE = "confidence"
     private const val KEY_AT = "at"
+
+    /** Set by MatkaActivityModule while it exists; forwards readings as an "onActivity" event. */
+    @Volatile
+    var onReading: ((Map<String, Any?>) -> Unit)? = null
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 

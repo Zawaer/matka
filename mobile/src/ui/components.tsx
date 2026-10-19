@@ -2,7 +2,7 @@
 // system in src/design + src/ui/primitives.
 
 import type { ReactNode } from "react";
-import { TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
+import { Pressable, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from "react-native";
 import { useStyles, useTheme, type Theme } from "../design/theme";
 import { Icon, type IconName } from "./Icon";
 import { Button, Card } from "./primitives";
@@ -130,5 +130,60 @@ export function LinkText({ label, onPress }: { label: string; onPress: () => voi
     <Text variant="callout" color="primary" style={{ fontWeight: "700" }} onPress={onPress} accessibilityRole="button" suppressHighlighting>
       {label}
     </Text>
+  );
+}
+
+/** Labelled segmented control: one choice out of a few short options. */
+export function Segmented<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  disabled?: boolean;
+}) {
+  const t = useTheme();
+  return (
+    <View style={{ gap: t.space.xs }}>
+      <Text variant="caption" color="textSecondary">
+        {label}
+      </Text>
+      <View
+        accessibilityRole="radiogroup"
+        accessibilityLabel={label}
+        style={{ flexDirection: "row", backgroundColor: t.c.surfaceAlt, borderRadius: t.radius.sm, padding: 3, gap: 3 }}
+      >
+        {options.map((o) => {
+          const on = o.value === value;
+          return (
+            <Pressable
+              key={String(o.value)}
+              disabled={disabled}
+              onPress={() => onChange(o.value)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on, disabled }}
+              style={{
+                flex: 1,
+                alignItems: "center",
+                paddingVertical: t.space.sm,
+                borderRadius: t.radius.sm - 3,
+                backgroundColor: on ? t.c.surface : "transparent",
+                borderWidth: 1,
+                borderColor: on ? t.c.primary : "transparent",
+              }}
+            >
+              <Text variant="caption" numberOfLines={1} style={{ color: on ? t.c.primary : t.c.textSecondary, fontWeight: "800" }}>
+                {o.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }

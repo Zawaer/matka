@@ -133,10 +133,18 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="title3" style={trackingProblem ? { color: t.c.danger } : undefined}>
-              {state.trackingEnabled ? (trackingProblem ? "On — not running" : "Recording") : "Off"}
+              {state.trackingEnabled
+                ? trackingProblem
+                  ? "On — not running"
+                  : state.standby
+                    ? "Standby — phone still"
+                    : "Recording"
+                : "Off"}
             </Text>
             <Text variant="caption" color="textSecondary">
-              {PRESETS[state.preset].label} preset
+              {state.standby
+                ? `GPS sleeps until you move · ${PRESETS[state.preset].label} preset`
+                : `${PRESETS[state.preset].label} preset${state.smartTracking && state.preset !== "low" ? " · smart tracking" : ""}`}
             </Text>
           </View>
           <Switch

@@ -166,3 +166,22 @@ afternoon with recording off shown as one 10-hour visit):
   duration: an address is never wrong. Else "Street 2 B", else the district.
   `places.geocoder_version` (migration 006) re-geocodes every place when
   `GEOCODER_VERSION` is bumped; custom names are untouched.
+
+## Update 2026-10-19: phone recording presets and smart tracking
+- **New presets**: "Max detail" (BestForNavigation, ~2 s / 5 m, for hikes and runs) and
+  "Custom" (accuracy, distance and time chosen in Settings, validated from the kv store).
+  "Precise" now asks for `Accuracy.Highest`. On Android, High/Highest/BestForNavigation all
+  map to high-accuracy priority; the difference there is the interval and distance.
+- **Smart tracking** (on by default): after 3 min of confident "still" motion activity the
+  location task's options switch to a Wi-Fi/cell standby (~100 m filter, 2 min interval);
+  moving activity, a standby fix ~100 m from the stay or speed > 1 m/s switch back at once.
+  Only options change (re-registering the task), never a stop, so the Android foreground
+  service stays up. Android refuses the `foregroundService` option from the background, so
+  background switches send the options without it (the running service is unaffected) and
+  the app re-adds it when next opened. Entering standby waits at least 1 min after any
+  switch; a fix-triggered resume restarts the 3 min countdown.
+- **Wake-up**: the activity module now emits an `onActivity` event per reading (Android
+  receiver → module, iOS Core Motion handler) so the JS side reacts without waiting for a fix
+  while its runtime is alive. Resume latency: about 30–90 s of moving with the event;
+  without it (older build, or no JS runtime), the first standby fix after ~100 m of movement
+  (typically 1–3 min of walking, much less by car; on iOS also significant-change updates).

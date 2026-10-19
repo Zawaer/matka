@@ -20,8 +20,10 @@ import expo.modules.kotlin.modules.ModuleDefinition
  * The phone's own motion classification (walking, running, cycling, in a
  * vehicle, still) from Google Play Services Activity Recognition. Updates go
  * to ActivityReceiver, which keeps only the latest reading; the location task
- * reads it when it stores a fix. Works in the background while Matka's
- * location foreground service keeps the process alive.
+ * reads it when it stores a fix. Each new reading is also sent as an
+ * "onActivity" event so smart tracking can react without waiting for a fix.
+ * Works in the background while Matka's location foreground service keeps the
+ * process alive.
  */
 class MatkaActivityModule : Module() {
   private val context: Context
@@ -38,10 +40,23 @@ class MatkaActivityModule : Module() {
     Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
       ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
 
+  private val forward: (Map<String, Any?>) -> Unit = { reading -> sendEvent("onActivity", reading) }
+
   private val grantedResponse = mapOf("status" to "granted", "granted" to true, "canAskAgain" to true, "expires" to "never")
 
   override fun definition() = ModuleDefinition {
     Name("MatkaActivity")
+
+    /** Each new reading, { type, confidence, at }, while this module's JS runtime is alive. */
+    Events("onActivity")
+
+    OnCreate {
+      ActivityReceiver.onReading = forward
+    }
+
+    OnDestroy {
+      if (ActivityReceiver.onReading === forward) ActivityReceiver.onReading = null
+    }
 
     Function("isAvailable") { true }
 
