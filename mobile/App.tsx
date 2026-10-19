@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppState, Linking, Pressable, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemeProvider, useStyles, useTheme } from "./src/design/theme";
-import type { Pairing } from "./src/pairing";
+import { isPairingLink, type Pairing } from "./src/pairing";
 import MapScreen from "./src/screens/MapScreen";
 import OverviewScreen from "./src/screens/OverviewScreen";
 import PairScreen from "./src/screens/PairScreen";
@@ -19,7 +19,6 @@ import { Text } from "./src/ui/Text";
 import { useCollectorState, type CollectorState } from "./src/ui/useCollectorState";
 import { markPairingLost, refreshServerStatus, uploadNow } from "./src/uploader";
 
-const isPairLink = (url: string | null | undefined): url is string => !!url && /^matka:\/\/pair\b/i.test(url);
 
 const TABS: { key: Tab; label: string; icon: IconName; iconOn: IconName }[] = [
   { key: "overview", label: "Overview", icon: "view-dashboard-outline", iconOn: "view-dashboard" },
@@ -63,10 +62,11 @@ function Root() {
     return () => sub.remove();
   }, [onForeground]);
 
-  // matka://pair?server=…&token=… deep links (cold start and while running).
+  // Pairing deep links (cold start and while running): matka://pair?… and,
+  // should the OS ever route them here, https://<server>/pair#… links.
   useEffect(() => {
     const open = (url: string | null | undefined) => {
-      if (isPairLink(url)) setPairing({ link: url });
+      if (url && isPairingLink(url)) setPairing({ link: url });
     };
     Linking.getInitialURL().then(open).catch(() => {});
     const sub = Linking.addEventListener("url", ({ url }) => open(url));

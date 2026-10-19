@@ -5,8 +5,10 @@ import { SESSION_COOKIE, authDisabled, isLiveSession } from "@/lib/session";
 
 // Outer gate: everything requires a live browser session except the device
 // endpoints (which check their own bearer token), the health probe, and the
-// login flow. Pages and route handlers still resolve the user themselves.
+// login flow and the /pair landing page (its token is in the URL fragment,
+// read client-side). Pages and route handlers still resolve the user themselves.
 const PUBLIC = [
+  /^\/pair\/?$/,
   /^\/api\/ingest$/,
   /^\/api\/health$/,
   /^\/api\/device\//,

@@ -1,4 +1,4 @@
-import { parsePairingUrl, validatePairing, validateServerUrl, validateToken } from "../pairing";
+import { isPairingLink, parsePairingUrl, validatePairing, validateServerUrl, validateToken } from "../pairing";
 
 const TOKEN = "mtk_" + "A".repeat(40) + "b-_";
 
@@ -80,6 +80,55 @@ describe("parsePairingUrl", () => {
     "matka://pair?server=%E0%A4%A&token=" + TOKEN,
     "matka://pair?server=https%3A%2F%2Fa.b&token=mtk_nope",
   ])("rejects %p", (u) => expect(parsePairingUrl(u).ok).toBe(false));
+});
+
+describe("parsePairingUrl, https form", () => {
+  const web = (base: string, server = base, token = TOKEN) =>
+    `${base}/pair#server=${encodeURIComponent(server)}&token=${token}`;
+
+  it("parses the web app's QR payload", () => {
+    expect(parsePairingUrl(web("https://matka.lan"))).toEqual({
+      ok: true,
+      value: { server: "https://matka.lan", token: TOKEN },
+    });
+  });
+  it("keeps a path prefix and port, tolerates a slash after pair and case in the host", () => {
+    const s = encodeURIComponent("https://example.com:8443/matka");
+    expect(parsePairingUrl(`https://Example.com:8443/matka/pair/#token=${TOKEN}&server=${s}`)).toEqual({
+      ok: true,
+      value: { server: "https://example.com:8443/matka", token: TOKEN },
+    });
+  });
+  it("ignores a second, smuggled server param", () => {
+    const r = parsePairingUrl(web("https://good.example.com") + "&server=" + encodeURIComponent("https://evil.example.com"));
+    expect(r.ok && r.value.server).toBe("https://good.example.com");
+  });
+  it.each([
+    ["host differs from server", web("https://evil.example.com", "https://matka.example.com")],
+    ["server is a subdomain", web("https://matka.example.com.evil.com", "https://matka.example.com")],
+    ["port differs", web("https://matka.example.com:444", "https://matka.example.com")],
+    ["path prefix differs", web("https://matka.example.com/other", "https://matka.example.com")],
+    ["plain http link", web("http://localhost:3000")],
+    ["http link to https server", web("http://matka.example.com", "https://matka.example.com")],
+    ["token in the query, not the fragment", `https://a.b/pair?server=${encodeURIComponent("https://a.b")}&token=${TOKEN}`],
+    ["not the pair page", web("https://a.b").replace("/pair#", "/pairx#")],
+    ["bad token", web("https://a.b", "https://a.b", "mtk_nope")],
+    ["no token", `https://a.b/pair#server=${encodeURIComponent("https://a.b")}`],
+    ["credentials", web("https://u:p@a.b", "https://a.b")],
+  ])("rejects %s", (_name, u) => expect(parsePairingUrl(u).ok).toBe(false));
+});
+
+describe("isPairingLink", () => {
+  it.each([
+    ["matka://pair?server=x&token=y", true],
+    ["  https://a.b/pair#server=x", true],
+    ["https://a.b/matka/pair/#x", true],
+    ["https://a.b/pair", false],
+    ["https://a.b/devices#pair", false],
+    ["matka://other", false],
+    ["", false],
+  ])("%p → %p", (u, out) => expect(isPairingLink(u)).toBe(out));
+  it("handles null", () => expect(isPairingLink(null)).toBe(false));
 });
 
 describe("validatePairing", () => {

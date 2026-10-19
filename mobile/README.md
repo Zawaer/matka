@@ -92,7 +92,8 @@ alive while you switch tabs.
   | 413 | splits the batch in half and retries (a single 413 point is dropped) |
   | 5xx, other codes, network error, 30 s timeout | keeps the queue, retries with exponential backoff (30 s, 1 min, 2 min … max 1 h) |
 
-- **Pairing**: QR code, `matka://pair?…` deep link or manual entry. The app
+- **Pairing**: QR code (`https://<server>/pair#…`, or the older `matka://pair?…`),
+  `matka://pair?…` deep link or manual entry. The app
   shows the server host and asks you to confirm (a link from anywhere could
   otherwise send your location to someone else's server), checks it with
   `GET /api/ingest`, and only then stores server + token in the OS keystore
@@ -175,8 +176,9 @@ Certificate Trust Settings* is trusted by every app.
    allow "install unknown apps" for your browser / file manager when asked.
 2. In the Matka web app: **Devices → Pair a device**, give it a name.
 3. In the app (it opens on the pairing screen): **Scan QR**, point the camera at the code,
-   check the server shown and tap **Verify and pair**. Alternatively open the
-   `matka://pair?…` link on the phone, or choose **Enter manually** and paste
+   check the server shown and tap **Verify and pair** (or tap **Use the system scanner**).
+   Alternatively scan the code with the phone's own camera and tap **Open in Matka** on the
+   page it opens, or choose **Enter manually** and paste
    the server URL and token (or the whole link).
 4. In the **Recorder** tab turn **Tracking** on and grant location → **Allow all the time** (Android) /
    **Always** (iOS), and allow notifications on Android 13+ so the recording

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { pairDevice, type PairResult } from "@/app/devices/actions";
 
 export function PairDevice({ insecure }: { insecure: boolean }) {
@@ -8,29 +8,30 @@ export function PairDevice({ insecure }: { insecure: boolean }) {
 
   if (result?.ok) {
     return (
-      <div className="mk-card flex flex-col items-center gap-4 p-6 text-center sm:flex-row sm:items-start sm:text-left">
+      <div className="mk-card flex flex-col items-center gap-5 p-6 text-center md:flex-row md:items-start md:text-left">
         {/* eslint-disable-next-line @next/next/no-img-element -- data: URL, nothing to optimize */}
         <img
           src={result.qr}
           alt="Pairing QR code"
-          width={200}
-          height={200}
-          className="shrink-0 rounded-lg"
+          width={360}
+          height={360}
+          // White card with its own quiet zone so it scans in dark mode too.
+          className="aspect-square w-full max-w-[360px] shrink-0 rounded-lg bg-white"
         />
         <div className="min-w-0 flex-1">
           <h2 className="text-lg font-medium">Pair “{result.name}”</h2>
           <p className="mt-1 text-sm text-muted">
-            Scan this with the Matka app. This is the only time the token is shown — if you lose
-            it, revoke the device and pair it again.
+            Scan this with the Matka app (Pair device → Scan QR), or with the phone’s camera and
+            tap “Open in Matka”. This is the only time the token is shown — if you lose it, revoke
+            the device and pair it again.
           </p>
-          <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-muted">
-            Token
-          </label>
-          <code className="mt-1 block break-all rounded-lg bg-surface-2 px-3 py-2 font-mono text-sm">
-            {result.token}
-          </code>
+          <CopyField label="Pairing link" value={result.link} />
+          <p className="mt-1 text-xs text-muted">
+            Or paste it into the app’s “Enter manually” tab.
+          </p>
+          <CopyField label="Token" value={result.token} />
           <a href={result.link} className="mt-3 inline-block text-sm text-primary hover:underline">
-            Open pairing link on this device
+            Open pairing page on this device
           </a>
         </div>
       </div>
@@ -63,5 +64,31 @@ export function PairDevice({ insecure }: { insecure: boolean }) {
         {pending ? "Pairing…" : "Pair"}
       </button>
     </form>
+  );
+}
+
+function CopyField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard
+      ?.writeText(value)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  };
+  return (
+    <>
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <span className="text-xs font-medium uppercase tracking-wide text-muted">{label}</span>
+        <button type="button" onClick={copy} className="text-xs font-medium text-primary hover:underline">
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <code className="mt-1 block select-all break-all rounded-lg bg-surface-2 px-3 py-2 text-left font-mono text-sm">
+        {value}
+      </code>
+    </>
   );
 }

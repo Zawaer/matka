@@ -63,8 +63,9 @@ function GlyphIcon({ children }: { children: React.ReactNode }) {
 
 export function Nav() {
   const pathname = usePathname();
-  // Sign-in pages stand alone: no app navigation, no "Sign out".
-  if (pathname.startsWith("/auth/")) return null;
+  // Sign-in pages and the public /pair landing page (opened on a phone with no
+  // session) stand alone: no app navigation, no "Sign out".
+  if (pathname.startsWith("/auth/") || pathname === "/pair") return null;
 
   return (
     <>

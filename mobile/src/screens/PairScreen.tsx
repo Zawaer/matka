@@ -1,11 +1,11 @@
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
-import { useRef, useState } from "react";
+import { CameraView, useCameraPermissions, type BarcodeSettings, type ScanningResult } from "expo-camera";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { getStatus } from "../api";
 import { savePairing } from "../credentials";
 import * as db from "../db";
 import { useStyles, useTheme } from "../design/theme";
-import { displayServer, parsePairingUrl, validatePairing, type Pairing } from "../pairing";
+import { displayServer, isPairingLink, parsePairingUrl, validatePairing, type Pairing } from "../pairing";
 import { Button, Icon, PingRings } from "../ui";
 import { Banner, Field, Panel } from "../ui/components";
 import { Screen, ScreenHeader } from "../ui/Screen";
@@ -13,7 +13,7 @@ import { Text } from "../ui/Text";
 import { resetUploadState, uploadNow } from "../uploader";
 
 type Props = {
-  /** A matka://pair link from a deep link, to confirm. */
+  /** A pairing link (matka://pair?… or https://…/pair#…) from a deep link, to confirm. */
   initialLink: string | null;
   currentServer: string | null;
   onDone: () => void;
@@ -39,10 +39,9 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
   }));
 
   const fromManual = () => {
-    // Accept a whole pasted matka://pair link in the server field too.
-    const r = server.trim().toLowerCase().startsWith("matka://")
-      ? parsePairingUrl(server)
-      : validatePairing(server, token);
+    // Accept a whole pasted pairing link (either form) in either field too.
+    const pasted = [server, token].find((v) => isPairingLink(v) || /^matka:\/\//i.test(v.trim()));
+    const r = pasted ? parsePairingUrl(pasted) : validatePairing(server, token);
     if (r.ok) {
       setCandidate(r.value);
       setError(null);
@@ -184,7 +183,7 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
             secureTextEntry
           />
           <Text variant="caption" color="textMuted">
-            You can also paste the whole matka://pair?… link into the server field.
+            You can also paste the whole pairing link (https://…/pair#… or matka://pair?…) into the server field.
           </Text>
           <Button label="Continue" onPress={fromManual} />
         </Panel>
@@ -196,6 +195,9 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
   );
 }
 
+// Stable identity: a new object every render would be re-sent to the native view.
+const QR_ONLY: BarcodeSettings = { barcodeTypes: ["qr"] };
+
 function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
   const t = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
@@ -203,6 +205,7 @@ function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
   // ignore repeats of a code we already rejected.
   const lastRejected = useRef<string | null>(null);
   const done = useRef(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
   const s = useStyles((th) => ({
     camera: {
       aspectRatio: 1,
@@ -215,41 +218,82 @@ function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
     },
   }));
 
+  // `data` is ML Kit's display value, which for some content types is a
+  // reformatted or shortened version of what the code holds; `raw` (Android)
+  // is the exact payload. Prefer the raw text, fall back to data.
+  const handle = ({ data, raw }: ScanningResult) => {
+    if (done.current) return;
+    const value = (raw || data || "").trim();
+    if (!value || value === lastRejected.current) return;
+    let ok = onScan(value);
+    if (!ok && data && data.trim() !== value) ok = onScan(data.trim());
+    if (ok) done.current = true;
+    else lastRejected.current = value;
+  };
+  const handleRef = useRef(handle);
+  useEffect(() => {
+    handleRef.current = handle;
+  });
+
+  // The system scanner (Google code scanner on Android, VisionKit on iOS) is
+  // a separate full-screen UI with its own focus and zoom handling. It reports
+  // through a module-level event, not the CameraView callback.
+  const modern = CameraView.isModernBarcodeScannerAvailable;
+  useEffect(() => {
+    if (!modern) return;
+    const sub = CameraView.onModernBarcodeScanned((r) => handleRef.current(r));
+    return () => sub.remove();
+  }, [modern]);
+
+  const launchSystemScanner = () => {
+    setScannerError(null);
+    lastRejected.current = null;
+    CameraView.launchScanner(QR_ONLY).catch((e: unknown) =>
+      setScannerError(`Couldn't open the system scanner: ${e instanceof Error ? e.message : String(e)}`),
+    );
+  };
+  const systemScanner = modern ? (
+    <>
+      <Button label="Use the system scanner" icon="qrcode-scan" variant="secondary" onPress={launchSystemScanner} />
+      {scannerError ? <Banner tone="bad" message={scannerError} /> : null}
+    </>
+  ) : null;
+
   if (!permission) return <View style={s.camera} />;
   if (!permission.granted) {
     return (
-      <Panel style={{ alignItems: "center" }}>
-        <PingRings size={110} color={t.c.primary}>
-          <Icon name="camera-outline" size={30} color={t.c.primary} />
-        </PingRings>
-        <Text variant="callout" color="textSecondary" style={{ textAlign: "center" }}>
-          Matka needs the camera only to read the pairing QR code.
-        </Text>
-        {permission.canAskAgain ? (
-          <Button label="Allow camera" icon="camera-outline" onPress={requestPermission} />
-        ) : (
-          <Text variant="caption" color="textMuted" style={{ textAlign: "center" }}>
-            Camera access was denied. Enable it in system settings, or enter the code manually.
+      <>
+        <Panel style={{ alignItems: "center" }}>
+          <PingRings size={110} color={t.c.primary}>
+            <Icon name="camera-outline" size={30} color={t.c.primary} />
+          </PingRings>
+          <Text variant="callout" color="textSecondary" style={{ textAlign: "center" }}>
+            Matka needs the camera only to read the pairing QR code.
           </Text>
-        )}
-      </Panel>
+          {permission.canAskAgain ? (
+            <Button label="Allow camera" icon="camera-outline" onPress={requestPermission} />
+          ) : (
+            <Text variant="caption" color="textMuted" style={{ textAlign: "center" }}>
+              Camera access was denied. Enable it in system settings, or enter the code manually.
+            </Text>
+          )}
+        </Panel>
+        {systemScanner}
+      </>
     );
   }
 
-  const handle = ({ data }: BarcodeScanningResult) => {
-    if (done.current || data === lastRejected.current) return;
-    if (onScan(data)) done.current = true;
-    else lastRejected.current = data;
-  };
-
   return (
-    <View style={s.camera}>
-      <CameraView
-        style={StyleSheet.absoluteFill}
-        facing="back"
-        barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={handle}
-      />
-    </View>
+    <>
+      <View style={s.camera}>
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          barcodeScannerSettings={QR_ONLY}
+          onBarcodeScanned={handle}
+        />
+      </View>
+      {systemScanner}
+    </>
   );
 }

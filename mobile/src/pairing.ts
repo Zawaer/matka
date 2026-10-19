@@ -1,7 +1,12 @@
 // Pairing payload parsing and validation (pure; no native imports).
-// Contract: docs/API.md → "Pairing".
+// Contract: docs/API.md → "Pairing". Two link forms are accepted:
 //
-//   matka://pair?server=<url-encoded base URL>&token=mtk_<43 base64url chars>
+//   https://<server host>[/prefix]/pair#server=<url-encoded base URL>&token=mtk_<43 base64url chars>
+//   matka://pair?server=<url-encoded base URL>&token=mtk_<43 base64url chars>   (older QR codes)
+//
+// The https form is what the web app's QR code carries, so a phone's system
+// camera opens the server's /pair page instead of searching for an unknown
+// scheme. The token sits in the fragment, which browsers never send.
 
 export type Pairing = { server: string; token: string };
 
@@ -60,13 +65,39 @@ export function validateServerUrl(raw: string): Checked {
   return { ok: true, value: `${scheme}://${host}${port ? `:${port}` : ""}${path}` };
 }
 
-/** Parses a `matka://pair?…` link (QR payload or deep link) and validates both parts. */
+const APP_LINK_RE = /^matka:\/\/pair\/?\?(.*)$/i;
+const WEB_LINK_RE = /^https:\/\/([^/?#]+)([^?#]*)\/pair\/?#(.*)$/i;
+
+/** True if `raw` looks like either pairing link form (cheap check before parsing). */
+export function isPairingLink(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const input = raw.trim();
+  return /^matka:\/\/pair\b/i.test(input) || WEB_LINK_RE.test(input);
+}
+
+/**
+ * Parses a pairing link (QR payload, deep link or pasted text) in either form
+ * and validates both parts. For the https form the link must point at the
+ * same server it hands over: same scheme (https), host, port and path prefix.
+ */
 export function parsePairingUrl(raw: string): PairingResult {
   const input = raw.trim();
-  const m = /^matka:\/\/pair\/?\?(.*)$/i.exec(input);
-  if (!m) return { ok: false, error: "Not a Matka pairing code." };
+  const app = APP_LINK_RE.exec(input);
+  if (app) return fromParams(app[1]);
 
-  const params = parseQuery(m[1]);
+  const web = WEB_LINK_RE.exec(input);
+  if (!web) return { ok: false, error: "Not a Matka pairing code." };
+  const r = fromParams(web[3]);
+  if (!r.ok) return r;
+  const linkBase = validateServerUrl(`https://${web[1]}${web[2]}`);
+  if (!linkBase.ok || linkBase.value !== r.value.server) {
+    return { ok: false, error: "Pairing link doesn't match the server it names." };
+  }
+  return r;
+}
+
+function fromParams(qs: string): PairingResult {
+  const params = parseQuery(qs);
   if (params == null) return { ok: false, error: "Pairing code is malformed." };
   const server = params.get("server");
   const token = params.get("token");

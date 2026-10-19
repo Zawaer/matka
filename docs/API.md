@@ -10,13 +10,25 @@ interactive login.
 1. Log in to the web app → **Devices** → **Pair a device** → give it a name.
 2. The server shows a one-time view of the token, as a QR code and as text.
    Only a hash is stored, so it cannot be shown again; revoke and re-pair if lost.
-3. QR / pairing link payload:
+3. QR / pairing link payload, an https link to the server's public `/pair` page
+   with server and token in the fragment (never sent to the server, so never logged):
+
+   ```
+   <base URL>/pair#server=<url-encoded base URL>&token=<token>
+   ```
+
+   e.g. `https://matka.example.com/pair#server=https%3A%2F%2Fmatka.example.com&token=mtk_…`
+
+   A phone's system camera opens it in the browser; the page offers **Open in Matka**,
+   which is the app's deep link:
 
    ```
    matka://pair?server=<url-encoded base URL>&token=<token>
    ```
 
-   e.g. `matka://pair?server=https%3A%2F%2Fmatka.example.com&token=mtk_…`
+   The app accepts both forms (scanned, deep-linked or pasted). For the https form it
+   requires an https link whose scheme, host, port and path prefix equal the `server`
+   parameter's.
 
 Tokens look like `mtk_` followed by 43 base64url characters. Revoking a device
 in the web UI makes every request with its token fail with `401` immediately.
