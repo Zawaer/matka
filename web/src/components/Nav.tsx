@@ -19,6 +19,9 @@ const ICON = {
   places: (
     <path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
   ),
+  insights: (
+    <path d="M4 20V10h3.5v10H4Zm6.25 0V4h3.5v16h-3.5ZM16.5 20v-7H20v7h-3.5Z" />
+  ),
   devices: (
     <path d="M7 1h10a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2Zm0 3v14h10V4H7Zm5 15.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
   ),
@@ -35,6 +38,7 @@ const ITEMS: Item[] = [
   { href: "/map", label: "Map", icon: ICON.map },
   { href: "/timeline", label: "Timeline", icon: ICON.timeline },
   { href: "/places", label: "Places", icon: ICON.places },
+  { href: "/insights", label: "Insights", icon: ICON.insights },
   { href: "/devices", label: "Devices", icon: ICON.devices },
   { href: "/settings", label: "Settings", icon: ICON.settings },
 ];
