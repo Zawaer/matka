@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Animated, Easing, Pressable, View } from "react-native";
+import { Animated, Easing, Image, Pressable, View } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
 import { count, fmtCompact, fmtDuration, fmtWhen, greeting } from "../format";
 import { startTracking, stopTracking } from "../tracking";
@@ -85,7 +85,7 @@ export default function OverviewScreen({
   const s = useStyles((th) => ({
     topBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
     brand: { flexDirection: "row", alignItems: "center", gap: 10 },
-    logo: { width: 34, height: 34, borderRadius: 11, backgroundColor: th.c.primary, alignItems: "center", justifyContent: "center" },
+    logo: { width: 34, height: 34, borderRadius: 11, overflow: "hidden" },
     hero: {
       backgroundColor: th.c.hero,
       borderRadius: th.radius.xl,
@@ -156,7 +156,7 @@ export default function OverviewScreen({
       <View style={s.topBar}>
         <View style={s.brand}>
           <View style={s.logo}>
-            <Icon name="compass-outline" size={20} color={t.c.onPrimary} />
+            <Image source={require("../../assets/icon.png")} style={{ width: 34, height: 34 }} />
           </View>
           <Text variant="title3">Matka</Text>
         </View>
