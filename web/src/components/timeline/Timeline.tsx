@@ -27,9 +27,9 @@ const fetcher = (url: string): Promise<TimelineResponse> =>
     return r.json();
   });
 
-export function Timeline() {
+export function Timeline({ initialDate = null }: { initialDate?: string | null }) {
   // `null` lets the API pick the latest day that has data.
-  const [date, setDate] = useState<string | null>(null);
+  const [date, setDate] = useState<string | null>(initialDate);
 
   const { data, error, isLoading } = useSWR<TimelineResponse>(
     date ? `/api/timeline?date=${date}` : `/api/timeline`,

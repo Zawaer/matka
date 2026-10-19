@@ -116,7 +116,8 @@ export function Nav() {
 
       {/* Mobile bottom tab bar */}
       <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-surface/95 backdrop-blur md:hidden">
-        {ITEMS.map((it) => {
+        {/* Six fit a phone; Devices is linked from Settings there. */}
+        {ITEMS.filter((it) => it.href !== "/devices").map((it) => {
           const active = isActive(pathname, it.href);
           return (
             <Link

@@ -53,6 +53,16 @@ export default async function SettingsPage() {
           )}
         </Section>
 
+        <Section title="Devices">
+          <p className="text-sm text-muted">Phones that record and upload your location.</p>
+          <a
+            href="/devices"
+            className="mt-3 inline-block rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/60"
+          >
+            Manage devices
+          </a>
+        </Section>
+
         <Section title="Your data">
           <p className="text-sm text-muted">
             Download every recorded point. Visits and trips are recomputed from these.
