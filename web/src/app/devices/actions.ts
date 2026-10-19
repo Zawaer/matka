@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import QRCode from "qrcode";
 import { appUrl } from "@/lib/appUrl";
 import { requireUser } from "@/lib/auth";
-import { createDevice, revokeDevice } from "@/lib/devices";
+import { createDevice, deleteDevice, revokeDevice } from "@/lib/devices";
 
 export type PairResult =
   | { ok: true; name: string; token: string; link: string; qr: string }
@@ -30,5 +30,13 @@ export async function revoke(form: FormData): Promise<void> {
   const id = String(form.get("id") ?? "");
   if (!/^\d+$/.test(id)) return;
   await revokeDevice(user.id, id);
+  revalidatePath("/devices");
+}
+
+export async function remove(form: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = String(form.get("id") ?? "");
+  if (!/^\d+$/.test(id)) return;
+  await deleteDevice(user.id, id);
   revalidatePath("/devices");
 }

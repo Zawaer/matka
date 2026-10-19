@@ -42,6 +42,14 @@ export async function revokeDevice(userId: string, id: string): Promise<void> {
   );
 }
 
+/**
+ * Forgets a revoked device. Only revoked ones, so a working phone can't be
+ * removed by accident; its points stay (points.device_id becomes NULL).
+ */
+export async function deleteDevice(userId: string, id: string): Promise<void> {
+  await q(`DELETE FROM devices WHERE id = $1 AND user_id = $2 AND revoked_at IS NOT NULL`, [id, userId]);
+}
+
 /** Resolves `Authorization: Bearer mtk_…` to an active device, or null. */
 export async function authenticateDevice(req: Request): Promise<DeviceAuth | null> {
   const m = TOKEN_RE.exec(req.headers.get("authorization") ?? "");
