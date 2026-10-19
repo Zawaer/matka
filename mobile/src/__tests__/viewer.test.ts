@@ -59,8 +59,8 @@ const TIMELINE = {
 
 const PLACES = {
   places: [
-    { id: 3, name: "Home", city: "Helsinki", country: "Finland", category: "house", visitCount: 40, totalTime: 400000, lastVisit: "2026-10-18T08:00:00.000Z" },
-    { id: 4, name: null, city: null, country: null, category: null, visitCount: 1, totalTime: 600, lastVisit: null },
+    { id: 3, name: "Home", city: "Helsinki", country: "Finland", category: "house", visitCount: 40, totalTime: 400000, lastVisit: "2026-10-18T08:00:00.000Z", kind: null },
+    { id: 4, name: null, city: null, country: null, category: null, visitCount: 1, totalTime: 600, lastVisit: null, kind: "home" },
     { name: "no id" },
   ],
 };
@@ -178,7 +178,7 @@ describe("parsing", () => {
     expect(t.day.items).toHaveLength(3);
     expect(t.day.items[0]).toEqual(TIMELINE.day.items[0]);
     const move = TIMELINE.day.items[1] as { kind: "move"; track: object };
-    expect(t.day.items[1]).toEqual({ ...move, track: { ...move.track, legs: [] } });
+    expect(t.day.items[1]).toEqual({ ...move, track: { ...move.track, legs: [], waits: [] } });
     expect(t.day.items[2]).toMatchObject({ kind: "move", track: { id: 3, mode: "unknown" } });
     expect(t.dates).toEqual(["2026-10-17", "2026-10-18"]);
     expect(t.minDate).toBe("2026-10-17");
@@ -223,6 +223,47 @@ describe("parsing", () => {
         ],
       },
     });
+    const legs = (t.day.items[0] as { track: { legs: { startedAt: string | null; endedAt: string | null }[] } }).track.legs;
+    expect(legs.map((l) => [l.startedAt, l.endedAt])).toEqual([
+      [null, null], // "x"/"y" aren't instants
+      [null, null],
+    ]);
+  });
+
+  it("timeline: leg times and waits (transfers), dropping malformed waits", () => {
+    const t = parseTimeline({
+      day: {
+        date: "2026-10-18",
+        items: [
+          {
+            kind: "move",
+            track: {
+              id: 1,
+              startedAt: "2026-10-18T05:31:00.000Z",
+              endedAt: "2026-10-18T06:02:00.000Z",
+              mode: "bus",
+              legs: [{ kind: "bus", lines: ["550"], fromStop: "A", toStop: "B", startedAt: "2026-10-18T05:33:00.000Z", endedAt: "2026-10-18T05:47:00.000Z" }],
+              waits: [
+                { startedAt: "2026-10-18T05:48:00.000Z", endedAt: "2026-10-18T05:54:00.000Z", stop: "Kamppi" },
+                { startedAt: "2026-10-18T05:55:00.000Z", endedAt: "2026-10-18T05:56:00.000Z", stop: "" },
+                { startedAt: "soon", endedAt: "2026-10-18T05:56:00.000Z", stop: "X" },
+                "nope",
+              ],
+            },
+          },
+        ],
+      },
+      dates: ["2026-10-18"],
+    })!;
+    expect(t.day.items[0]).toMatchObject({
+      track: {
+        legs: [{ startedAt: "2026-10-18T05:33:00.000Z", endedAt: "2026-10-18T05:47:00.000Z" }],
+        waits: [
+          { startedAt: "2026-10-18T05:48:00.000Z", endedAt: "2026-10-18T05:54:00.000Z", stop: "Kamppi" },
+          { startedAt: "2026-10-18T05:55:00.000Z", endedAt: "2026-10-18T05:56:00.000Z", stop: null },
+        ],
+      },
+    });
   });
 
   it("timeline: empty account (no date, null min/max)", () => {
@@ -240,8 +281,10 @@ describe("parsing", () => {
     expect(p).toHaveLength(2);
     expect(p[0]).toEqual(PLACES.places[0]);
     expect(p[1]).toEqual({
-      id: 4, name: null, city: null, country: null, category: null, visitCount: 1, totalTime: 600, lastVisit: null,
+      id: 4, name: null, city: null, country: null, category: null, visitCount: 1, totalTime: 600, lastVisit: null, kind: "home",
     });
+    // a kind this app doesn't know reads as not saved
+    expect(parsePlaces({ places: [{ id: 5, kind: "castle" }] })![0].kind).toBeNull();
     expect(parsePlaces({ error: "x" })).toBeNull();
   });
 });

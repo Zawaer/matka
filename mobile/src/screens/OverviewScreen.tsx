@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Animated, Easing, Image, Pressable, View } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
-import { count, fmtCompact, fmtDuration, fmtWhen, greeting } from "../format";
+import { count, fmtCompact, fmtDuration, fmtSpan, fmtWhen, greeting, isNamed, placeLabel } from "../format";
 import { startTracking, stopTracking } from "../tracking";
 import { Button, Card, EmptyState, ErrorState, Icon, IconChip, SectionTitle, Skeleton } from "../ui";
 import { MonthBars, ShareBar } from "../ui/charts";
@@ -13,7 +13,6 @@ import { uploadNow } from "../uploader";
 import { getOverview } from "../viewer";
 
 const EARTH_KM = 40_075;
-const placeName = (n: string | null) => (n && n !== "Unknown Location" ? n : null);
 
 function PulseDot({ active }: { active: boolean }) {
   const t = useTheme();
@@ -97,7 +96,6 @@ export default function OverviewScreen({
     },
     heroPill: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: "rgba(255,255,255,0.16)", borderRadius: th.radius.pill, paddingVertical: 6, paddingHorizontal: 12 },
     ring: { position: "absolute", borderWidth: 1.5, borderColor: th.c.heroRing },
-    row3: { flexDirection: "row", gap: th.space.md },
     tiles: { flexDirection: "row", flexWrap: "wrap", gap: th.space.md },
     tile: { flexBasis: "40%", flexGrow: 1, gap: th.space.sm, padding: th.space.md + 2 },
     notice: { flexDirection: "row", gap: th.space.sm, alignItems: "flex-start", backgroundColor: th.c.dangerSoft, borderRadius: th.radius.md, padding: th.space.md },
@@ -123,7 +121,7 @@ export default function OverviewScreen({
   const chosen = picked != null ? months[picked] : peak;
   const range =
     totals?.first && totals?.last
-      ? `${new Date(totals.first).toLocaleDateString([], { day: "numeric", month: "short" })} – ${new Date(totals.last).toLocaleDateString([], { day: "numeric", month: "short" })}`
+      ? fmtSpan(totals.first, totals.last)
       : "";
   const earth = (km / EARTH_KM) * 100;
   const topPlaces = (data?.topPlaces ?? []).slice(0, 5);
@@ -200,10 +198,11 @@ export default function OverviewScreen({
         <>
           <Skeleton height={208} radius={28} />
           <Skeleton height={76} radius={20} />
-          <View style={s.row3}>
-            <Skeleton height={112} radius={20} style={{ flex: 1, width: undefined }} />
-            <Skeleton height={112} radius={20} style={{ flex: 1, width: undefined }} />
-            <Skeleton height={112} radius={20} style={{ flex: 1, width: undefined }} />
+          {/* Same 2 × 2 grid as the stat tiles, so nothing jumps when they arrive. */}
+          <View style={s.tiles}>
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} height={112} radius={20} style={{ flexBasis: "40%", flexGrow: 1, width: undefined }} />
+            ))}
           </View>
           <Skeleton height={250} radius={20} />
         </>
@@ -255,7 +254,7 @@ export default function OverviewScreen({
             {(
               [
                 { icon: "map-marker-check-outline", tint: "coral", label: "Visits", value: totals!.visits },
-                { icon: "routes", tint: "sky", label: "Trips", value: totals!.trips },
+                { icon: "routes", tint: "sky", label: "Journeys", value: totals!.trips },
                 { icon: "calendar-check-outline", tint: "amber", label: "Days tracked", value: totals!.days },
                 { icon: "crosshairs-gps", tint: "mint", label: "GPS points", value: totals!.points },
               ] as const
@@ -303,7 +302,7 @@ export default function OverviewScreen({
               <Pressable onPress={() => openInsights("places")} accessibilityRole="button" accessibilityLabel="Open places">
                 <Card style={s.list}>
                   {topPlaces.map((p) => (
-                    <ShareBar key={p.id} label={placeName(p.name) ?? "Unnamed place"} value={p.hours} max={maxHours} display={fmtDuration(p.hours * 3600)} />
+                    <ShareBar key={p.id} label={placeLabel(p.name)} value={p.hours} max={maxHours} display={fmtDuration(p.hours * 3600)} />
                   ))}
                 </Card>
               </Pressable>
@@ -315,7 +314,7 @@ export default function OverviewScreen({
               <SectionTitle title="Recent visits" />
               <Card style={s.list}>
                 {data.recent.map((v) => {
-                  const named = placeName(v.name);
+                  const named = isNamed(v.name) ? v.name : null;
                   return (
                     <View key={v.id} style={s.listRow}>
                       <IconChip icon={named ? "map-marker-outline" : "help-circle-outline"} tint={named ? "violet" : "slate"} size={38} />

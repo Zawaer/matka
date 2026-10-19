@@ -2,6 +2,7 @@
 // and rules mirror the web app's Insights pages (web/src/lib/format.ts).
 
 import type { ModeTotal, SavedKind, SavedRow, Trip, WorldEntry } from "./insights";
+import type { Place } from "./viewer";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -83,11 +84,12 @@ export function fmtDateRange(start: string, end: string): string {
   return `${a.d}–${full(b)}`;
 }
 
-/** A local calendar date → "Saturday 3 October". */
-export function fmtDay(date: string): string {
+/** A local calendar date → "Saturday 3 October" (short: "Sat 3 Oct"). */
+export function fmtDay(date: string, short = false): string {
   const { y, m, d } = parts(date);
   const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${WEEKDAYS[wd]} ${d} ${MONTHS[m - 1] ?? "?"}`;
+  const cut = (s: string) => (short ? s.slice(0, 3) : s);
+  return `${cut(WEEKDAYS[wd])} ${d} ${cut(MONTHS[m - 1] ?? "?")}`;
 }
 
 /** ISO instant → "Sat 3 Oct 2026" in the phone's time zone. */
@@ -96,6 +98,15 @@ export function fmtShortDate(iso: string | null | undefined): string {
   const t = new Date(iso);
   if (Number.isNaN(t.getTime())) return "—";
   return `${WEEKDAYS[t.getDay()].slice(0, 3)} ${t.getDate()} ${MONTHS[t.getMonth()].slice(0, 3)} ${t.getFullYear()}`;
+}
+
+/** ISO instant → "18 Oct" this year, "18 Oct 2025" before (narrow columns). */
+export function fmtCompactDate(iso: string | null | undefined, now = new Date()): string {
+  if (!iso) return "—";
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return "—";
+  const dm = `${t.getDate()} ${MONTHS[t.getMonth()].slice(0, 3)}`;
+  return t.getFullYear() === now.getFullYear() ? dm : `${dm} ${t.getFullYear()}`;
 }
 
 /** Trips grouped by the year they started, newest year first (trips arrive newest first). */
@@ -145,6 +156,13 @@ export function orderModeCards<T extends ModeTotal>(modes: T[]): { mode: T; quie
   const used = modes.filter((m) => m.distance > 0 || m.duration > 0);
   const quiet = modes.filter((m) => m.distance === 0 && m.duration === 0 && m.mode !== "unknown");
   return [...used.map((m) => ({ mode: m, quiet: false })), ...quiet.map((m) => ({ mode: m, quiet: true }))];
+}
+
+/** The place with the most visits (first on a tie), or null; the server lists saved places first, so it's not always the top row. */
+export function mostVisitedId(places: readonly Pick<Place, "id" | "visitCount">[]): number | null {
+  let best: Pick<Place, "id" | "visitCount"> | null = null;
+  for (const p of places) if (p.visitCount > 0 && (!best || p.visitCount > best.visitCount)) best = p;
+  return best?.id ?? null;
 }
 
 export const KIND_META: Record<SavedKind, { label: string; icon: "home-outline" | "account-group-outline" | "school-outline" | "briefcase-outline" | "star-outline" }> = {

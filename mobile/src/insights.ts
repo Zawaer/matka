@@ -5,8 +5,9 @@
 
 import { authHeaders, request } from "./api";
 import type { Pairing } from "./pairing";
-import { MODES, parsePlaces, toResult, type Mode, type Place, type ViewerResult } from "./viewer";
+import { MODES, SAVED_KINDS, asSavedKind, parsePlaces, toResult, type Mode, type Place, type SavedKind, type ViewerResult } from "./viewer";
 
+/** One travel mode's totals: distance in metres, duration in seconds, count of journeys. */
 export type ModeTotal = { mode: Mode; distance: number; duration: number; count: number };
 export type MonthPoint = { month: string; distance: number; duration: number };
 
@@ -23,8 +24,7 @@ export type MonthModes = {
   lastMonth: string | null;
 };
 
-export const SAVED_KINDS = ["home", "family", "school", "work", "other"] as const;
-export type SavedKind = (typeof SAVED_KINDS)[number];
+export { SAVED_KINDS, type SavedKind };
 
 export type SavedRow = { placeId: number; name: string | null; kind: SavedKind; seconds: number; nights: number };
 export type SavedMonth = { month: string; saved: number; rows: SavedRow[] };
@@ -91,7 +91,8 @@ const assetId = (v: unknown): string | null => (typeof v === "string" && ASSET_R
 
 const asMode = (v: unknown): Mode => ((MODES as readonly string[]).includes(v as string) ? (v as Mode) : "unknown");
 
-function parseModeTotals(v: unknown): ModeTotal[] {
+/** `[{mode, distance, duration, count}]` as the insights and day-summary endpoints send it. */
+export function parseModeTotals(v: unknown): ModeTotal[] {
   return objs(v).map((m) => ({ mode: asMode(m.mode), distance: num(m.distance), duration: num(m.duration), count: num(m.count) }));
 }
 
@@ -126,7 +127,7 @@ export function parseSavedMonth(body: unknown): SavedMonth | null {
       .map((r) => ({
         placeId: num(r.placeId),
         name: str(r.name),
-        kind: (SAVED_KINDS as readonly string[]).includes(r.kind as string) ? (r.kind as SavedKind) : "other",
+        kind: asSavedKind(r.kind) ?? "other",
         seconds: num(r.seconds),
         nights: num(r.nights),
       })),

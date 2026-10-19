@@ -68,7 +68,13 @@ export type Leg = {
   lines: string[];
   fromStop: string | null;
   toStop: string | null;
+  /** ISO instants of the ride; null from an older server. */
+  startedAt: string | null;
+  endedAt: string | null;
 };
+
+/** A transfer the server folded into a move ("Waited at Kamppi"). */
+export type Wait = { startedAt: string; endedAt: string; stop: string | null };
 
 export type Move = {
   id: number;
@@ -78,6 +84,7 @@ export type Move = {
   duration: number | null;
   mode: Mode;
   legs: Leg[];
+  waits: Wait[];
 };
 
 export type TimelineItem = { kind: "visit"; visit: Visit } | { kind: "move"; track: Move };
@@ -89,6 +96,12 @@ export type Timeline = {
   maxDate: string | null;
 };
 
+/** What the user saved a place as on the web (Places page); null = not saved. */
+export const SAVED_KINDS = ["home", "family", "school", "work", "other"] as const;
+export type SavedKind = (typeof SAVED_KINDS)[number];
+export const asSavedKind = (v: unknown): SavedKind | null =>
+  (SAVED_KINDS as readonly unknown[]).includes(v) ? (v as SavedKind) : null;
+
 export type Place = {
   id: number;
   name: string | null;
@@ -98,6 +111,7 @@ export type Place = {
   visitCount: number;
   totalTime: number;
   lastVisit: string | null;
+  kind: SavedKind | null;
 };
 
 // ---- parsing ---------------------------------------------------------------
@@ -111,6 +125,8 @@ const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const objs = (v: unknown): Obj[] => arr(v).filter(isObj);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** An ISO instant that parses, else null. */
+const instant = (v: unknown): string | null => (typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : null);
 
 export function parseOverview(body: unknown): Overview | null {
   if (!isObj(body) || !isObj(body.totals)) return null;
@@ -147,7 +163,24 @@ function parseLegs(raw: unknown): Leg[] {
   return objs(raw).flatMap((l) => {
     const lines = arr(l.lines).filter((x): x is string => typeof x === "string" && x.length > 0);
     if (!(LEG_KINDS as readonly string[]).includes(l.kind as string) || lines.length === 0) return [];
-    return [{ kind: l.kind as LegKind, lines, fromStop: str(l.fromStop), toStop: str(l.toStop) }];
+    return [
+      {
+        kind: l.kind as LegKind,
+        lines,
+        fromStop: str(l.fromStop),
+        toStop: str(l.toStop),
+        startedAt: instant(l.startedAt),
+        endedAt: instant(l.endedAt),
+      },
+    ];
+  });
+}
+
+function parseWaits(raw: unknown): Wait[] {
+  return objs(raw).flatMap((w) => {
+    const startedAt = instant(w.startedAt);
+    const endedAt = instant(w.endedAt);
+    return startedAt && endedAt ? [{ startedAt, endedAt, stop: str(w.stop) || null }] : [];
   });
 }
 
@@ -184,6 +217,7 @@ function parseItem(it: Obj): TimelineItem | null {
         duration: numOrNull(t.duration),
         mode,
         legs: parseLegs(t.legs),
+        waits: parseWaits(t.waits),
       },
     };
   }
@@ -217,6 +251,7 @@ export function parsePlaces(body: unknown): Place[] | null {
       visitCount: num(p.visitCount),
       totalTime: num(p.totalTime),
       lastVisit: str(p.lastVisit),
+      kind: asSavedKind(p.kind),
     }));
 }
 

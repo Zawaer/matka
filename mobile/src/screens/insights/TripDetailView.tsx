@@ -192,15 +192,15 @@ export default function TripDetailView({
                     <Text variant="headline" color="textMuted">
                       Day {i + 1} ·{" "}
                     </Text>
-                    {fmtDay(d.date)}
+                    {fmtDay(d.date, true)}
                   </Text>
                   <Text variant="caption" color="textSecondary" numberOfLines={1}>
                     {d.cities.length ? d.cities.join(" · ") : "—"}
                   </Text>
                   <ModeChips modes={d.modes} />
                 </View>
-                <Text variant="callout" tabular style={{ fontWeight: "800" }}>
-                  {fmtKm(d.distance)}
+                <Text variant="callout" tabular color={d.distance > 0 ? "text" : "textMuted"} style={{ fontWeight: "800" }}>
+                  {d.distance > 0 ? fmtKm(d.distance) : "—"}
                 </Text>
                 <Icon name="chevron-right" size={20} color={t.c.textMuted} />
               </Pressable>

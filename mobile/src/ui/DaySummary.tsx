@@ -1,14 +1,12 @@
 import { ScrollView, View } from "react-native";
 import { stripModes, type DaySummary } from "../daySummary";
+import { modeMeta } from "../design/modes";
 import { useTheme } from "../design/theme";
 import { fmtDistance, fmtDuration } from "../format";
 import { Icon } from "./Icon";
 import { Skeleton } from "./primitives";
 import { Text } from "./Text";
 
-/** Label and icon per travel mode (timeline rows and the summary strip). */
-export { MODE_META } from "../design/modes";
-import { MODE_META } from "../design/modes";
 
 /** Row height, held while the numbers load so nothing below jumps. */
 export const DAY_STRIP_HEIGHT = 32;
@@ -40,7 +38,7 @@ export function DaySummaryStrip({ summary }: { summary: DaySummary | null }) {
       contentContainerStyle={{ gap: 8, alignItems: "center", paddingHorizontal: t.space.lg }}
     >
       {modes.map((m) => {
-        const meta = MODE_META[m.mode];
+        const meta = modeMeta(m.mode);
         const color = t.mode(m.mode);
         const parts = [m.distance > 0 ? fmtDistance(m.distance) : null, m.duration > 0 ? fmtDuration(m.duration) : null];
         return (

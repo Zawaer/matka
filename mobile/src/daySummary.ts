@@ -4,16 +4,10 @@
 
 import { authHeaders, request } from "./api";
 import type { Pairing } from "./pairing";
-import { MODES, toResult, type Mode, type ViewerResult } from "./viewer";
+import { parseModeTotals, type ModeTotal } from "./insights";
+import { toResult, type ViewerResult } from "./viewer";
 
-export type ModeTotal = {
-  mode: Mode;
-  /** Metres. */
-  distance: number;
-  /** Seconds. */
-  duration: number;
-  count: number;
-};
+export type { ModeTotal };
 
 export type DaySummary = {
   date: string;
@@ -30,12 +24,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 
 export function parseDaySummary(body: unknown): DaySummary | null {
   if (!isObj(body) || typeof body.date !== "string" || !Array.isArray(body.modes)) return null;
-  const modes = body.modes.filter(isObj).map((m) => ({
-    mode: ((MODES as readonly string[]).includes(String(m.mode)) ? m.mode : "unknown") as Mode,
-    distance: n(m.distance),
-    duration: n(m.duration),
-    count: n(m.count),
-  }));
+  const modes = parseModeTotals(body.modes);
   return { date: body.date, distance: n(body.distance), duration: n(body.duration), modes };
 }
 

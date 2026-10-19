@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { View } from "react-native";
 import { categoryMeta } from "../../design/categories";
 import { getCity } from "../../insights";
+import { placeLabel } from "../../format";
 import { fmtLongDuration, fmtShortDate, plural } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
 import { Card, EmptyState, ErrorState, IconChip, Skeleton } from "../../ui";
@@ -68,7 +69,7 @@ export default function CityView({
                 <ListRow
                   key={p.id}
                   leading={<IconChip icon={meta.icon} tint={meta.tint} size={40} />}
-                  title={p.name && p.name !== "Unknown Location" ? p.name : "Unnamed place"}
+                  title={placeLabel(p.name)}
                   subtitle={meta.label}
                   trailing={plural(p.visitCount, "visit")}
                   trailingSub={fmtLongDuration(p.totalTime)}

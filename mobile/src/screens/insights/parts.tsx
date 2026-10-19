@@ -237,6 +237,7 @@ export function ListRow({
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={[title, subtitle, trailing, trailingSub].filter(Boolean).join(", ")}
       style={({ pressed }) => [s.row, !last && s.sep, pressed && { backgroundColor: t.c.surfaceAlt }]}
     >
       {leading}

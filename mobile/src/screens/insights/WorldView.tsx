@@ -2,7 +2,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import { ScrollView, View } from "react-native";
 import { useTheme } from "../../design/theme";
 import { getWorld, type WorldEntry, type WorldSort } from "../../insights";
-import { fmtLongDuration, fmtShortDate, plural, worldCounts } from "../../insights-logic";
+import { fmtCompactDate, fmtLongDuration, plural, worldCounts } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
 import { Button, Card, EmptyState, ErrorState, Skeleton } from "../../ui";
 import { Screen } from "../../ui/Screen";
@@ -84,6 +84,10 @@ export default function WorldView({
           <Skeleton height={44} radius={14} />
           <Skeleton height={320} radius={20} />
         </View>
+      ) : !country && data.countries.length === 0 && data.cities.length === 0 ? (
+        <Card>
+          <EmptyState icon="earth" title="No cities yet" body="They appear as places get their addresses from the geocoder." />
+        </Card>
       ) : (
         <>
           {!country && (
@@ -118,7 +122,11 @@ export default function WorldView({
 
           {list.length === 0 ? (
             <Card>
-              <EmptyState icon="earth" title="No cities yet" body="They appear as places get their addresses from the geocoder." />
+              <EmptyState
+                icon="earth"
+                title={view === "cities" ? "No cities yet" : "No countries yet"}
+                body="They appear as places get their addresses from the geocoder."
+              />
             </Card>
           ) : (
             <Card style={{ padding: 0, overflow: "hidden", opacity: loading ? 0.5 : 1 }}>
@@ -129,7 +137,7 @@ export default function WorldView({
                   title={view === "cities" && !country && e.country ? `${e.name} · ${e.country}` : e.name}
                   subtitle={worldCounts(e)}
                   trailing={fmtLongDuration(e.duration)}
-                  trailingSub={`Last ${fmtShortDate(e.lastVisit)}`}
+                  trailingSub={`Last ${fmtCompactDate(e.lastVisit)}`}
                   onPress={() => (view === "cities" ? onOpenCity(e.name, e.country) : onOpenCountry(e.name))}
                   last={i === shown.length - 1}
                 />

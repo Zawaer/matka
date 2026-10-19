@@ -1,18 +1,19 @@
-import { useCallback, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Fragment, useCallback, useState } from "react";
+import { View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
-import { fmtDistance, fmtDuration, fmtTime, isLikelyDrift, localDay } from "../format";
+import { fmtDistance, fmtDuration, fmtTime, isLikelyDrift, isNamed, localDay } from "../format";
 import type { Pairing } from "../pairing";
-import { Card, EmptyState, ErrorState, Icon, Skeleton } from "../ui";
-import type { IconName } from "../ui/Icon";
+import { Card, EmptyState, ErrorState, Icon, RoundButton, Skeleton } from "../ui";
 import { Screen, ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
-import { getTimeline, type Leg, type Timeline } from "../viewer";
+import { getTimeline, type Leg, type Timeline, type TimelineItem } from "../viewer";
 import { getDaySummary, stripModes, type DaySummary } from "../daySummary";
-import { DaySummaryStrip, MODE_META } from "../ui/DaySummary";
+import { DaySummaryStrip } from "../ui/DaySummary";
+import { modeMeta } from "../design/modes";
 import { LEG_BADGE } from "../design/transit";
+import { adjacentDays, gapBetween, subRows, type Gap } from "../timeline-logic";
 
 const RAIL = 28;
 
@@ -37,15 +38,36 @@ function LegBadge({ leg }: { leg: Leg }) {
   );
 }
 
-function NavButton({ icon, onPress, disabled, label }: { icon: IconName; onPress: () => void; disabled: boolean; label: string }) {
+/** "Waited at Kamppi · 6 min" (or "Change") between two rides of a move. */
+function WaitLine({ stop, secs }: { stop: string | null; secs: number }) {
   const t = useTheme();
-  const s = useStyles((th) => ({
-    navBtn: { width: 44, height: 44, borderRadius: th.radius.pill, backgroundColor: th.c.surface, borderColor: th.c.border, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  }));
   return (
-    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} style={[s.navBtn, disabled && { opacity: 0.4 }]}>
-      <Icon name={icon} size={22} color={t.c.text} />
-    </Pressable>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 5 }}>
+      <Icon name="timer-sand" size={13} color={t.c.textMuted} />
+      <Text variant="caption" color="textSecondary" style={{ flexShrink: 1 }}>
+        {stop ? `Waited at ${stop}` : "Change"} · {fmtDuration(secs)}
+      </Text>
+    </View>
+  );
+}
+
+/** Time with nothing recorded between two rows (location off, phone dead). */
+function GapRow({ gap }: { gap: Gap }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: "row", gap: t.space.md }} accessible accessibilityLabel={`No location recorded for ${fmtDuration(gap.secs)}`}>
+      <View style={{ width: RAIL, alignItems: "center", paddingVertical: 2, gap: 4 }}>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <View key={i} style={{ width: 2, height: 5, borderRadius: 1, backgroundColor: t.c.borderStrong }} />
+        ))}
+      </View>
+      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Icon name="map-marker-off-outline" size={15} color={t.c.textMuted} />
+        <Text variant="caption" color="textMuted" style={{ flexShrink: 1, fontStyle: "italic" }}>
+          No location recorded · {fmtDuration(gap.secs)} ({fmtTime(gap.from)} – {fmtTime(gap.to)})
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -68,14 +90,7 @@ export default function TimelineScreen() {
   const { data: sumResp, error: sumErr, reload: reloadSum } = useViewerQuery<DaySummary | null>(sumFetcher);
   // Ignore a summary left over from the previous day while this one loads.
   const summary = sumResp && sumResp.date === date ? sumResp : null;
-  const dates = resp?.dates ?? [];
-  const idx = date ? dates.indexOf(date) : -1;
-  const canPrev = idx > 0;
-  const canNext = idx >= 0 && idx < dates.length - 1;
-  const go = (delta: number) => {
-    const ni = idx + delta;
-    if (idx >= 0 && ni >= 0 && ni < dates.length) setWant(dates[ni]);
-  };
+  const { prev, next } = adjacentDays(resp?.dates ?? [], date);
 
   const items = resp?.day.items ?? [];
   // Stationary segments and impossible speeds are GPS drift; keep them out of the day's totals.
@@ -115,16 +130,21 @@ export default function TimelineScreen() {
       <ScreenHeader title="Timeline" subtitle="Your day, stop by stop" />
       {authLost ? <PairingLost /> : null}
 
-      <View style={s.nav}>
-        <NavButton icon="chevron-left" label="Previous day" onPress={() => go(-1)} disabled={!canPrev} />
-        <View style={{ flex: 1, alignItems: "center" }}>
-          <Text variant="overline" color="primary">
-            {day ? day.toLocaleDateString([], { weekday: "long" }) : "—"}
-          </Text>
-          <Text variant="title2">{day ? day.toLocaleDateString([], { day: "numeric", month: "long" }) : "…"}</Text>
+      {/* No day at all (nothing recorded yet): the empty state below says so. */}
+      {resp && !date ? null : (
+        <View style={s.nav}>
+          <RoundButton icon="chevron-left" label="Previous day" onPress={() => prev && setWant(prev)} disabled={!prev} />
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text variant="overline" color="primary">
+              {day
+                ? `${day.toLocaleDateString([], { weekday: "long" })}${day.getFullYear() !== new Date().getFullYear() ? ` · ${day.getFullYear()}` : ""}`
+                : " "}
+            </Text>
+            <Text variant="title2">{day ? day.toLocaleDateString([], { day: "numeric", month: "long" }) : "…"}</Text>
+          </View>
+          <RoundButton icon="chevron-right" label="Next day" onPress={() => next && setWant(next)} disabled={!next} />
         </View>
-        <NavButton icon="chevron-right" label="Next day" onPress={() => go(1)} disabled={!canNext} />
-      </View>
+      )}
 
       {authLost && !resp ? null : err && !resp ? (
         <ErrorState message={err} onRetry={reload} />
@@ -190,71 +210,12 @@ export default function TimelineScreen() {
 
           <View style={{ opacity: loading ? 0.5 : 1 }}>
             {items.map((it, i) => {
-              const first = i === 0;
-              const last = i === items.length - 1;
-              if (it.kind === "visit") {
-                const v = it.visit;
-                const named = v.placeName && v.placeName !== "Unknown Location";
-                const cat = v.category ? categoryMeta(v.category).label : null;
-                return (
-                  <View key={`v${v.id}-${i}`} style={s.row}>
-                    <View style={s.rail}>
-                      <View style={[s.line, { top: first ? 26 : 0, bottom: last ? undefined : 0, height: last ? 26 : undefined }]} />
-                      <View style={{ marginTop: 18 }}>
-                        <View style={s.node} />
-                      </View>
-                    </View>
-                    <Card style={s.visit}>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text variant="headline" numberOfLines={2}>
-                          {named ? v.placeName : (cat ?? "Unnamed place")}
-                        </Text>
-                        <Text variant="caption" color="textSecondary">
-                          {fmtTime(v.startedAt)} – {fmtTime(v.endedAt)}
-                          {named && cat ? ` · ${cat}` : ""}
-                        </Text>
-                      </View>
-                      <Text variant="callout" color="textSecondary" tabular>
-                        {fmtDuration(v.duration)}
-                      </Text>
-                    </Card>
-                  </View>
-                );
-              }
-              const m = it.track;
-              const meta = MODE_META[m.mode];
-              const color = t.mode(m.mode);
-              const drift = isLikelyDrift(m.mode, m.distance, m.duration);
+              const gap = i > 0 ? gapBetween(items[i - 1], it) : null;
               return (
-                <View key={`m${m.id}-${i}`} style={s.row}>
-                  <View style={s.rail}>
-                    <View style={[s.line, { top: 0, bottom: 0, width: 5, backgroundColor: color, borderRadius: 3 }]} />
-                  </View>
-                  <View style={s.move}>
-                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${color}26`, alignItems: "center", justifyContent: "center" }}>
-                      <Icon name={meta.icon} size={19} color={color} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text variant="callout" style={{ fontWeight: "800" }}>
-                        {meta.label}
-                      </Text>
-                      <Text variant="caption" color="textSecondary">
-                        {m.mode === "stationary" ? fmtDuration(m.duration) : `${fmtDistance(m.distance)} · ${fmtDuration(m.duration)}`}
-                      </Text>
-                      {m.legs.map((l, k) => (
-                        <LegBadge key={k} leg={l} />
-                      ))}
-                      {drift && (
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
-                          <Icon name="map-marker-alert-outline" size={13} color={t.c.accent} />
-                          <Text variant="caption" color="accent">
-                            GPS jumped around here, not counted
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
+                <Fragment key={it.kind === "visit" ? `v${it.visit.id}-${i}` : `m${it.track.id}-${i}`}>
+                  {gap ? <GapRow gap={gap} /> : null}
+                  {row(it, i)}
+                </Fragment>
               );
             })}
           </View>
@@ -262,4 +223,73 @@ export default function TimelineScreen() {
       )}
     </Screen>
   );
+
+  function row(it: TimelineItem, i: number) {
+    const first = i === 0;
+    const last = i === items.length - 1;
+    if (it.kind === "visit") {
+      const v = it.visit;
+      const named = isNamed(v.placeName);
+      const cat = v.category ? categoryMeta(v.category).label : null;
+      return (
+        <View style={s.row}>
+          <View style={s.rail}>
+            <View style={[s.line, { top: first ? 26 : 0, bottom: last ? undefined : 0, height: last ? 26 : undefined }]} />
+            <View style={{ marginTop: 18 }}>
+              <View style={s.node} />
+            </View>
+          </View>
+          <Card style={s.visit}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text variant="headline" numberOfLines={2}>
+                {named ? v.placeName : (cat ?? "Unnamed place")}
+              </Text>
+              <Text variant="caption" color="textSecondary">
+                {fmtTime(v.startedAt)} – {fmtTime(v.endedAt)}
+                {named && cat ? ` · ${cat}` : ""}
+              </Text>
+            </View>
+            <Text variant="callout" color="textSecondary" tabular>
+              {fmtDuration(v.duration)}
+            </Text>
+          </Card>
+        </View>
+      );
+    }
+    const m = it.track;
+    const meta = modeMeta(m.mode);
+    const color = t.mode(m.mode);
+    const drift = isLikelyDrift(m.mode, m.distance, m.duration);
+    return (
+      <View style={s.row}>
+        <View style={s.rail}>
+          <View style={[s.line, { top: 0, bottom: 0, width: 5, backgroundColor: color, borderRadius: 3 }]} />
+        </View>
+        <View style={s.move}>
+          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${color}26`, alignItems: "center", justifyContent: "center" }}>
+            <Icon name={meta.icon} size={19} color={color} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text variant="callout" style={{ fontWeight: "800" }}>
+              {meta.label}
+            </Text>
+            <Text variant="caption" color="textSecondary">
+              {m.mode === "stationary" ? fmtDuration(m.duration) : `${fmtDistance(m.distance)} · ${fmtDuration(m.duration)}`}
+            </Text>
+            {subRows(m).map((r, k) =>
+              r.kind === "leg" ? <LegBadge key={k} leg={r.leg} /> : <WaitLine key={k} stop={r.stop} secs={r.secs} />,
+            )}
+            {drift && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
+                <Icon name="map-marker-alert-outline" size={13} color={t.c.accent} />
+                <Text variant="caption" color="accent">
+                  GPS jumped around here, not counted
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
 }

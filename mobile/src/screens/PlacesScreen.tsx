@@ -2,16 +2,15 @@ import { useMemo, useState, type ReactNode } from "react";
 import { FlatList, Pressable, RefreshControl, TextInput, View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
-import { fmtDuration } from "../format";
+import { fmtDuration, placeLabel } from "../format";
+import { KIND_META, mostVisitedId } from "../insights-logic";
 import { Card, EmptyState, ErrorState, Icon, IconChip, Pill, Skeleton } from "../ui";
 import { ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
 import { getPlaces, type Place } from "../viewer";
 
-function placeName(p: Place) {
-  return p.name && p.name !== "Unknown Location" ? p.name : "Unnamed place";
-}
+const placeName = (p: Place) => placeLabel(p.name);
 
 /** `top`: shown as a segment of Insights, under that header instead of its own title. */
 export default function PlacesScreen({ top }: { top?: ReactNode }) {
@@ -23,6 +22,7 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
 
+  const mostVisited = useMemo(() => mostVisitedId(places ?? []), [places]);
   const q = query.trim().toLowerCase();
   const shown = useMemo(
     () =>
@@ -124,7 +124,7 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
           }}
         />
       }
-      renderItem={({ item: p, index }) => {
+      renderItem={({ item: p }) => {
         const meta = categoryMeta(p.category);
         const locale = [p.city, p.country === "Finland" ? null : p.country].filter(Boolean).join(", ");
         return (
@@ -138,7 +138,12 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
                 {meta.label}
                 {locale ? ` · ${locale}` : ""}
               </Text>
-              {index === 0 && !q && <Pill label="Most visited" icon="star-four-points-outline" tint="amber" />}
+              {(p.kind || p.id === mostVisited) && (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                  {p.kind ? <Pill label={p.kind === "other" ? "Saved" : KIND_META[p.kind].label} icon={KIND_META[p.kind].icon} tint="violet" /> : null}
+                  {p.id === mostVisited ? <Pill label="Most visited" icon="star-four-points-outline" tint="amber" /> : null}
+                </View>
+              )}
             </View>
             <View style={{ alignItems: "flex-end", gap: 2 }}>
               <Text variant="headline" color="primary">

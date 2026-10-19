@@ -23,6 +23,7 @@
 // allowed in debug as before (Metro over LAN, http://localhost servers); with a
 // network security config present, Android ignores android:usesCleartextTraffic,
 // so it has to be stated here.
+/* global __dirname */
 const fs = require("fs");
 const path = require("path");
 const { withAndroidManifest, withDangerousMod } = require("expo/config-plugins");

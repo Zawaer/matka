@@ -1,6 +1,8 @@
 import type { ModeTotal, SavedRow, Trip } from "../insights";
 import {
   addMonths,
+  mostVisitedId,
+  fmtCompactDate,
   fmtDateRange,
   fmtDay,
   fmtHours,
@@ -67,6 +69,7 @@ describe("formatting", () => {
   test("fmtDay names the weekday of the calendar date", () => {
     expect(fmtDay("2026-10-03")).toBe("Saturday 3 October");
     expect(fmtDay("2026-10-19")).toBe("Monday 19 October");
+    expect(fmtDay("2026-08-12", true)).toBe("Wed 12 Aug");
   });
 });
 
@@ -133,4 +136,22 @@ describe("saved places and world", () => {
     expect(worldCounts(e)).toBe("3 cities · 12 places · 1 visit");
     expect(worldCounts({ ...e, cities: null })).toBe("12 places · 1 visit");
   });
+});
+
+describe("fmtCompactDate", () => {
+  const now = new Date(2026, 9, 19, 12);
+  test("drops the year in the current one", () => {
+    expect(fmtCompactDate(new Date(2026, 9, 18, 9).toISOString(), now)).toBe("18 Oct");
+    expect(fmtCompactDate(new Date(2025, 11, 27, 9).toISOString(), now)).toBe("27 Dec 2025");
+  });
+  test("dash for missing or bad values", () => {
+    expect(fmtCompactDate(null, now)).toBe("—");
+    expect(fmtCompactDate("soon", now)).toBe("—");
+  });
+});
+
+test("mostVisitedId finds the top place even when saved places are listed first", () => {
+  expect(mostVisitedId([{ id: 1, visitCount: 3 }, { id: 2, visitCount: 40 }, { id: 3, visitCount: 40 }])).toBe(2);
+  expect(mostVisitedId([{ id: 1, visitCount: 0 }])).toBeNull();
+  expect(mostVisitedId([])).toBeNull();
 });

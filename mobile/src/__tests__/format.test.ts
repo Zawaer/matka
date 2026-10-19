@@ -1,4 +1,4 @@
-import { ago, count, inFuture } from "../format";
+import { ago, count, fmtSpan, inFuture, placeLabel } from "../format";
 
 const now = 1_760_781_600_000;
 
@@ -23,4 +23,19 @@ test("count", () => {
   expect(count(113871)).toBe("113 871");
   expect(count(0)).toBe("0");
   expect(count(null)).toBe("—");
+});
+
+test("placeLabel treats the server's placeholder as no name", () => {
+  expect(placeLabel("Kamppi")).toBe("Kamppi");
+  expect(placeLabel("Unknown Location")).toBe("Unnamed place");
+  expect(placeLabel(null)).toBe("Unnamed place");
+  expect(placeLabel("", "Somewhere")).toBe("Somewhere");
+});
+
+test("fmtSpan shows years only when the span leaves this year", () => {
+  const now = new Date(2026, 9, 19, 12);
+  const inYear = fmtSpan(new Date(2026, 2, 13).toISOString(), new Date(2026, 9, 18).toISOString(), now);
+  expect(inYear).not.toMatch(/2026/);
+  const across = fmtSpan(new Date(2025, 10, 2).toISOString(), new Date(2026, 9, 18).toISOString(), now);
+  expect(across).toMatch(/2025.*2026/);
 });

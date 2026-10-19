@@ -2,10 +2,20 @@
 
 Renders the real screens with mock data, for design review without a phone.
 
-    MATKA_PREVIEW=1 npx expo export -p web --output-dir /tmp/matka-preview
-    python3 -m http.server 3127 --directory /tmp/matka-preview
+    npm i --no-save react-native-web react-dom @expo/metro-runtime   # web-only, not in package.json
+    MATKA_PREVIEW=1 npx expo start --web --port 3127 --host localhost
 
-Then open `http://localhost:3127/?scenario=ok|empty|error|slow&tracking=1&queued=37`.
-`react-native-web`, `react-dom` and `@expo/metro-runtime` are only needed for this
-and are installed with `npm i --no-save`. The Map tab embeds the web map from a local
-`next dev -p 3126` (override with `?map=<origin>`).
+Then open `http://localhost:3127/` (Node ≥ 22.13). With `MATKA_PREVIEW=1`, `metro.config.js`
+swaps the native modules (SQLite queue, secure store, location, battery, task manager,
+WebView) for the stand-ins in `mocks/`, and the dev server serves `photos/*.jpg` for
+`/api/immich/asset/:id`. The app starts paired with the page's own origin and
+`mockApi.ts` answers every `/api/…` call in the server's shapes (docs/API.md).
+
+Page switches:
+
+- `?scenario=empty|error|slow`: no data yet, every request 502, or requests that never finish.
+- `?paired=0`: not paired (Pair screen).
+- `?tracking=1&queued=37&preset=custom&smart=0&authLost=1&failing=1&standby=1&perm=denied|foreground`:
+  recorder state.
+- `?map=http://localhost:3126`: the Map tab embeds a local `next dev -p 3126` of web/
+  (otherwise a placeholder).

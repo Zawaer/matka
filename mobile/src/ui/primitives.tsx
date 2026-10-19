@@ -171,6 +171,34 @@ export function PingRings({ size = 120, color, children }: { size?: number; colo
   );
 }
 
+/** Round outlined icon button (previous / next day or month). */
+export function RoundButton({ icon, onPress, disabled, label }: { icon: IconName; onPress: () => void; disabled?: boolean; label: string }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+      hitSlop={4}
+      style={({ pressed }) => ({
+        width: 44,
+        height: 44,
+        borderRadius: t.radius.pill,
+        backgroundColor: pressed ? t.c.surfaceAlt : t.c.surface,
+        borderColor: t.c.border,
+        borderWidth: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.4 : 1,
+      })}
+    >
+      <Icon name={icon} size={22} color={t.c.text} />
+    </Pressable>
+  );
+}
+
 export function EmptyState({ icon, title, body, action }: { icon: IconName; title: string; body: string; action?: ReactNode }) {
   const t = useTheme();
   return (
@@ -202,7 +230,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
       <Text variant="callout" color="textSecondary" style={{ textAlign: "center", maxWidth: 280 }}>
         Check your connection and try again. Nothing is lost; your phone keeps what it recorded.
       </Text>
-      <Text variant="caption" color="textMuted" numberOfLines={1} style={{ maxWidth: 280, color: t.c.textMuted }}>
+      <Text variant="caption" color="textMuted" numberOfLines={2} style={{ maxWidth: 280, textAlign: "center", color: t.c.textMuted }}>
         {message}
       </Text>
       {onRetry ? (

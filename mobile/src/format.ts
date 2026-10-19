@@ -65,6 +65,15 @@ export function fmtWhen(iso: string, now = new Date()): string {
   return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 }
 
+/** "2 Nov – 18 Oct" within this year; with years once the span reaches into another ("2 Nov 2025 – 18 Oct 2026"). */
+export function fmtSpan(firstIso: string, lastIso: string, now = new Date()): string {
+  const a = new Date(firstIso);
+  const b = new Date(lastIso);
+  const years = a.getFullYear() !== now.getFullYear() || b.getFullYear() !== now.getFullYear();
+  const f = (d: Date) => d.toLocaleDateString([], { day: "numeric", month: "short", ...(years ? { year: "numeric" } : {}) });
+  return `${f(a)} – ${f(b)}`;
+}
+
 export function greeting(now = new Date()): string {
   const h = now.getHours();
   if (h < 5) return "Up late";
@@ -98,8 +107,13 @@ export function cleanName(name: string | null | undefined): string | null {
   return stripped || name;
 }
 
-export function isNamed(name: string | null | undefined): boolean {
+export function isNamed(name: string | null | undefined): name is string {
   return !!name && name !== "Unknown Location";
+}
+
+/** A place's name for display; the server's "Unknown Location" placeholder counts as no name. */
+export function placeLabel(name: string | null | undefined, fallback = "Unnamed place"): string {
+  return isNamed(name) ? name : fallback;
 }
 
 /** Fastest believable average speed (km/h) per travel mode. */

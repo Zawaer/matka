@@ -18,37 +18,11 @@ import {
   scaled,
 } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
-import { Card, EmptyState, ErrorState, Icon, IconChip, Skeleton } from "../../ui";
-import type { IconName } from "../../ui/Icon";
+import { Card, EmptyState, ErrorState, IconChip, RoundButton, Skeleton } from "../../ui";
 import { Screen } from "../../ui/Screen";
 import { useSession, useViewerQuery } from "../../ui/session";
 import { Text } from "../../ui/Text";
 import { ModeIcon, StatRow, StatTile, useRefresh } from "./parts";
-
-function NavButton({ icon, onPress, disabled, label }: { icon: IconName; onPress: () => void; disabled: boolean; label: string }) {
-  const t = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={{
-        width: 44,
-        height: 44,
-        borderRadius: t.radius.pill,
-        backgroundColor: t.c.surface,
-        borderColor: t.c.border,
-        borderWidth: 1,
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: disabled ? 0.4 : 1,
-      }}
-    >
-      <Icon name={icon} size={22} color={t.c.text} />
-    </Pressable>
-  );
-}
 
 /** Six months of one mode: the shown month in the mode's colour, tap a bar to open that month. */
 function MiniBars({ mode, history, selected, onPick }: { mode: string; history: MonthPoint[]; selected: string; onPick: (m: string) => void }) {
@@ -194,14 +168,14 @@ export default function TravelView({ header }: { header: ReactNode }) {
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
       {header}
       <View style={s.nav}>
-        <NavButton icon="chevron-left" label="Previous month" onPress={() => go(-1)} disabled={idx <= 0} />
+        <RoundButton icon="chevron-left" label="Previous month" onPress={() => go(-1)} disabled={idx <= 0} />
         <View style={{ flex: 1, alignItems: "center" }}>
           <Text variant="overline" color="primary">
             {month ? month.slice(0, 4) : " "}
           </Text>
           <Text variant="title2">{month ? fmtMonth(month).split(" ")[0] : "…"}</Text>
         </View>
-        <NavButton icon="chevron-right" label="Next month" onPress={() => go(1)} disabled={idx < 0 || idx >= months.length - 1} />
+        <RoundButton icon="chevron-right" label="Next month" onPress={() => go(1)} disabled={idx < 0 || idx >= months.length - 1} />
       </View>
 
       {authLost && !data ? null : error && !data ? (
@@ -218,7 +192,11 @@ export default function TravelView({ header }: { header: ReactNode }) {
         </View>
       ) : data.modes.length === 0 ? (
         <Card>
-          <EmptyState icon="chart-box-outline" title="No travel yet" body="No travel recorded yet. Trips appear here once your phone has logged a few moves." />
+          {data.firstMonth ? (
+            <EmptyState icon="sleep" title="A quiet stretch" body="No journeys in this month or the five before it. Use the arrows to browse other months." />
+          ) : (
+            <EmptyState icon="chart-box-outline" title="No travel yet" body="Your travel shows up here once your phone has logged a few journeys." />
+          )}
         </Card>
       ) : (
         <View style={{ gap: t.space.lg, opacity: loading ? 0.5 : 1 }}>
@@ -267,14 +245,16 @@ export default function TravelView({ header }: { header: ReactNode }) {
                     {m.count === 0 ? "None this month" : plural(m.count, "journey")}
                   </Text>
                 </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text variant="callout" tabular style={{ fontWeight: "800" }}>
-                    {fmtKm(m.distance)}
-                  </Text>
-                  <Text variant="caption" color="textSecondary" tabular>
-                    {fmtDuration(m.duration)}
-                  </Text>
-                </View>
+                {m.count > 0 || m.distance > 0 ? (
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text variant="callout" tabular style={{ fontWeight: "800" }}>
+                      {fmtKm(m.distance)}
+                    </Text>
+                    <Text variant="caption" color="textSecondary" tabular>
+                      {fmtDuration(m.duration)}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
               <MiniBars mode={m.mode} history={m.history} selected={data.month} onPick={(mm) => months.includes(mm) && setWant(mm)} />
             </Card>
