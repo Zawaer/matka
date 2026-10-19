@@ -48,7 +48,9 @@ export async function tick(): Promise<void> {
     }
     await c.query(`DELETE FROM sessions WHERE expires_at < now()`);
     // Drain the geocoding backlog a batch at a time.
-    while ((await geocodePending()) > 0) {}
+    let named = 0;
+    for (let n = await geocodePending(); n > 0; n = await geocodePending()) named += n;
+    if (named) console.log(`[geocode] named ${named} places`);
     // Public transport lines: refresh feeds when due (daily check), then match
     // new trips. A bounded number per tick keeps a big backlog from hogging it.
     try {
