@@ -77,28 +77,24 @@ function extendBounds(acc: [number, number, number, number] | null, fc: FC) {
 }
 
 const HEATMAP_PAINT = {
-  "heatmap-weight": 1,
-  "heatmap-intensity": [
+  // Hours spent per ~55 m cell (api/points), on a roughly logarithmic scale so
+  // home doesn't drown out everywhere else: a few minutes barely shows, an hour
+  // is clearly there, a few hundred hours (home) is the hottest.
+  "heatmap-weight": [
     "interpolate",
     ["linear"],
-    ["zoom"],
-    0,
-    0.6,
-    9,
-    1.1,
-    16,
-    2.2,
+    ["get", "h"],
+    0, 0,
+    0.05, 0.04,
+    0.5, 0.18,
+    3, 0.4,
+    20, 0.65,
+    100, 0.85,
+    500, 1,
   ],
-  "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 2, 9, 14, 16, 26],
-  "heatmap-opacity": [
-    "interpolate",
-    ["linear"],
-    ["zoom"],
-    7,
-    0.9,
-    16,
-    0.55,
-  ],
+  "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 3, 0.7, 9, 1.2, 14, 2, 17, 3],
+  "heatmap-radius": ["interpolate", ["exponential", 1.6], ["zoom"], 3, 4, 8, 10, 12, 18, 16, 34],
+  "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 7, 0.9, 16, 0.7],
   "heatmap-color": [
     // Violet -> magenta -> coral -> amber: legible on both the dark and light basemap.
     "interpolate",
