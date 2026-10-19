@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { InsightsHeader } from "@/components/insights/InsightsHeader";
 import { Stat } from "@/components/insights/charts";
+import { COVER_BACKDROP, CoverPhoto } from "@/components/insights/Cover";
 import { requireUser } from "@/lib/auth";
+import { getCovers } from "@/lib/covers";
 import { formatDateShort, formatLongDuration } from "@/lib/format";
+import { cityCoverSpecs, cityKey } from "@/lib/insights/coverSpecs";
 import { getWorld } from "@/lib/insights/load";
 import { type WorldEntry, type WorldSort, isWorldSort } from "@/lib/insights/world";
 
@@ -17,6 +20,8 @@ const SORT_LABEL: Record<WorldSort, string> = {
   recent: "Recent",
   name: "A–Z",
 };
+
+const COVER_ROWS = 60;
 
 type Params = { view?: string; sort?: string; country?: string };
 
@@ -38,6 +43,14 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
 
   const cities = country ? world.cities.filter((c) => c.country === country) : world.cities;
   const list = view === "cities" ? cities : world.countries;
+
+  // City thumbnails for the first rows (the rest of a long list goes without).
+  const coverCities = view === "cities" ? cities.slice(0, COVER_ROWS) : [];
+  const covers = coverCities.length
+    ? await cityCoverSpecs(user.id, coverCities)
+        .then((specs) => getCovers(user.id, [...specs.values()]))
+        .catch(() => new Map())
+    : new Map();
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
@@ -109,6 +122,7 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
                     : href({ country: e.name, sort: sort === "visits" ? undefined : sort })
                 }
                 showCountry={view === "cities" && !country}
+                thumb={covers.size > 0 ? (covers.get(cityKey(e.name, e.country))?.assetId ?? null) : undefined}
               />
             </li>
           ))}
@@ -123,7 +137,20 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
   );
 }
 
-function Row({ entry: e, tz, href, showCountry }: { entry: WorldEntry; tz: string; href: string; showCountry: boolean }) {
+function Row({
+  entry: e,
+  tz,
+  href,
+  showCountry,
+  thumb,
+}: {
+  entry: WorldEntry;
+  tz: string;
+  href: string;
+  showCountry: boolean;
+  /** Cover asset id; null for an empty slot, undefined for no slot. */
+  thumb?: string | null;
+}) {
   const counts = [
     e.cities != null ? `${e.cities} ${e.cities === 1 ? "city" : "cities"}` : null,
     `${e.places} ${e.places === 1 ? "place" : "places"}`,
@@ -131,7 +158,21 @@ function Row({ entry: e, tz, href, showCountry }: { entry: WorldEntry; tz: strin
   ].filter(Boolean);
   return (
     <Link href={href} className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-surface-2">
-      <div className="min-w-0">
+      {thumb !== undefined && (
+        <div
+          aria-hidden
+          className={`relative -my-1 size-12 shrink-0 overflow-hidden rounded-xl ${thumb ? COVER_BACKDROP : "bg-surface-2"}`}
+        >
+          {thumb ? (
+            <CoverPhoto assetId={thumb} size="thumbnail" />
+          ) : (
+            <svg viewBox="0 0 24 24" className="absolute inset-0 m-auto size-5 fill-muted/50">
+              <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
+            </svg>
+          )}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
         <p className="truncate font-medium">
           {e.name}
           {showCountry && e.country && <span className="font-normal text-muted"> · {e.country}</span>}

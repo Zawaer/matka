@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ModeBars, ModeChips, Stat } from "@/components/insights/charts";
+import { CoverHeader, PhotoStrip } from "@/components/insights/Cover";
 import { requireUser } from "@/lib/auth";
+import { getCovers } from "@/lib/covers";
 import { formatDateRange, formatDay, formatDuration, formatKm, formatTime } from "@/lib/format";
+import { tripCoverSpec } from "@/lib/insights/coverSpecs";
 import { getAwayTrips } from "@/lib/insights/load";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +20,17 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
   if (!trip) notFound();
 
   const away = trip.cities.filter((c) => c.away);
+  const spec = tripCoverSpec(trip, tz);
+  const cover = (await getCovers(user.id, [spec], { budgetMs: 4000 })).get(spec.key);
+  const leftHome = (
+    <>
+      Left home {formatTime(new Date(trip.departure), tz)} on {formatDay(trip.startDate)}
+      {trip.arrival != null
+        ? `, back ${formatTime(new Date(trip.arrival), tz)} on ${formatDay(trip.endDate)}.`
+        : ", still away."}
+    </>
+  );
+  const dates = `${formatDateRange(trip.startDate, trip.endDate)}${trip.countries.length > 0 ? ` · ${trip.countries.join(", ")}` : ""}`;
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
@@ -27,19 +41,23 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         ← Trips
       </Link>
 
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{trip.name}</h1>
-        <p className="mt-1 text-muted">
-          {formatDateRange(trip.startDate, trip.endDate)}
-          {trip.countries.length > 0 && ` · ${trip.countries.join(", ")}`}
-        </p>
-        <p className="mt-1 text-sm text-muted">
-          Left home {formatTime(new Date(trip.departure), tz)} on {formatDay(trip.startDate)}
-          {trip.arrival != null
-            ? `, back ${formatTime(new Date(trip.arrival), tz)} on ${formatDay(trip.endDate)}.`
-            : ", still away."}
-        </p>
-      </header>
+      {cover ? (
+        <>
+          <CoverHeader assetId={cover.assetId}>
+            <h1 className="text-2xl font-semibold tracking-tight md:text-4xl">{trip.name}</h1>
+            <p className="mt-1 text-white/90">{dates}</p>
+            <p className="mt-1 hidden text-sm text-white/80 sm:block">{leftHome}</p>
+          </CoverHeader>
+          <p className="-mt-3 mb-4 text-sm text-muted sm:hidden">{leftHome}</p>
+          <PhotoStrip ids={cover.more} />
+        </>
+      ) : (
+        <header className="mb-6">
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{trip.name}</h1>
+          <p className="mt-1 text-muted">{dates}</p>
+          <p className="mt-1 text-sm text-muted">{leftHome}</p>
+        </header>
+      )}
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Days" value={String(trip.days)} />
