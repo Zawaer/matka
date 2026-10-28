@@ -1,8 +1,8 @@
 import { InsightsHeader } from "@/components/insights/InsightsHeader";
 import { MonthPicker } from "@/components/insights/MonthPicker";
 import { ModeHistory, ModeIcon, ShareBar, modeMeta } from "@/components/insights/charts";
-import { Route } from "lucide-react";
-import { Card, CardHeader, CardList, EmptyState, IconTile, KIND_ICONS, ListRow, Page, SectionHeader, StatStrip } from "@/components/ui";
+import { Route, Smartphone } from "lucide-react";
+import { ButtonLink, Card, CardHeader, CardList, EmptyState, IconTile, KIND_ICONS, ListRow, Page, SectionHeader, StatStrip } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { formatCount, formatDuration, formatKm, formatLongDuration } from "@/lib/format";
 import Link from "next/link";
@@ -45,6 +45,11 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           icon={Route}
           title="No travel recorded yet"
           description="Journeys appear here once your phone has logged a few moves."
+          action={
+            <ButtonLink href="/devices" variant="primary" icon={Smartphone}>
+              Pair your phone
+            </ButtonLink>
+          }
         />
       ) : (
         <>
@@ -84,15 +89,15 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
 
           <SectionHeader title="By mode" className="mt-8" />
           <section className="grid gap-3 md:grid-cols-2">
-            {[...used, ...quiet].map((m) => {
+            {used.map((m) => {
               const none = m.distance === 0 && m.duration === 0;
               return (
                 <Card as="article" key={m.mode}>
                   <div className="flex items-center gap-3">
                     <ModeIcon mode={m.mode} />
                     <div className="min-w-0">
-                      <h3 className={`text-label ${none ? "text-muted" : "text-text"}`}>{modeMeta(m.mode).label}</h3>
-                      <p className="text-meta text-muted">
+                      <h3 className={`truncate text-label ${none ? "text-muted" : "text-text"}`}>{modeMeta(m.mode).label}</h3>
+                      <p className="whitespace-nowrap text-meta text-muted">
                         {m.count === 0 ? (
                           "None this month"
                         ) : (
@@ -102,7 +107,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
                         )}
                       </p>
                     </div>
-                    <div className="ml-auto text-right">
+                    <div className="ml-auto shrink-0 whitespace-nowrap text-right">
                       <p className={`text-label font-semibold tabular-nums ${none ? "text-muted" : "text-text"}`}>
                         {formatKm(m.distance)}
                       </p>
@@ -114,14 +119,23 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
               );
             })}
           </section>
+          {quiet.length > 0 && (
+            <p className="mt-3 text-meta text-muted">
+              No {listOr(quiet.map((m) => modeMeta(m.mode).label.toLowerCase()))} this month.
+            </p>
+          )}
           <p className="mt-3 max-w-3xl text-caption text-muted">
-            Months follow your time zone ({user.timezone}); select a bar to open that month.
+            Each mode has its own scale (its biggest month is marked). Months follow your time zone ({user.timezone});
+            select a bar to open that month.
           </p>
         </>
       )}
     </Page>
   );
 }
+
+/** "train, ferry or bus". */
+const listOr = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} or ${xs.at(-1)}`);
 
 const hours = (s: number) => `${formatCount(s >= 36_000 ? Math.round(s / 3600) : Math.round(s / 360) / 10)} h`;
 const nights = (n: number) => `${n} ${n === 1 ? "night" : "nights"}`;

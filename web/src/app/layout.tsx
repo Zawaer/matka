@@ -27,9 +27,17 @@ export default function RootLayout({
         />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <div className="min-h-screen md:flex">
+        <a
+          href="#main"
+          className="sr-only z-50 rounded-control bg-surface px-3 py-2 text-sm font-medium text-text shadow-pop focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+        >
+          Skip to content
+        </a>
+        <div className="min-h-screen sm:flex">
           <Nav />
-          <main className="min-w-0 flex-1 pb-20 md:pb-0">{children}</main>
+          <main id="main" tabIndex={-1} className="min-w-0 flex-1 pb-20 outline-none sm:pb-0">
+            {children}
+          </main>
         </div>
       </body>
     </html>

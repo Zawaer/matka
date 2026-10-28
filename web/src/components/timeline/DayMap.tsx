@@ -13,7 +13,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { Maximize } from "lucide-react";
 import { PLACE_GROUP_ICONS } from "@/components/ui/icons";
 import type { LngLatBoundsLike, Map as MlMap, Marker } from "maplibre-gl";
-import { computeDark, modeColorExpression, resolveColor, styleUrl, tameBasemap } from "@/components/map/mapStyle";
+import { computeDark, modeColorExpression, resolveColor, fitPadding, loadStyle, tameBasemap } from "@/components/map/mapStyle";
 import type { TimelineDay } from "@/lib/types";
 import type { PhotoPoint } from "@/lib/dayPhotos";
 import { PLACE_ICONS } from "@/lib/placeIcons";
@@ -118,11 +118,13 @@ function ensureLayers(m: MlMap, tracks: FC) {
   });
 }
 
+// Stops are neutral (ink on surface); only the selected one takes the accent.
+// 28 px, so a stop covers less of the city label it sits on.
 const MARKER_CLASS =
-  "group relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-primary bg-surface text-primary shadow-md transition-[scale] data-[sel=true]:scale-115 data-[sel=true]:bg-primary data-[sel=true]:text-on-primary";
-/** The stop's order number(s), as on the timeline's rows. */
+  "group relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-2 border-secondary bg-surface text-secondary shadow-md transition-[scale] hover:border-text hover:text-text data-[sel=true]:scale-115 data-[sel=true]:border-primary data-[sel=true]:bg-primary data-[sel=true]:text-on-primary";
+/** The stop's order number(s), as on the timeline's rows; pushed outward, off the glyph. */
 const BADGE_CLASS =
-  "pointer-events-none absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-primary bg-surface px-1 text-caption font-semibold leading-none tabular-nums text-primary group-data-[sel=true]:bg-primary group-data-[sel=true]:text-on-primary group-data-[sel=true]:border-surface";
+  "pointer-events-none absolute -right-3 -top-2.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-surface bg-text px-1 text-caption font-semibold leading-none tabular-nums text-bg group-data-[sel=true]:bg-primary group-data-[sel=true]:text-on-primary";
 const LABEL_CLASS =
   "pointer-events-none absolute left-full top-1/2 ml-1.5 hidden data-[flip=true]:left-auto data-[flip=true]:right-full data-[flip=true]:ml-0 data-[flip=true]:mr-1.5 max-w-44 -translate-y-1/2 truncate rounded-md border border-border bg-surface px-2 py-0.5 text-caption font-medium text-text shadow-md group-hover:block group-data-[sel=true]:block";
 
@@ -210,10 +212,13 @@ function photoElement(p: PhotoPoint, count: number): HTMLElement {
 }
 
 function padding(m: MlMap) {
-  const w = m.getContainer().clientWidth;
-  const p = w < 500 ? 30 : 48;
-  // Markers stick out ~14 px past their point; leave room for them at the top.
-  return { top: p + 8, bottom: p, left: p, right: p };
+  const el = m.getContainer();
+  const w = el.clientWidth;
+  // Clear of the zoom / full-screen buttons (top-right, desktop) and the
+  // attribution; markers stick out ~14 px past their point.
+  return w < 640
+    ? fitPadding(w, el.clientHeight, { top: 40, right: 32, bottom: 32, left: 28 })
+    : fitPadding(w, el.clientHeight, { top: 56, right: 80, bottom: 48, left: 40 });
 }
 
 function fit(m: MlMap, b: BBox | null, animate: boolean) {
@@ -284,9 +289,11 @@ export default function DayMap({
       if (cancelled) return;
       ml.setWorkerUrl("/maplibre-gl-worker.mjs");
       mlRef.current = ml;
+      const style = await loadStyle(computeDark());
+      if (cancelled) return;
       const m = new ml.Map({
         container,
-        style: styleUrl(computeDark()),
+        style: style as never,
         center: [25.5, 64.5],
         zoom: 4.3,
         attributionControl: { compact: false },
@@ -319,12 +326,15 @@ export default function DayMap({
       });
 
       onTheme = () => {
-        m.setStyle(styleUrl(computeDark()));
-        m.once("styledata", () => {
+        void loadStyle(computeDark()).then((st) => {
           if (cancelled) return;
-          tameBasemap(m);
-          ensureLayers(m, shownRef.current?.tracks ?? EMPTY);
-          paintSelection(m, selectedRef.current);
+          m.setStyle(st as never, { diff: false });
+          m.once("styledata", () => {
+            if (cancelled) return;
+            tameBasemap(m);
+            ensureLayers(m, shownRef.current?.tracks ?? EMPTY);
+            paintSelection(m, selectedRef.current);
+          });
         });
       };
       mql.addEventListener("change", onTheme);

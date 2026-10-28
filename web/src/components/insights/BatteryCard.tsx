@@ -6,6 +6,7 @@ import type { BatteryDay, Drain } from "@/lib/insights/battery";
 import { startOfDay } from "@/lib/insights/time";
 import { ChevronRight } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui";
+import { withUnit } from "@/components/ui/Stat";
 import { formatDate } from "@/lib/format";
 
 type Annotation = { at: number; label: string; date: string; before: Drain; after: Drain };
@@ -36,13 +37,21 @@ export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; ann
         <dl className="mb-2 flex flex-wrap items-end gap-x-8 gap-y-2">
           <div>
             <dt className="text-meta text-muted">Before {compare.label}</dt>
-            <dd className="text-stat tabular-nums text-text">{rate(compare.before.rate)}</dd>
+            <dd className="text-stat tabular-nums text-text">{withUnit(rate(compare.before.rate))}</dd>
           </div>
           <div>
             <dt className="text-meta text-muted">After</dt>
-            <dd className="text-stat tabular-nums text-text">{rate(compare.after.rate)}</dd>
+            <dd className="text-stat tabular-nums text-text">{withUnit(rate(compare.after.rate))}</dd>
           </div>
-          <p className="pb-1 text-caption text-muted">7 days either side</p>
+          <p className="pb-1 text-caption text-muted">
+            {compare.before.rate != null && compare.after.rate != null && (
+              <span className={compare.after.rate - compare.before.rate > 0.05 ? "font-medium text-warn" : "font-medium text-secondary"}>
+                {compare.after.rate - compare.before.rate > 0 ? "+" : "−"}
+                {Math.abs(compare.after.rate - compare.before.rate).toFixed(1)} %/h after ·{" "}
+              </span>
+            )}
+            7 days either side
+          </p>
         </dl>
       )}
 
@@ -65,7 +74,11 @@ export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; ann
                     style={{ height: `${Math.max(3, (d.rate / max) * 100)}%`, background: "var(--mk-muted)" }}
                   />
                 ) : (
-                  <span className="h-px w-full bg-border" />
+                  // No data: a faint hatch the height of the chart, not a hole.
+                  <span
+                    className="h-full w-full opacity-60"
+                    style={{ backgroundImage: "repeating-linear-gradient(135deg, var(--mk-border) 0 1px, transparent 1px 5px)" }}
+                  />
                 )}
                 <span
                   role="tooltip"
@@ -99,10 +112,31 @@ export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; ann
           </span>
         ))}
       </div>
-      <div className="mt-1.5 flex justify-between text-caption leading-none text-muted">
-        <span>{dayLabel(days[0].date, false)}</span>
-        <span>{dayLabel(days[n - 1].date, false)}</span>
+      {/* Dates under the first day, about every two weeks, and the last day. */}
+      <div className="relative mt-1.5 h-3 text-caption leading-none text-muted">
+        {days.map((d, i) => {
+          const step = Math.max(7, Math.round(n / 4 / 7) * 7);
+          const last = i === n - 1;
+          if (!(i === 0 || last || (i % step === 0 && n - i > step / 2))) return null;
+          return (
+            <span
+              key={d.date}
+              className={`absolute top-0 whitespace-nowrap ${i === 0 ? "left-0" : last ? "right-0" : "-translate-x-1/2"}`}
+              style={i === 0 || last ? undefined : { left: `${((i + 0.5) / n) * 100}%` }}
+            >
+              {dayLabel(d.date, false)}
+            </span>
+          );
+        })}
       </div>
+      <p className="mt-2 flex items-center gap-1.5 text-caption text-muted">
+        <span
+          aria-hidden
+          className="inline-block h-3 w-3 rounded-[2px] border border-border"
+          style={{ backgroundImage: "repeating-linear-gradient(135deg, var(--mk-border) 0 1px, transparent 1px 4px)" }}
+        />
+        Not enough unplugged data
+      </p>
 
       <details className="group mt-4 text-caption text-muted">
         <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm font-medium text-secondary hover:text-text [&::-webkit-details-marker]:hidden">

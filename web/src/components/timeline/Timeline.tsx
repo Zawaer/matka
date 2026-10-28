@@ -18,7 +18,6 @@ import {
   DatePicker,
   EmptyState,
   IconButton,
-  KIND_ICONS,
   ModeGlyph,
   PlaceGlyph,
   Skeleton,
@@ -31,7 +30,7 @@ import type { DayMapSelection } from "./DayMap";
 import { badgeColors, legBadgeText } from "@/lib/transit/colors";
 import { TripEditor } from "./TripEditor";
 import { subRows } from "./legs";
-import { formatDate, formatDay, formatDistance, formatDuration, formatTime, localDate } from "@/lib/format";
+import { formatDate, formatDay, formatDayHeading, formatDistance, formatDuration, formatTime, localDate } from "@/lib/format";
 import type { TimelineDay, TimelineItem, Visit, TrackSummary, TransitLeg } from "@/lib/types";
 
 type TimelineResponse = {
@@ -152,7 +151,7 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
     <div
       className={cx(
         // Phone and tablet: sticky under the top bar, above the list.
-        "sticky top-[52px] z-20 -mx-4 mt-2 bg-bg px-4 pb-1 pt-3 sm:-mx-6 sm:px-6 md:top-0 md:-mx-10 md:px-10 md:pt-4",
+        "sticky top-[52px] z-20 -mx-4 mt-2 bg-bg px-4 pb-1 pt-3 sm:top-0 sm:-mx-8 sm:px-8 sm:pt-4 lg:-mx-10 lg:px-10",
         // Split view: the right column, full height, sticky.
         `split:col-start-2 split:row-span-2 split:row-start-1 split:m-0 split:h-dvh split:self-start split:border-l split:border-border split:p-0`,
         !showMap && !loadingFirst && `hidden split:block`,
@@ -181,6 +180,7 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
           prevDate={prevDate}
           nextDate={nextDate}
           onPick={pick}
+          pending={!!error || loadingFirst}
         />
 
         {current && !error && !noHistory && (
@@ -229,12 +229,11 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
         ) : items.length === 0 ? (
           <EmptyState
             icon={CalendarX2}
-            title="Nothing recorded on this day"
-            description="No visits or trips were recorded."
+            title={`Nothing recorded on ${formatDayHeading(current)}`}
             action={
               nearest && nearest !== current ? (
                 <Button variant="primary" onClick={() => pick(nearest)}>
-                  Go to the nearest day ({formatDate(nearest)})
+                  Go to {formatDate(nearest)}
                 </Button>
               ) : undefined
             }
@@ -295,50 +294,89 @@ function rowKey(item: TimelineItem, i: number) {
 
 /* ---------------- Day header ---------------- */
 
+/** A calendar day `n` days from `d` (YYYY-MM-DD). */
+const shiftDay = (d: string, n: number) => {
+  const t = new Date(`${d}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+};
+
 function DayHeader({
   date,
   dates,
   prevDate,
   nextDate,
   onPick,
+  pending,
 }: {
   date: string;
   dates: string[];
   prevDate: string | null;
   nextDate: string | null;
   onPick: (d: string) => void;
+  /** Loading or failed, with no list of days: navigation still works, by calendar day. */
+  pending: boolean;
 }) {
+  // Without the list of days (first load, or an error), step by calendar day,
+  // so a failed day never strands you.
+  const known = dates.length > 0;
+  const today = localDate(new Date());
+  const prev = known ? prevDate : date ? shiftDay(date, -1) : null;
+  const next = known ? nextDate : date && date < today ? shiftDay(date, 1) : null;
+  // A 44 px target on phones, 36 px from the tablet up.
+  const target = "max-sm:h-11 max-sm:w-11";
   return (
     <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between split:flex-col split:items-start">
-      <h1 className="min-w-0 text-title text-text">
-        {date ? (
-          <>
-            {formatDay(date)} <span className="font-normal text-muted">{date.slice(0, 4)}</span>
-          </>
-        ) : (
-          "Timeline"
-        )}
-      </h1>
+      {!date && pending ? (
+        <Skeleton className="h-8 w-64 max-w-full" />
+      ) : (
+        <h1 className="min-w-0 text-title text-text">
+          {date ? (
+            <>
+              {formatDay(date)} <span className="font-normal text-muted">{date.slice(0, 4)}</span>
+            </>
+          ) : (
+            "Timeline"
+          )}
+        </h1>
+      )}
 
-      {date && dates.length > 0 && (
+      {date && (known || pending) ? (
         <div className="flex items-center gap-1.5">
           <IconButton
             icon={ChevronLeft}
             label="Previous day"
             variant="secondary"
-            disabled={!prevDate}
-            onClick={() => prevDate && onPick(prevDate)}
+            disabled={!prev}
+            onClick={() => prev && onPick(prev)}
+            className={target}
           />
-          <DatePicker value={date} available={dates} onChange={onPick} label="Pick a day" />
+          <DatePicker
+            value={date}
+            available={known ? dates : undefined}
+            max={known ? undefined : today}
+            onChange={onPick}
+            label="Pick a day"
+            iconOnly
+            className={target}
+            popoverClassName="left-0 sm:left-auto sm:right-0 split:left-0 split:right-auto"
+          />
           <IconButton
             icon={ChevronRight}
             label="Next day"
             variant="secondary"
-            disabled={!nextDate}
-            onClick={() => nextDate && onPick(nextDate)}
+            disabled={!next}
+            onClick={() => next && onPick(next)}
+            className={target}
           />
         </div>
-      )}
+      ) : pending ? (
+        <div className="flex items-center gap-1.5" aria-hidden>
+          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-9 w-9" />
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -471,7 +509,7 @@ function VisitRow({
               {name}
             </Link>
             {asking && (
-              <span className="ml-0.5 font-normal text-muted" title="Not sure this is the right place">
+              <span className="font-normal text-muted" title="Not sure this is the right place">
                 ?
               </span>
             )}
@@ -480,7 +518,7 @@ function VisitRow({
         </div>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta text-muted">
           {kind && kind.label !== name && (
-            <Badge icon={visit.placeKind ? KIND_ICONS[visit.placeKind] : undefined}>{kind.label}</Badge>
+            <Badge>{kind.label}</Badge>
           )}
           <span className="tabular-nums">{visitTimes(visit, day)}</span>
           {guess && guess.others.length > 0 && <span className="min-w-0">Or: {guess.others.join(" · ")}</span>}
@@ -588,7 +626,7 @@ function MoveRow({
                 label={fixLabel}
                 size="sm"
                 onClick={() => onFix(track)}
-                className="-my-1 -mr-1.5 h-7 md:hidden"
+                className="relative -my-1 -mr-1.5 h-7 after:absolute after:-inset-2 after:content-[''] md:hidden"
               />
             </>
           )}

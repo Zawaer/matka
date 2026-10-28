@@ -82,7 +82,7 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
   return (
     <div className="mt-2.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button size="sm" icon={Check} disabled={busy} onClick={yes} className="h-7" aria-label={`Yes, it was ${shownName}`}>
+        <Button size="sm" variant="tonal" icon={Check} disabled={busy} onClick={yes} aria-label={`Yes, it was ${shownName}`}>
           Yes
         </Button>
         <Button
@@ -92,7 +92,7 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
           disabled={busy}
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className={cx("h-7 bg-surface-2/60", open && "bg-surface-2 text-text")}
+          className={cx(open && "bg-surface-2 text-text")}
         >
           Something else
         </Button>
@@ -176,26 +176,35 @@ export function MissingTravelRow({ gap, onAdd }: { gap: MissingTravel; onAdd: ()
           }}
         />
       </div>
-      <div className="mb-1 flex min-w-0 flex-1 flex-col gap-2.5 rounded-card border border-warn/30 bg-warn/5 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-label text-text">
-            <Route size={16} strokeWidth={1.75} aria-hidden className="mr-1.5 inline-block align-[-3px] text-warn" />
-            Missing travel
-            <span className="font-normal tabular-nums text-muted">
-              · {formatDistance(gap.distance)}
-              {gap.secs >= 60 ? ` · ${formatDuration(gap.secs)}` : ""}
-            </span>
-          </p>
-          <p className="mt-0.5 text-meta text-muted">
-            {noData ? "No location recorded" : "No trip recorded"} ·{" "}
-            <span className="whitespace-nowrap tabular-nums">
-              {formatTime(gap.from)} – {formatTime(gap.to)}
-            </span>
-          </p>
+      {/* Laid out by its own width: the button goes under the text in a
+          narrow column (phones, the 480 px split list), beside it from 560 px. */}
+      <div className="@container mb-1 min-w-0 flex-1 rounded-card border border-warn/30 bg-warn/5 px-3 py-2.5">
+        <div className="flex flex-col gap-2.5 @[35rem]:flex-row @[35rem]:items-center @[35rem]:gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-label text-text">
+              <Route size={16} strokeWidth={1.75} aria-hidden className="mr-1.5 inline-block align-[-3px] text-warn" />
+              Missing travel{" "}
+              <span className="font-normal tabular-nums text-muted">
+                · <span className="whitespace-nowrap">{formatDistance(gap.distance)}</span>
+                {gap.secs >= 60 ? (
+                  <>
+                    {" "}
+                    · <span className="whitespace-nowrap">{formatDuration(gap.secs)}</span>
+                  </>
+                ) : null}
+              </span>
+            </p>
+            <p className="mt-0.5 text-meta text-muted">
+              {noData ? "No location recorded" : "No trip recorded"} ·{" "}
+              <span className="whitespace-nowrap tabular-nums">
+                {formatTime(gap.from)} – {formatTime(gap.to)}
+              </span>
+            </p>
+          </div>
+          <Button size="sm" icon={Plus} onClick={onAdd} className="self-start @[35rem]:self-center">
+            Add travel
+          </Button>
         </div>
-        <Button size="sm" icon={Plus} onClick={onAdd} className="self-start sm:self-center">
-          Add travel
-        </Button>
       </div>
     </li>
   );
@@ -292,7 +301,7 @@ export function PhotoViewer({
   }, [ids.length, onClose]);
   const id = ids[i];
   const nav =
-    "pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/12 text-white backdrop-blur transition-colors hover:bg-white/24";
+    "pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur transition-colors hover:bg-black/70";
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-modal="true" aria-label="Photos" onClick={onClose}>
       <div className="flex items-center gap-3 px-4 py-3 text-sm text-white" onClick={(e) => e.stopPropagation()}>
@@ -325,7 +334,7 @@ export function PhotoViewer({
       </div>
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-2 pb-4" onClick={(e) => e.stopPropagation()}>
         {/* eslint-disable-next-line @next/next/no-img-element -- Immich proxy */}
-        <img key={id} src={thumb(id, "preview")} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
+        <img key={id} src={thumb(id, "preview")} alt="" className="h-full w-full object-contain" />
         <div className="pointer-events-none absolute inset-x-3 top-1/2 flex -translate-y-1/2 justify-between">
           {i > 0 ? (
             <button type="button" className={nav} onClick={() => setI(i - 1)} aria-label="Previous photo">

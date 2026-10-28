@@ -65,7 +65,8 @@ export default async function PlacesPage({
         subtitle="Everywhere you have stayed for a while, and how much time you spent there."
         actions={
           places.length > 0 && (
-            <ButtonLink href="/map?save=1" icon={MapPinPlus}>
+            // On phones the Map tab's own "Save a place" button does this; here it would push the list down.
+            <ButtonLink href="/map?save=1" icon={MapPinPlus} className="max-sm:hidden">
               Save a place on the map
             </ButtonLink>
           )

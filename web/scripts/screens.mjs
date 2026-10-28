@@ -45,6 +45,8 @@
 //   --schemes l,d    light (l) and/or dark (d) (default both)
 //   --dates a,b      extra /timeline?date= days (YYYY-MM-DD); by default the
 //                    harness picks the days of the first trip it finds
+//   --sizes also accepts t (tablet, 768x1024 at 2x, touch) and l (1024x768).
+//   --interactions  also shoot hover and keyboard-focus states (desktop).
 //   --extras         also shoot states the demo data can't reach, by mocking
 //                    API answers in the browser (no app code changes): an
 //                    uncertain "Visited X?" visit, Missing travel, transit
@@ -74,6 +76,7 @@ const { values: args, positionals } = parseArgs({
     schemes: { type: "string", default: "l,d" },
     dates: { type: "string" },
     extras: { type: "boolean", default: false },
+    interactions: { type: "boolean", default: false },
   },
 });
 const out = positionals[0];
@@ -82,7 +85,7 @@ if (!out) {
   process.exit(1);
 }
 const BASE = args.base.replace(/\/$/, "");
-const SIZES = { m: { width: 390, height: 844 }, d: { width: 1440, height: 900 } };
+const SIZES = { m: { width: 390, height: 844 }, t: { width: 768, height: 1024 }, l: { width: 1024, height: 768 }, d: { width: 1440, height: 900 } };
 const sizes = args.sizes.split(",").filter((s) => s in SIZES);
 const schemes = args.schemes.split(",").map((s) => (s.startsWith("l") ? "light" : "dark"));
 const only = args.only?.split(",").filter(Boolean);
@@ -94,12 +97,12 @@ const browser = await chromium.launch({ executablePath: CHROME });
 async function context(size, scheme) {
   const ctx = await browser.newContext({
     viewport: SIZES[size],
-    deviceScaleFactor: size === "m" ? 2 : 1,
+    deviceScaleFactor: size === "d" || size === "l" ? 1 : 2,
     colorScheme: scheme,
     timezoneId: "Europe/Helsinki",
     locale: "en-GB",
     isMobile: size === "m",
-    hasTouch: size === "m",
+    hasTouch: size === "m" || size === "t",
   });
   return ctx;
 }
@@ -230,6 +233,46 @@ const EXTRAS = args.extras
   : [];
 if (args.extras) await makePhotos();
 
+/** Hover and keyboard focus states: hover a target, or press Tab n times. */
+const hover = (sel) => async (p) => { await p.locator(sel).first().hover().catch(() => {}); await p.waitForTimeout(400); };
+const tabs = (n) => async (p) => { for (let i = 0; i < n; i++) await p.keyboard.press("Tab"); await p.waitForTimeout(400); };
+const INTERACTIONS = args.interactions
+  ? [
+      { name: "i-hover-nav", url: "/places", full: false, act: hover("nav a[href='/timeline'], aside a[href='/timeline']") },
+      { name: "i-hover-place-row", url: "/places", full: false, act: hover("a[href^='/places/']") },
+      { name: "i-hover-travel-row", url: `/timeline?date=${EXTRA_DATE}`, full: false, act: async (p) => {
+          const b = p.getByRole("button", { name: /Fix trip/ }).first();
+          const box = await b.boundingBox().catch(() => null);
+          if (box) await p.mouse.move(box.x - 120, box.y + box.height / 2);
+          await p.waitForTimeout(400);
+        } },
+      { name: "i-hover-trip-card", url: "/insights/trips", full: false, act: hover("a[href^='/insights/trips/']") },
+      { name: "i-hover-chart", url: "/", full: false, act: async (p) => {
+          const bar = p.locator("svg rect, [data-bar], [role=img] rect").nth(3);
+          await bar.hover().catch(() => {}); await p.waitForTimeout(400);
+        } },
+      { name: "i-focus-tab3", url: "/timeline", full: false, act: tabs(3) },
+      { name: "i-focus-tab8", url: `/timeline?date=${EXTRA_DATE}`, full: false, act: tabs(8) },
+      { name: "i-focus-tab14", url: `/timeline?date=${EXTRA_DATE}`, full: false, act: tabs(14) },
+      { name: "i-focus-places6", url: "/places", full: false, act: tabs(6) },
+      { name: "i-focus-settings5", url: "/settings", full: false, act: tabs(5) },
+      { name: "i-focus-auth", url: "/auth/key", auth: false, full: false, act: tabs(1) },
+      { name: "i-datepicker", url: `/timeline?date=${EXTRA_DATE}`, full: false, act: async (p) => {
+          await p.locator("main").getByRole("button", { name: /\d{4}/ }).first().click().catch(() => {});
+          await p.waitForTimeout(600);
+        } },
+      { name: "i-places-sort", url: "/places", full: false, act: async (p) => {
+          await p.getByRole("button", { name: /sort|most time/i }).first().click().catch(() => {});
+          await p.waitForTimeout(500);
+        } },
+      { name: "i-more-menu", url: "/timeline", full: false, act: async (p) => {
+          await p.getByRole("link", { name: /^More$/ }).or(p.getByRole("button", { name: /^More$/ })).first().click().catch(() => {});
+          await p.waitForTimeout(600);
+        } },
+    ]
+  : [];
+
+
 /** name, url, and optionally `auth: false`, `act(page)` for a state after load, `full: false` for the viewport only. */
 const STATES = [
   { name: "auth-key", url: "/auth/key", auth: false },
@@ -255,9 +298,11 @@ const STATES = [
   { name: "settings", url: "/settings" },
   { name: "not-found", url: "/no-such-page" },
   ...EXTRAS,
+  ...INTERACTIONS,
 ].filter((s) => !only || only.some((o) => s.name.includes(o)));
 
 let n = 0;
+const overflow = [];
 for (const size of sizes) {
   for (const scheme of schemes) {
     const authed = await context(size, scheme);
@@ -275,6 +320,12 @@ for (const size of sizes) {
       // Maps, charts and fonts settle after network idle.
       await page.waitForTimeout(s.wait ?? 800);
       const file = path.join(out, `${s.name}-${size}-${scheme}.png`);
+      // Horizontal overflow is a layout bug at any width: report it.
+      const sw = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]).catch(() => null);
+      if (sw && sw[0] > sw[1]) {
+        overflow.push(`${s.name}-${size}-${scheme}: scrollWidth ${sw[0]} > ${sw[1]}`);
+        console.warn(`\nscreens: OVERFLOW ${s.name}-${size}-${scheme}: ${sw[0]} > ${sw[1]}`);
+      }
       if (s.full === false) {
         await page.screenshot({ path: file });
       } else {
@@ -295,3 +346,4 @@ for (const size of sizes) {
 }
 await browser.close();
 console.log(`\nscreens: ${n} screenshots in ${out}`);
+console.log(overflow.length ? `screens: ${overflow.length} with horizontal overflow:\n  ${overflow.join("\n  ")}` : "screens: no horizontal overflow");

@@ -109,8 +109,8 @@ export default async function Overview() {
             ]}
           />
 
-          <section className="mt-8 grid items-start gap-x-4 gap-y-8 md:grid-cols-5">
-            <div className="md:col-span-3">
+          <section className="mt-8 grid items-start gap-x-4 gap-y-8 lg:grid-cols-5">
+            <div className="min-w-0 lg:col-span-3">
               <SectionHeader title="Distance by month" />
               <Card>
                 <ol className="flex h-48 items-stretch gap-1.5 sm:gap-2" aria-label="Distance by month">
@@ -124,12 +124,14 @@ export default async function Overview() {
                         key={`${m.year}-${m.month}`}
                         aria-label={`${MONTH_NAMES[m.month - 1]} ${m.year}: ${value}`}
                         tabIndex={0}
-                        className="group relative flex flex-1 flex-col items-center gap-2 outline-none"
+                        className="group relative flex min-w-0 flex-1 basis-0 flex-col items-center gap-2 outline-none"
                       >
                         <div className="relative flex w-full flex-1 flex-col justify-end">
-                          {/* The current month's value always shows; the others on hover or focus. */}
+                          {/* The current month's value always shows; the others on hover or focus.
+                              Positioned over the bar, so it never widens its column. */}
                           <span
-                            className={`pointer-events-none mb-1 self-center whitespace-nowrap text-caption tabular-nums ${
+                            style={{ bottom: `calc(${m.distance > 0 ? Math.max(2, h * 0.82) : 0}% + 4px)` }}
+                            className={`pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap text-caption tabular-nums ${
                               current
                                 ? "text-secondary"
                                 : "invisible rounded border border-border bg-surface px-1.5 text-text shadow-pop group-hover:visible group-focus-visible:visible"
@@ -140,7 +142,7 @@ export default async function Overview() {
                           {m.distance > 0 ? (
                             <div
                               className={`w-full rounded-t-[4px] transition-colors ${
-                                current ? "bg-primary" : "bg-primary/45 group-hover:bg-primary/70"
+                                current ? "bg-primary" : "bg-muted/35 group-hover:bg-muted/55"
                               }`}
                               style={{ height: `${Math.max(2, h * 0.82)}%` }}
                             />
@@ -158,7 +160,7 @@ export default async function Overview() {
               </Card>
             </div>
 
-            <div className="md:col-span-2">
+            <div className="min-w-0 lg:col-span-2">
               <SectionHeader
                 title="Most time spent"
                 action={
@@ -172,7 +174,7 @@ export default async function Overview() {
               ) : (
                 <Card>
                   <ol className="flex flex-col gap-3">
-                    {topPlaces.slice(0, 6).map((p, i) => (
+                    {topPlaces.slice(0, 6).map((p) => (
                       <li key={p.id}>
                         <Link href={`/places/${p.id}`} className="group block rounded-sm">
                           <div className="flex items-baseline justify-between gap-3">
@@ -181,7 +183,7 @@ export default async function Overview() {
                           </div>
                           <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-2">
                             <div
-                              className={`h-full rounded-full ${i === 0 ? "bg-secondary" : "bg-muted/40"}`}
+                              className="h-full rounded-full bg-secondary/35"
                               style={{ width: `${(p.hours / maxHours) * 100}%` }}
                             />
                           </div>
@@ -226,10 +228,10 @@ export default async function Overview() {
             {recent.length === 0 ? (
               <p className="text-meta text-muted">Stays of a few minutes or more show up here.</p>
             ) : (
-              <div className="flex flex-col gap-4">
+              <div className="grid items-start gap-4 xl:grid-cols-2">
                 {[...days].map(([day, visits]) => (
                   <div key={day}>
-                    <h3 className="mb-1.5 px-1 text-meta font-medium text-muted">{formatDayHeading(day, today)}</h3>
+                    <h3 className="mb-1.5 text-meta font-medium text-muted">{formatDayHeading(day, today)}</h3>
                     <CardList>
                       {visits.map((v) => (
                         <ListRow

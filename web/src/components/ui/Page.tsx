@@ -2,12 +2,14 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { cx } from "./cx";
 
+// Two content widths only (plus the timeline's full canvas): 688 px for
+// reading pages and 1072 px for everything else, after the 40 px gutters.
 const WIDTHS = {
-  /** Reading width: settings, devices. */
+  /** Reading width: settings, devices (688 px of content). */
   narrow: "max-w-3xl",
-  /** Most pages. */
-  default: "max-w-5xl",
-  /** Dense grids: places, insights. */
+  /** Every other page (1072 px of content). */
+  default: "max-w-6xl",
+  /** The same as default; kept so callers needn't change. */
   wide: "max-w-6xl",
   /** The whole canvas (the timeline's split view). */
   full: "max-w-none",
@@ -29,7 +31,7 @@ export function Page({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cx("w-full px-4 pb-10 pt-5 sm:px-6 md:px-10 md:pb-14 md:pt-10", WIDTHS[width], className)}>
+    <div className={cx("w-full px-4 pb-10 pt-5 sm:px-8 sm:pb-14 sm:pt-10 lg:px-10", WIDTHS[width], className)}>
       {children}
     </div>
   );

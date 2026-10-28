@@ -9,8 +9,10 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createRoot } from "react-dom/client";
+import { MapPin } from "lucide-react";
 import type { LngLatBoundsLike, Map as MlMap } from "maplibre-gl";
-import { computeDark, extendBounds, modeColorExpression, resolveColor, styleUrl, tameBasemap } from "./mapStyle";
+import { computeDark, extendBounds, modeColorExpression, resolveColor, fitPadding, loadStyle, tameBasemap } from "./mapStyle";
 
 type FC = GeoJSON.FeatureCollection;
 
@@ -56,6 +58,24 @@ function circlePolygon(lon: number, lat: number, radius: number): GeoJSON.Featur
   return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [pts] } };
 }
 
+/** Each feature's largest polygon only: France without Guiana, for fitting. */
+function mainlands(fc: FC): FC {
+  const area = (ring: number[][]) => {
+    let a = 0;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1]);
+    return Math.abs(a / 2);
+  };
+  return {
+    type: "FeatureCollection",
+    features: fc.features.map((f) => {
+      if (f.geometry?.type !== "MultiPolygon") return f;
+      const polys = f.geometry.coordinates;
+      const main = polys.reduce((best, p) => (area(p[0]) > area(best[0]) ? p : best), polys[0]);
+      return { ...f, geometry: { type: "Polygon", coordinates: main } };
+    }),
+  };
+}
+
 let countriesCache: Promise<FC> | null = null;
 const loadCountries = () =>
   (countriesCache ??= fetch("/geo/countries-110m.json").then((r) => {
@@ -94,9 +114,11 @@ export default function GeoMap({ window: win, points = [], circle, countries, pa
         : Promise.resolve(EMPTY);
       const world = countries ? loadCountries().catch(() => EMPTY) : Promise.resolve(EMPTY);
 
+      const style = await loadStyle(dark);
+      if (cancelled) return;
       const m = new ml.Map({
         container: el,
-        style: styleUrl(dark),
+        style: style as never,
         center: points[0] ? [points[0].lon, points[0].lat] : circle ? [circle.lon, circle.lat] : [20, 50],
         zoom: countries ? 1 : 4,
         attributionControl: { compact: false },
@@ -112,7 +134,10 @@ export default function GeoMap({ window: win, points = [], circle, countries, pa
       m.setMissingStyleImageResolver((id) => {
         if (!m.hasImage(id)) m.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
       });
-      m.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
+      // Zoom buttons only on maps tall enough to explore; small context maps
+      // (the place page's header) stay clean.
+      const withControls = el.clientHeight >= 400 || !!countries;
+      if (withControls) m.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
       m.on("error", (e) => console.warn("[GeoMap] maplibre error", e?.error ?? e));
 
       m.on("load", async () => {
@@ -120,34 +145,47 @@ export default function GeoMap({ window: win, points = [], circle, countries, pa
         tameBasemap(m, dark);
         const [fc, countryFc] = await Promise.all([tracks, world]);
         if (cancelled) return;
-        const primary = resolveColor("var(--mk-primary)");
+        // Data is neutral ink; the accent is kept for selection and actions.
+        const ink = resolveColor("var(--mk-text-2)");
+        const outline = resolveColor("var(--mk-outline)");
         const surface = resolveColor("var(--mk-surface)");
 
+        let visitedFc: FC | null = null;
         if (countries && countryFc.features.length) {
           const want = new Set(countries.map((c) => c.toLowerCase()));
           const visited = countryFc.features.filter((f) => {
             const p = f.properties as { iso?: string; names?: string };
             return (p.iso && want.has(p.iso.toLowerCase())) || (p.names ?? "").split("|").some((n) => want.has(n));
           });
-          m.addSource("countries", { type: "geojson", data: { type: "FeatureCollection", features: visited } });
-          m.addLayer({ id: "countries-fill", type: "fill", source: "countries", paint: { "fill-color": primary, "fill-opacity": 0.3 } });
+          visitedFc = { type: "FeatureCollection", features: visited };
+          m.addSource("countries", { type: "geojson", data: visitedFc });
+          m.addLayer({ id: "countries-fill", type: "fill", source: "countries", paint: { "fill-color": ink, "fill-opacity": 0.22 } });
           m.addLayer({
             id: "countries-line",
             type: "line",
             source: "countries",
-            paint: { "line-color": primary, "line-width": 1, "line-opacity": 0.7 },
+            paint: { "line-color": outline, "line-width": 1, "line-opacity": 0.8 },
           });
         }
 
         if (circle) {
           m.addSource("circle", { type: "geojson", data: circlePolygon(circle.lon, circle.lat, circle.radius) });
-          m.addLayer({ id: "circle-fill", type: "fill", source: "circle", paint: { "fill-color": primary, "fill-opacity": 0.14 } });
+          m.addLayer({ id: "circle-fill", type: "fill", source: "circle", paint: { "fill-color": ink, "fill-opacity": 0.12 } });
           m.addLayer({
             id: "circle-line",
             type: "line",
             source: "circle",
-            paint: { "line-color": primary, "line-width": 1.5, "line-dasharray": [2, 2] },
+            paint: { "line-color": outline, "line-width": 1 },
           });
+          // The place itself: a pin at the centre.
+          const node = document.createElement("div");
+          node.className =
+            "flex h-7 w-7 items-center justify-center rounded-full border-2 border-surface bg-text text-bg shadow-md";
+          node.setAttribute("aria-hidden", "true");
+          const glyph = createRoot(node);
+          glyph.render(<MapPin size={16} strokeWidth={2} aria-hidden />);
+          const mk = new ml.Marker({ element: node }).setLngLat([circle.lon, circle.lat]).addTo(m);
+          markers.push({ remove: () => { mk.remove(); setTimeout(() => glyph.unmount(), 0); } });
         }
 
         if (fc.features.length) {
@@ -182,12 +220,36 @@ export default function GeoMap({ window: win, points = [], circle, countries, pa
             type: "circle",
             source: "dots",
             paint: {
-              "circle-color": primary,
-              "circle-opacity": 0.9,
+              "circle-color": ink,
+              "circle-opacity": 0.75,
               "circle-radius": ["interpolate", ["linear"], ["get", "w"], 0, 4, 1, 12],
               "circle-stroke-color": surface,
               "circle-stroke-width": 2,
             },
+          });
+          // The three biggest dots carry their name, so touch screens (no
+          // hover) still say what they are.
+          const top = new Set(
+            dots
+              .map((p, i) => ({ i, w: p.weight ?? 0 }))
+              .sort((a, b) => b.w - a.w)
+              .slice(0, 3)
+              .map((d) => d.i),
+          );
+          m.addLayer({
+            id: "dots-label",
+            type: "symbol",
+            source: "dots",
+            filter: ["in", ["get", "i"], ["literal", [...top]]],
+            layout: {
+              "text-field": ["get", "label"],
+              "text-font": ["Noto Sans Regular"],
+              "text-size": 12,
+              "text-anchor": "left",
+              "text-offset": [1.1, 0],
+              "text-optional": true,
+            },
+            paint: { "text-color": resolveColor("var(--mk-text)"), "text-halo-color": surface, "text-halo-width": 1.5 },
           });
           const tip = new ml.Popup({ closeButton: false, closeOnClick: false, offset: 10, className: "mk-map-tip" });
           m.on("mousemove", "dots", (e) => {
@@ -209,22 +271,28 @@ export default function GeoMap({ window: win, points = [], circle, countries, pa
         for (const p of points.filter((x) => x.num != null)) {
           const node = document.createElement("div");
           node.className =
-            "flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-surface bg-primary px-1 text-caption font-semibold tabular-nums text-on-primary shadow-md";
+            "flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-surface bg-text px-1 text-caption font-semibold leading-none tabular-nums text-bg shadow-md";
           node.textContent = String(p.num);
           if (p.label) node.title = p.label;
-          markers.push(new ml.Marker({ element: node }).setLngLat([p.lon, p.lat]).addTo(m));
+          // Up and to the right of the stop, so the city's own label stays readable.
+          markers.push(new ml.Marker({ element: node, anchor: "bottom-left", offset: [2, -2] }).setLngLat([p.lon, p.lat]).addTo(m));
         }
 
-        // Fit: tracks, points and the circle; the world fits the visited countries.
+        // Fit: tracks, points and the circle; the world fits the visited
+        // countries themselves (each one's main landmass), not just the cities.
         let b = extendBounds(null, fc);
         b = extendBounds(b, {
           type: "FeatureCollection",
           features: points.map((p) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [p.lon, p.lat] } })),
         });
         if (circle) b = extendBounds(b, { type: "FeatureCollection", features: [circlePolygon(circle.lon, circle.lat, circle.radius * 2.2)] });
+        if (visitedFc) b = extendBounds(b, mainlands(visitedFc));
         if (b) {
+          const pad = withControls
+            ? fitPadding(el.clientWidth, el.clientHeight, { top: padding, right: 56, bottom: padding, left: padding })
+            : fitPadding(el.clientWidth, el.clientHeight, { top: padding, right: padding, bottom: padding, left: padding });
           if (b[0] === b[2] && b[1] === b[3]) m.jumpTo({ center: [b[0], b[1]], zoom });
-          else m.fitBounds(b as LngLatBoundsLike, { padding, maxZoom: countries ? 5 : 15, duration: 0 });
+          else m.fitBounds(b as LngLatBoundsLike, { padding: pad, maxZoom: countries ? 5 : 15, duration: 0 });
         }
         setState("ready");
       });

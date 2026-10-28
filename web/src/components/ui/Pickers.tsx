@@ -70,9 +70,10 @@ export const formatPickerDate = (s: string) => {
 };
 
 /**
- * A date button ("28 Oct 2026" with a calendar icon) opening a month
- * calendar. Days in `available` are the ones with data: the others are
- * greyed out and skipped by the keyboard, so every pick lands somewhere.
+ * A date button ("28 Oct 2026" with a calendar icon, or the icon alone)
+ * opening a month calendar. Days in `available` are the ones with data: the
+ * others are greyed out, struck through and skipped by the keyboard, so every
+ * pick lands somewhere.
  */
 export function DatePicker({
   value,
@@ -81,10 +82,16 @@ export function DatePicker({
   min,
   max,
   label = "Pick a date",
+  iconOnly,
+  popoverClassName,
   className,
 }: {
   value: string;
   onChange: (date: string) => void;
+  /** Just the calendar icon (when the date is already the page's title). */
+  iconOnly?: boolean;
+  /** Where the popover sits; by default under the trigger, left edges aligned. */
+  popoverClassName?: string;
   /** Days that can be picked (with data). Without it, every day in min…max. */
   available?: readonly string[];
   min?: string;
@@ -108,13 +115,14 @@ export function DatePicker({
         aria-controls={open ? id : undefined}
         aria-label={`${label}: ${value ? formatPickerDate(value) : "none"}`}
         onClick={() => setOpen((o) => !o)}
-        className={cx(triggerClass, "tabular-nums", className)}
+        title={iconOnly ? label : undefined}
+        className={cx(triggerClass, "tabular-nums", iconOnly && "w-9 justify-center px-0 text-secondary", className)}
       >
-        <CalendarDays size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />
-        <span className="truncate">{value ? formatPickerDate(value) : "Pick a date"}</span>
+        <CalendarDays size={16} strokeWidth={1.75} aria-hidden className={cx("shrink-0", !iconOnly && "text-muted")} />
+        {!iconOnly && <span className="truncate">{value ? formatPickerDate(value) : "Pick a date"}</span>}
       </button>
       {open && (
-        <div ref={pop} id={id} role="dialog" aria-label={label} className={cx(POPOVER, "right-0 w-[296px] sm:left-1/2 sm:right-auto sm:-translate-x-1/2")}>
+        <div ref={pop} id={id} role="dialog" aria-label={label} className={cx(POPOVER, "w-[296px]", popoverClassName ?? "left-0")}>
           <Calendar
             value={value}
             available={available}
@@ -148,7 +156,8 @@ function Calendar({
   const ok = useMemo(() => (available ? new Set(available) : null), [available]);
   const lo = min ?? available?.[0];
   const hi = max ?? available?.at(-1);
-  const can = (d: string) => (!lo || d >= lo) && (!hi || d <= hi) && (!ok || ok.has(d));
+  const inRange = (d: string) => (!lo || d >= lo) && (!hi || d <= hi);
+  const can = (d: string) => inRange(d) && (!ok || ok.has(d));
   const [focus, setFocus] = useState(value || hi || toYmd(new Date().getFullYear(), new Date().getMonth(), 1));
   const { y, m } = parse(focus);
   const grid = useRef<HTMLDivElement>(null);
@@ -270,14 +279,13 @@ function Calendar({
                         ? "bg-primary font-semibold text-on-primary"
                         : enabled
                           ? "font-medium text-text hover:bg-surface-2"
-                          : "cursor-default text-muted/50",
+                          : // A day without history, inside the range: struck through, so the
+                            // few gaps stand out rather than dotting every day that has data.
+                            cx("cursor-default text-muted/60", ok && inRange(d) && "line-through decoration-muted/60"),
                       isToday && !sel && "ring-1 ring-strong",
                     )}
                   >
                     {Number(d.slice(8))}
-                    {enabled && !sel && ok && (
-                      <span aria-hidden className="absolute bottom-1 h-1 w-1 rounded-full bg-primary/70" />
-                    )}
                   </button>
                 </span>
               );
@@ -285,7 +293,6 @@ function Calendar({
           </div>
         ))}
       </div>
-      {ok && <p className="mt-2 px-1 text-caption text-muted">Dotted days have recorded history.</p>}
     </div>
   );
 }
@@ -355,12 +362,12 @@ export function MonthPicker({
             setYear(Number(value.slice(0, 4)));
             setOpen((o) => !o);
           }}
-          className={cx(triggerClass, "w-full justify-between sm:w-44")}
+          className={cx(triggerClass, "w-full justify-center tabular-nums sm:w-40")}
         >
+          <CalendarDays size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />
           <span className="truncate">
             {MONTH_NAMES[Number(value.slice(5, 7)) - 1]} {value.slice(0, 4)}
           </span>
-          <ChevronDown size={16} strokeWidth={1.75} aria-hidden className="shrink-0 text-muted" />
         </button>
         {open && (
           <div ref={pop} id={id} role="dialog" aria-label="Pick a month" className={cx(POPOVER, "left-1/2 w-64 -translate-x-1/2")}>

@@ -43,24 +43,32 @@ export default async function DevicesPage() {
     <Page width="narrow">
       <PageHeader
         title="Devices"
-        subtitle="Phones that record your location, and how well they do it."
+        subtitle={"Phones that record your location, and how well they do\u00a0it."}
       />
 
       <PairDevice insecure={!isDeviceSafeUrl(appUrl())} />
 
-      {devices.length > 0 && (
-        <section className="mt-8">
-          <SectionHeader
-            title="Paired devices"
-            description={`${active.length} active${revoked.length ? `, ${revoked.length} revoked` : ""}`}
-          />
+      <section className="mt-8">
+        <SectionHeader
+          title="Paired devices"
+          description={
+            devices.length
+              ? `${active.length} active${revoked.length ? `, ${revoked.length} revoked` : ""}`
+              : undefined
+          }
+        />
+        {devices.length ? (
           <CardList>
             {[...active, ...revoked].map((d) => (
               <DeviceRow key={d.id} device={d} tz={user.timezone} />
             ))}
           </CardList>
-        </section>
-      )}
+        ) : (
+          <p className="text-meta text-muted">
+            No phones paired yet. Pair one above{hasBattery || hasQuality ? "; the history below came from a phone that has since been removed" : ""}.
+          </p>
+        )}
+      </section>
 
       {(hasBattery || hasQuality) && (
         <section className="mt-8">

@@ -796,6 +796,39 @@ try {
       [userId, rows[0].ts],
     );
   }
+  // A paired phone (and an old, revoked one) so the Devices page has a list.
+  // The token hashes are random bytes: no token exists that matches them.
+  const hasDevices = (await client.query(`SELECT 1 FROM devices WHERE user_id = $1 LIMIT 1`, [userId])).rowCount;
+  if (!hasDevices) {
+    const last = rows.length ? rows[rows.length - 1].ts : NOW;
+    await client.query(
+      `INSERT INTO devices (user_id, name, token_hash, created_at, last_seen_at, heartbeat_at, status)
+       VALUES ($1, 'Pixel 8', decode(md5(random()::text) || md5(random()::text), 'hex'), to_timestamp($2), to_timestamp($3), to_timestamp($4), $5),
+              ($1, 'Galaxy S10', decode(md5(random()::text) || md5(random()::text), 'hex'), to_timestamp($2) - interval '200 days', to_timestamp($2) - interval '2 days', NULL, NULL)`,
+      [
+        userId,
+        at(START, 9),
+        last,
+        Math.min(NOW, last + 600),
+        JSON.stringify({
+          recording: true,
+          mode: "active",
+          lastFixAt: new Date(last * 1000).toISOString(),
+          queued: 0,
+          appVersion: "1.4.0",
+          recoveries: 0,
+          problem: null,
+          preset: "balanced",
+          custom: null,
+          smartTracking: true,
+        }),
+      ],
+    );
+    await client.query(
+      `UPDATE devices SET revoked_at = created_at + interval '199 days' WHERE user_id = $1 AND name = 'Galaxy S10'`,
+      [userId],
+    );
+  }
   await client.query("COMMIT");
   console.log(
     `seed-demo: user ${userId} (${args.user}), ${START} … ${END}: ${rows.length} fixes generated, ` +

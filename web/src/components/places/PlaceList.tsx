@@ -50,16 +50,20 @@ export function PlaceRow({
   const unnamed = isUnnamed(p);
   const title = unnamed ? (p.street ?? "Unnamed place") : placeTitle(p.name, p.category);
   const what = p.kind ? KIND_META[p.kind].label : unnamed ? null : placeCategoryLine(p.name, p.category);
-  const meta = [what, showCity ? p.city : null, visitsLabel(p.visitCount)].filter(Boolean).join(" · ");
+  const meta = [what, showCity ? p.city : null].filter(Boolean).join(" · ");
   return (
     <li>
       <Link href={`/places/${p.id}`} className={rowClass}>
         <PlaceTile icon={placeIconFor(p.kind, p.category)} />
         <span className="min-w-0 flex-1">
           <span className={cx("block truncate text-label", unnamed ? "text-secondary" : "text-text")}>{title}</span>
-          <span className="mt-0.5 block truncate text-meta text-muted">{meta}</span>
+          {meta && <span className="mt-0.5 block truncate text-meta text-muted">{meta}</span>}
         </span>
-        <span className="shrink-0 text-right text-meta tabular-nums text-secondary">{formatLongDuration(p.totalTime)}</span>
+        {/* Time, and the visit count under it: numbers never get truncated with the meta. */}
+        <span className="shrink-0 text-right tabular-nums">
+          <span className="block text-meta text-secondary">{formatLongDuration(p.totalTime)}</span>
+          <span className="mt-0.5 block text-caption text-muted">{visitsLabel(p.visitCount)}</span>
+        </span>
         <ChevronRight size={16} strokeWidth={1.75} aria-hidden className="-mr-1 hidden shrink-0 text-muted sm:block" />
       </Link>
     </li>

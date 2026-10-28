@@ -16,7 +16,7 @@ export default function PairPage() {
     <div className="flex min-h-dvh flex-col items-center px-4 pb-10 pt-[8dvh] sm:pt-[14dvh]">
       <div className="w-full max-w-md">
         <Card padding="lg">
-          <div className="-mx-5 mb-5 flex justify-center border-b border-border px-5 pb-4 sm:-mx-6 sm:px-6">
+          <div className="mb-6 flex justify-center">
             <Wordmark size={28} />
           </div>
           <PairLanding />

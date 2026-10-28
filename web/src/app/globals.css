@@ -25,7 +25,6 @@
   --mk-success: #4cc38a;
   --mk-warn: #e9a23b;
   --mk-danger: #f2756a;
-  --mk-accent: var(--mk-danger);
   --mk-route: #3987e5;
 
   /* Travel modes (data marks only). Round 2: rebuilt so every mark is >= 3:1
@@ -43,6 +42,9 @@
   --mk-transit: #8f93b3;
   --mk-fly: #b45fd0;
 
+  /* The selected segment of a Segmented: raised above the surface-2 track
+     (lighter in dark, white in light). */
+  --mk-seg-on: var(--mk-surface-3);
   --mk-radius: 12px;
   --mk-shadow-sm: 0 0 0 transparent;
   --mk-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
@@ -76,6 +78,7 @@
     --mk-boat: #0b5e7a;
     --mk-transit: #686b8f;
     --mk-fly: #8c3aa3;
+    --mk-seg-on: var(--mk-surface);
     --mk-shadow-sm: 0 0 0 transparent;
     --mk-shadow: 0 12px 32px -8px rgba(40, 34, 20, 0.16), 0 2px 6px rgba(40, 34, 20, 0.06);
     color-scheme: light;
@@ -109,6 +112,7 @@
   --mk-boat: #0b5e7a;
   --mk-transit: #686b8f;
   --mk-fly: #8c3aa3;
+  --mk-seg-on: var(--mk-surface);
   --mk-shadow-sm: 0 0 0 transparent;
   --mk-shadow: 0 12px 32px -8px rgba(40, 34, 20, 0.16), 0 2px 6px rgba(40, 34, 20, 0.06);
   color-scheme: light;
@@ -133,8 +137,8 @@
   --color-success: var(--mk-success);
   --color-warn: var(--mk-warn);
   --color-danger: var(--mk-danger);
-  --color-accent: var(--mk-accent);
   --color-route: var(--mk-route);
+  --color-seg-on: var(--mk-seg-on);
   --radius-mk: var(--mk-radius);
   --radius-card: var(--mk-radius);
   --radius-control: 8px;
@@ -192,6 +196,55 @@ body {
      Linux at 2x rounds each advance to the hinting grid and Geist shows gaps
      inside words ("Ho tel", "Se ttings"); verified in r2 phone shots. */
   text-rendering: geometricPrecision;
+}
+
+/* Form controls: Chrome's UA sheet resets text-rendering on these (Tailwind's
+   preflight already inherits the font), which brings back the glyph gaps
+   ("Mo re", "Europ e/Helsinki"). In the base layer so utilities still win. */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    letter-spacing: inherit;
+    text-rendering: inherit;
+  }
+
+  /* Disclosures use a Lucide chevron, never the native triangle. */
+  summary {
+    list-style: none;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+}
+
+/* Skeleton blocks: surface-3 with a slow shimmer (visible on bg in light). */
+.mk-skeleton {
+  background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--mk-text) 6%, transparent) 50%,
+      transparent 100%
+    )
+    var(--mk-surface-3);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: mk-shimmer 1.6s ease-in-out infinite;
+}
+@keyframes mk-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mk-skeleton {
+    animation: none;
+  }
 }
 
 /* One focus ring for everything focusable by keyboard. */
@@ -307,7 +360,7 @@ html.embed .map-shell {
 .maplibregl-ctrl.maplibregl-ctrl-attrib,
 .maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact,
 .maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact-show {
-  background: color-mix(in srgb, var(--mk-surface) 72%, transparent) !important;
+  background: color-mix(in srgb, var(--mk-surface) 90%, transparent) !important;
   color: var(--mk-muted) !important;
   font-size: 11px !important;
   line-height: 16px !important;

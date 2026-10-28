@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { ExternalLink, QrCode } from "lucide-react";
 import { pairDevice, type PairResult } from "@/app/devices/actions";
-import { Button, Callout, Card, Field, IconTile, Input } from "@/components/ui";
+import { Button, Callout, Card, Field, IconTile, Input, cx } from "@/components/ui";
 import { CopyField } from "@/components/ui/CopyField";
 
 export function PairDevice({ insecure }: { insecure: boolean }) {
@@ -52,9 +52,9 @@ export function PairDevice({ insecure }: { insecure: boolean }) {
   return (
     <Card as="section" padding="none">
       <div className="flex items-start gap-3 border-b border-border px-4 py-3.5 sm:px-5">
-        <IconTile icon={QrCode} tone="primary" />
+        <IconTile icon={QrCode} />
         <div className="min-w-0">
-          <h2 className="text-heading text-text">Pair a device</h2>
+          <h2 className="text-heading text-text">Pair your phone</h2>
           <p className="mt-0.5 text-meta text-muted">Name the phone, then scan the QR code with the Matka app.</p>
         </div>
       </div>
@@ -68,7 +68,7 @@ export function PairDevice({ insecure }: { insecure: boolean }) {
           >
             <Input id="device-name" name="name" required maxLength={64} placeholder="e.g. Pixel 8" />
           </Field>
-          <Button type="submit" variant="primary" icon={QrCode} disabled={pending} className={result && !result.ok ? "sm:mb-6" : undefined}>
+          <Button type="submit" variant="primary" icon={QrCode} disabled={pending} className={cx("self-start sm:self-auto", result && !result.ok && "sm:mb-6")}>
             {pending ? "Pairing…" : "Pair"}
           </Button>
         </div>

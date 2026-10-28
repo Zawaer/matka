@@ -7,7 +7,7 @@ import type { Map as MlMap, LngLatBoundsLike, Marker } from "maplibre-gl";
 import { createSavedPlace } from "@/app/places/actions";
 import { KindPicker, SizePicker } from "@/components/places/SavedFields";
 import { MODE_META, type ModeKey } from "@/lib/modes";
-import { computeDark, extendBounds, modeColorExpression, resolveColor, styleUrl, tameBasemap } from "./mapStyle";
+import { computeDark, extendBounds, fitPadding, loadStyle, modeColorExpression, resolveColor, tameBasemap } from "./mapStyle";
 import { PLACE_SIZES } from "@/lib/savedPlaces";
 import { Check, CircleCheck, Crosshair, Flame, type LucideIcon, MapPinPlus, Route as RouteIcon, Smartphone, X } from "lucide-react";
 import { Button, ButtonLink, Callout, cx, IconButton, Input, Segmented } from "@/components/ui";
@@ -141,10 +141,12 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
       mlRef.current = maplibregl;
 
       let dark = computeDark();
+      const style = await loadStyle(dark);
+      if (cancelled) return;
 
       const m = new maplibregl.Map({
         container,
-        style: styleUrl(dark),
+        style: style as never,
         center: FALLBACK_CENTER,
         zoom: FALLBACK_ZOOM,
         attributionControl: { compact: false },
@@ -192,6 +194,18 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
         }
         if (tracks && !m.getSource("tracks")) {
           m.addSource("tracks", { type: "geojson", data: tracks });
+          // A thin casing in the page colour so lines read over grey water.
+          m.addLayer({
+            id: "routes-casing",
+            type: "line",
+            source: "tracks",
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: {
+              "line-color": resolveColor("var(--mk-bg)"),
+              "line-width": ["interpolate", ["linear"], ["zoom"], 5, 4.5, 10, 5, 15, 6.5],
+              "line-opacity": 0.85,
+            },
+          });
           m.addLayer({
             id: "routes",
             type: "line",
@@ -204,13 +218,13 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
                 ["linear"],
                 ["zoom"],
                 5,
-                1.5,
-                10,
                 2.5,
+                10,
+                3,
                 15,
                 4.5,
               ],
-              "line-opacity": 0.85,
+              "line-opacity": 0.9,
             },
           });
         }
@@ -242,12 +256,8 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
             "visibility",
             showHeatRef.current ? "visible" : "none",
           );
-        if (m.getLayer("routes"))
-          m.setLayoutProperty(
-            "routes",
-            "visibility",
-            showRoutesRef.current ? "visible" : "none",
-          );
+        for (const id of ["routes", "routes-casing"])
+          if (m.getLayer(id)) m.setLayoutProperty(id, "visibility", showRoutesRef.current ? "visible" : "none");
       };
 
       m.on("load", async () => {
@@ -277,7 +287,7 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
           bbox = extendBounds(bbox, points);
           if (bbox) {
             m.fitBounds(bbox as LngLatBoundsLike, {
-              padding: 48,
+              padding: chromePadding(m),
               duration: 0,
               maxZoom: 15,
             });
@@ -297,11 +307,14 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
       mql = window.matchMedia("(prefers-color-scheme: dark)");
       onThemeChange = () => {
         dark = computeDark();
-        m.setStyle(styleUrl(dark));
-        m.once("styledata", () => {
+        void loadStyle(dark).then((st) => {
           if (cancelled) return;
-          tameBasemap(m, dark);
-          addDataLayers();
+          m.setStyle(st as never, { diff: false });
+          m.once("styledata", () => {
+            if (cancelled) return;
+            tameBasemap(m, dark);
+            addDataLayers();
+          });
         });
       };
       mql.addEventListener("change", onThemeChange);
@@ -385,7 +398,7 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
         (m.getSource("tracks") as { setData?: (d: FC) => void } | undefined)?.setData?.(t);
         setModes(modesOf(t));
         const b = extendBounds(extendBounds(null, t), p);
-        if (b) m.fitBounds(b as LngLatBoundsLike, { padding: 48, duration: 500, maxZoom: 15 });
+        if (b) m.fitBounds(b as LngLatBoundsLike, { padding: chromePadding(m), duration: 500, maxZoom: 15 });
       } catch {
         // Aborted, or offline: the previous range stays on the map.
       }
@@ -407,48 +420,52 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
   useEffect(() => {
     showRoutesRef.current = showRoutes;
     const map = mapRef.current;
-    if (map && map.getLayer("routes"))
-      map.setLayoutProperty(
-        "routes",
-        "visibility",
-        showRoutes ? "visible" : "none",
-      );
+    for (const id of ["routes", "routes-casing"])
+      if (map && map.getLayer(id)) map.setLayoutProperty(id, "visibility", showRoutes ? "visible" : "none");
   }, [showRoutes]);
+
+  const toggleSave = () => {
+    setSaveMode(!saveMode);
+    setPin(null);
+    setSavedPlace(null);
+    setSaveError(null);
+  };
 
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* One bar: layers and range on the left, "Save a place" on the right (an icon on phones). */}
+      {/* One bar: layers and range on the left; "Save a place" in the bar on
+          desktop, under the zoom buttons (one column of map buttons) below 1024 px. */}
       <div className="pointer-events-none absolute left-3 right-14 top-3 z-10 flex flex-wrap items-start gap-2">
         <div className={cx(PANEL, "pointer-events-auto flex flex-wrap items-center gap-1 p-1")}>
-          <div role="group" aria-label="Layers" className="flex gap-0.5">
-            <ToggleButton active={showRoutes} onClick={() => setShowRoutes((v) => !v)} label="Routes" icon={RouteIcon} />
-            <ToggleButton active={showHeat} onClick={() => setShowHeat((v) => !v)} label="Heatmap" icon={Flame} />
+          <div role="group" aria-label="Layers" className="inline-flex gap-0.5 rounded-control bg-surface-2 p-0.5">
+            <ToggleButton active={showRoutes} onClick={() => setShowRoutes((v) => !v)} label="Routes" icon={RouteIcon} disabled={isEmpty} />
+            <ToggleButton active={showHeat} onClick={() => setShowHeat((v) => !v)} label="Heatmap" icon={Flame} disabled={isEmpty} />
           </div>
           <span aria-hidden className="mx-0.5 hidden h-5 w-px bg-border sm:block" />
           <Segmented
             label="Time range"
             size="sm"
             value={range}
+            disabled={isEmpty}
             items={RANGES.map((r) => ({ key: r.key, label: r.label, onClick: () => setRange(r.key) }))}
           />
         </div>
-        <div className={cx(PANEL, "pointer-events-auto ml-auto flex p-1 sm:ml-0")}>
-          <ToggleButton
-            active={saveMode}
-            onClick={() => {
-              setSaveMode(!saveMode);
-              setPin(null);
-              setSavedPlace(null);
-              setSaveError(null);
-            }}
-            label={saveMode ? "Done" : "Save a place"}
-            icon={saveMode ? Check : MapPinPlus}
-            compact
-          />
+        <div className={cx(PANEL, "pointer-events-auto hidden p-1 lg:flex")}>
+          <SaveButton active={saveMode} onClick={toggleSave} />
         </div>
       </div>
+      <button
+        type="button"
+        onClick={toggleSave}
+        aria-pressed={saveMode}
+        aria-label={saveMode ? "Done saving places" : "Save a place"}
+        title={saveMode ? "Done" : "Save a place"}
+        className={cx("mk-map-btn absolute right-2.5 top-[84px] z-10 lg:hidden", saveMode && "!bg-primary !text-on-primary")}
+      >
+        {saveMode ? <Check size={16} strokeWidth={1.75} aria-hidden /> : <MapPinPlus size={16} strokeWidth={1.75} aria-hidden />}
+      </button>
 
       {isEmpty && status === "ready" && (
         <div className="absolute inset-x-3 top-1/3 z-10 mx-auto max-w-xs">
@@ -456,7 +473,7 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
             <p className="text-label text-text">Nothing to map yet</p>
             <p className="mt-1 text-meta text-muted">Your routes and the places you spend time show up here.</p>
             <ButtonLink href="/devices" variant="primary" size="sm" icon={Smartphone} className="mt-3">
-              Pair a device
+              Pair your phone
             </ButtonLink>
           </div>
         </div>
@@ -516,23 +533,20 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
       )}
 
       {showRoutes && !saveMode && modes.length > 0 && (
-        <details
-          open
-          className={cx(PANEL, "group absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)] text-caption text-secondary sm:max-w-[70%]")}
+        <div
+          aria-label="Route colours"
+          className={cx(
+            PANEL,
+            "absolute bottom-3 left-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-x-3.5 gap-y-1 px-3 py-2 text-caption text-secondary sm:max-w-[70%]",
+          )}
         >
-          <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 px-3 font-medium text-text sm:hidden [&::-webkit-details-marker]:hidden">
-            <RouteIcon size={16} strokeWidth={1.75} aria-hidden className="text-muted" />
-            Legend
-          </summary>
-          <div aria-label="Route colours" className="flex flex-wrap gap-x-3.5 gap-y-1 px-3 pb-2 pt-0 sm:py-2">
-            {modes.map((k) => (
-              <span key={k} className="flex items-center gap-1.5">
-                <span className="inline-block h-[3px] w-3.5 rounded-full" style={{ background: MODE_META[k].color }} />
-                {MODE_META[k].label}
-              </span>
-            ))}
-          </div>
-        </details>
+          {modes.map((k) => (
+            <span key={k} className="flex items-center gap-1.5">
+              <span className="inline-block h-[3px] w-3.5 rounded-full" style={{ background: MODE_META[k].color }} />
+              {MODE_META[k].label}
+            </span>
+          ))}
+        </div>
       )}
 
       {status === "loading" && (
@@ -552,38 +566,64 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
 /** Floating panels over the map. */
 const PANEL = "rounded-card border border-border bg-surface/95 shadow-pop backdrop-blur-md";
 
+/**
+ * A layer that can be on alongside the other, drawn like a Segmented item (the
+ * one segmented style): a raised pill when on, no checkmark.
+ */
 function ToggleButton({
   active,
   onClick,
   label,
   icon: I,
-  compact,
+  disabled,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   icon: LucideIcon;
-  /** Icon only on phones. */
-  compact?: boolean;
+  disabled?: boolean;
 }) {
-  // A layer that can be on alongside the other: a check when on, neutral either way (not the accent).
-  const Glyph = active && !compact ? Check : I;
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      aria-label={compact ? label : undefined}
-      title={compact ? label : undefined}
+      disabled={disabled}
       className={cx(
-        "inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-meta font-medium transition-colors",
-        active ? "bg-surface-2 text-text" : "text-muted hover:bg-surface-2 hover:text-text",
+        "inline-flex h-7 items-center gap-1.5 rounded-[6px] px-2.5 text-meta font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        active ? "bg-seg-on text-text shadow-[0_1px_2px_rgba(0,0,0,0.12)] ring-1 ring-border" : "text-muted enabled:hover:text-text",
       )}
     >
-      <Glyph size={16} strokeWidth={1.75} aria-hidden className={active && !compact ? "text-primary" : undefined} />
-      <span className={compact ? "hidden sm:inline" : undefined}>{label}</span>
+      <I size={16} strokeWidth={1.75} aria-hidden />
+      {label}
     </button>
   );
+}
+
+/** "Save a place" in the desktop bar. */
+function SaveButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+  const I = active ? Check : MapPinPlus;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cx(
+        "inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-meta font-medium transition-colors",
+        active ? "bg-primary/10 text-primary-strong" : "text-secondary hover:bg-surface-2 hover:text-text",
+      )}
+    >
+      <I size={16} strokeWidth={1.75} aria-hidden />
+      {active ? "Done" : "Save a place"}
+    </button>
+  );
+}
+
+/** fitBounds padding clear of the toolbar (top), zoom buttons (right) and legend (bottom). */
+function chromePadding(m: MlMap) {
+  const el = m.getContainer();
+  const w = el.clientWidth;
+  return fitPadding(w, el.clientHeight, w < 640 ? { top: 100, right: 56, bottom: 56, left: 24 } : { top: 72, right: 64, bottom: 64, left: 32 });
 }
 
 /** The modes present in a set of tracks, in the palette's order. */

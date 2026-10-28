@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { signInWithKey, type KeyLoginState } from "./actions";
-import { Button, Callout, Field, Input } from "@/components/ui";
+import { Button, Field, Input } from "@/components/ui";
 
 export function KeyForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState<KeyLoginState, FormData>(signInWithKey, { error: null });
@@ -14,7 +14,13 @@ export function KeyForm({ next }: { next: string }) {
   return (
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
-      <Field label="Login key" htmlFor="key" hint="The login key set when your server was installed.">
+      <Field
+        label="Login key"
+        htmlFor="key"
+        hint="The login key set when your server was installed."
+        // The error takes the hint's line, so nothing moves.
+        error={state.error ?? undefined}
+      >
         <Input
           ref={input}
           id="key"
@@ -23,16 +29,11 @@ export function KeyForm({ next }: { next: string }) {
           autoComplete="current-password"
           autoFocus
           required
-          className="font-mono"
+          className="font-mono placeholder:font-sans"
           placeholder="Paste your login key"
           aria-invalid={state.error ? true : undefined}
         />
       </Field>
-      {state.error && (
-        <Callout tone="danger" role="alert" className="-mt-1">
-          {state.error}
-        </Callout>
-      )}
       <Button type="submit" variant="primary" size="lg" block disabled={pending}>
         {pending ? "Checking…" : "Sign in"}
       </Button>

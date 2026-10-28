@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { Link2Off, Smartphone } from "lucide-react";
 import { appPairingLink, parsePairingFragment } from "@/lib/pairing";
@@ -28,6 +29,9 @@ export function PairLanding() {
           This page needs the full link from a pairing QR code. In Matka on your computer, open Devices → Pair a
           device and scan the code it shows.
         </p>
+        <Link href="/" className={buttonClass({ variant: "ghost" }) + " mt-4"}>
+          Open Matka
+        </Link>
       </div>
     );
   }
@@ -36,7 +40,7 @@ export function PairLanding() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
-        <IconTile icon={Smartphone} size="lg" tone="primary" />
+        <IconTile icon={Smartphone} size="lg" />
         <div className="min-w-0">
           <h1 className="text-heading text-text">Pair this phone with Matka</h1>
           <p className="mt-0.5 truncate text-meta text-muted">

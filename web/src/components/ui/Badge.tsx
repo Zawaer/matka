@@ -46,7 +46,7 @@ export function Chip({ className, children, title }: { className?: string; child
     <span
       title={title}
       className={cx(
-        "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-surface px-2.5 text-meta text-secondary",
+        "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-surface-2 px-2.5 text-meta text-secondary",
         className,
       )}
     >

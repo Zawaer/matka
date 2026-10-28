@@ -2,11 +2,13 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { cx } from "./cx";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "tonal" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
 const VARIANT: Record<Variant, string> = {
   primary: "bg-primary text-on-primary hover:bg-primary-strong",
+  /** The likely answer when it isn't the screen's one primary action ("Yes"). */
+  tonal: "bg-primary/10 text-primary-strong hover:bg-primary/15",
   secondary: "border border-border bg-surface text-text shadow-card hover:border-strong hover:bg-surface-2",
   ghost: "text-secondary hover:bg-surface-2 hover:text-text",
   danger: "border border-danger/35 bg-surface text-danger hover:bg-danger/10",
@@ -86,7 +88,7 @@ const ICON_BTN: Record<Size, string> = { sm: "h-8 w-8", md: "h-9 w-9", lg: "h-11
 
 export const iconButtonClass = ({ variant = "ghost", size = "md" }: { variant?: Variant; size?: Size } = {}) =>
   cx(
-    "inline-flex shrink-0 items-center justify-center rounded-control transition-colors disabled:pointer-events-none disabled:opacity-40",
+    "inline-flex shrink-0 items-center justify-center rounded-control transition-colors disabled:pointer-events-none disabled:opacity-50",
     VARIANT[variant],
     variant === "ghost" && "text-muted",
     ICON_BTN[size],

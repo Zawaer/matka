@@ -10,7 +10,7 @@ export default async function MapPage({ searchParams }: { searchParams: Promise<
   // mobile (to clear the fixed bottom nav); we cancel it here so the map can
   // sit exactly between the ~52px sticky top bar and the ~56px bottom nav.
   return (
-    <div className="map-shell relative -mb-20 h-[calc(100dvh-108px)] w-full overflow-hidden md:mb-0 md:h-[100dvh]">
+    <div className="map-shell relative -mb-20 h-[calc(100dvh-108px)] w-full overflow-hidden sm:mb-0 sm:h-[100dvh]">
       <MapView initialSave={save === "1"} />
     </div>
   );

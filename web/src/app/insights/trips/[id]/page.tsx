@@ -64,9 +64,8 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
     .sort((a, b) => b.duration - a.duration);
 
   const leftHome =
-    `${trip.days} ${trip.days === 1 ? "day" : "days"}, ${trip.nights} ${trip.nights === 1 ? "night" : "nights"} away. ` +
-    `Left home ${formatTime(new Date(trip.departure), tz)} on ${formatDay(trip.startDate)}` +
-    (trip.arrival != null ? `, back ${formatTime(new Date(trip.arrival), tz)} on ${formatDay(trip.endDate)}.` : ", still away.");
+    `${trip.nights} ${trip.nights === 1 ? "night" : "nights"} away · left ${formatTime(new Date(trip.departure), tz)}` +
+    (trip.arrival != null ? `, back ${formatTime(new Date(trip.arrival), tz)}` : ", still away");
   const dates = `${formatDateRange(trip.startDate, trip.endDate)}${trip.countries.length > 0 ? ` · ${trip.countries.join(", ")}` : ""}`;
 
   return (
@@ -111,12 +110,12 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
         ]}
       />
 
-      <section className="mt-4 grid items-start gap-4 md:grid-cols-5">
-        <Card className="md:col-span-3">
+      <section className="mt-4 grid items-start gap-4 lg:grid-cols-5 lg:items-stretch">
+        <Card className="lg:col-span-3">
           <CardHeader title="How you travelled" />
           {trip.modes.length ? <ModeBars modes={trip.modes} /> : <p className="text-meta text-muted">No moves recorded.</p>}
         </Card>
-        <Card className="md:col-span-2" padding="none">
+        <Card className="lg:col-span-2" padding="none">
           <div className="px-4 pt-4 sm:px-5 sm:pt-5">
             <CardHeader title="Cities visited" className="mb-2" />
           </div>
@@ -155,16 +154,16 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
                       <span className="font-normal text-muted"> · </span>
                       {formatDay(d.date)}
                     </span>
-                    <span className="shrink-0 text-label font-semibold tabular-nums text-text md:hidden">
+                    <span className="shrink-0 text-label font-semibold tabular-nums text-text xl:hidden">
                       {formatKm(d.distance)}
                     </span>
                   </p>
                   <p className="mt-0.5 truncate text-meta text-muted">{d.cities.length ? d.cities.join(" · ") : "No named places"}</p>
-                  <div className="mt-2 md:hidden">
+                  <div className="mt-1.5 xl:hidden">
                     <ModeChips modes={d.modes} max={3} />
                   </div>
                 </div>
-                <div className="hidden shrink-0 items-center gap-4 md:flex">
+                <div className="hidden shrink-0 items-center gap-4 xl:flex">
                   <ModeChips modes={d.modes} max={3} />
                   <span className="w-20 text-right text-label font-semibold tabular-nums text-text">{formatKm(d.distance)}</span>
                 </div>

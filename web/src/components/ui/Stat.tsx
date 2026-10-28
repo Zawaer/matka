@@ -1,7 +1,7 @@
 import { cx } from "./cx";
 
 /** "1,529 km", "12 d 3 h" → each figure, then its unit smaller and muted. */
-function withUnit(value: React.ReactNode) {
+export function withUnit(value: React.ReactNode) {
   if (typeof value !== "string") return value;
   if (!/^(?:[\d.,]*\d\s[a-zA-Z%/]+\s?)+$/.test(value)) return value;
   const pairs = [...value.matchAll(/([\d.,]*\d)\s([a-zA-Z%/]+)/g)];
@@ -42,8 +42,9 @@ export function Stat({
 }
 
 /**
- * Several figures in one card, split by hairlines: a 2×2 grid on phones, one
- * row from `sm` up. Cards are for groups, not for each number.
+ * Several figures in one card, split by hairlines. Laid out by the card's own
+ * width (a container query), not the viewport: three figures are always one
+ * row (no orphan tile); four are 2×2 under 560 px of card width.
  */
 export function StatStrip({
   items,
@@ -53,25 +54,26 @@ export function StatStrip({
   className?: string;
 }) {
   const n = items.length;
-  const cols = n >= 4 ? "sm:grid-cols-4" : n === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2";
+  const cols = n >= 4 ? "grid-cols-2 @[35rem]:grid-cols-4" : n === 3 ? "grid-cols-3" : n === 2 ? "grid-cols-2" : "grid-cols-1";
+  const narrow3 = n === 3;
   return (
-    <dl
-      className={cx(
-        "grid grid-cols-2 overflow-hidden rounded-card border border-border bg-border shadow-card gap-px",
-        cols,
-        className,
-      )}
-    >
-      {items.map((it, i) => (
-        <div
-          key={i}
-          className={cx("min-w-0 bg-surface px-4 py-3.5", n % 2 === 1 && i === n - 1 && "col-span-2 sm:col-span-1")}
-        >
-          <dt className="truncate text-meta text-muted">{it.label}</dt>
-          <dd className="mt-1 truncate text-stat tabular-nums text-text">{withUnit(it.value)}</dd>
-          {it.hint && <dd className="mt-0.5 truncate text-caption text-muted">{it.hint}</dd>}
-        </div>
-      ))}
-    </dl>
+    <div className={cx("@container", className)}>
+      <dl className={cx("grid gap-px overflow-hidden rounded-card border border-border bg-border shadow-card", cols)}>
+        {items.map((it, i) => (
+          <div key={i} className={cx("min-w-0 bg-surface py-3.5", narrow3 ? "px-3 @[30rem]:px-4" : "px-4")}>
+            <dt className={cx("truncate text-muted", narrow3 ? "text-caption @[30rem]:text-meta" : "text-meta")}>{it.label}</dt>
+            <dd
+              className={cx(
+                "mt-1 truncate tabular-nums text-text",
+                narrow3 ? "text-[1.25rem] font-semibold leading-7 tracking-[-0.02em] @[30rem]:text-stat" : "text-stat",
+              )}
+            >
+              {withUnit(it.value)}
+            </dd>
+            {it.hint && <dd className="mt-0.5 truncate text-caption text-muted">{it.hint}</dd>}
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }

@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { ArrowDownWideNarrow, Check, ChevronDown } from "lucide-react";
 import { cx } from "@/components/ui";
 
-/** "Sort: Visits ▾": a compact menu of sort orders, each a link (?sort=). */
+/** "[sort icon] Visits ▾": a compact menu of sort orders, each a link (?sort=). */
 export function SortMenu({ value, options }: { value: string; options: { key: string; label: string; href: string }[] }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -49,7 +49,9 @@ export function SortMenu({ value, options }: { value: string; options: { key: st
         onClick={() => setOpen((o) => !o)}
         className="inline-flex h-8 items-center gap-1 rounded-control px-2.5 text-meta text-muted transition-colors hover:bg-surface-2 hover:text-text aria-expanded:bg-surface-2"
       >
-        Sort: <span className="font-medium text-text">{current.label}</span>
+        <ArrowDownWideNarrow size={16} strokeWidth={1.75} aria-hidden />
+        <span className="sr-only">Sort by </span>
+        <span className="font-medium text-text">{current.label}</span>
         <ChevronDown size={16} strokeWidth={1.75} aria-hidden />
       </button>
       {open && (

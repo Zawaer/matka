@@ -26,7 +26,6 @@ import {
   Page,
   PageHeader,
   SectionHeader,
-  StatStrip,
   placeIconFor,
 } from "@/components/ui";
 import { LazyGeoMap } from "@/components/map/LazyGeoMap";
@@ -122,13 +121,21 @@ export default async function PlaceDetailPage({
       <PageHeader
         back={{ href: "/places", label: "Places" }}
         leading={
-          <IconTile icon={placeIconFor(place.kind, place.category)} size="lg" className="hidden sm:flex" />
+          <IconTile icon={placeIconFor(place.kind, place.category)} size="lg" />
         }
         title={name}
         subtitle={
           <>
             {meta && <span className="block">{meta}</span>}
-            {last && <span className="block">Last visited {last === "Today" || last === "Yesterday" ? last.toLowerCase() : last}</span>}
+            <span className="block tabular-nums">
+              {[
+                visitsLabel(visitCount),
+                `${formatLongDuration(place.total_time)} in total`,
+                last ? `last visited ${last === "Today" || last === "Yesterday" ? last.toLowerCase() : last}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
           </>
         }
         actions={
@@ -161,16 +168,9 @@ export default async function PlaceDetailPage({
         label={`Map of ${name}${place.kind ? `, with its ${radius} m size` : ""}`}
         circle={{ lon: place.lon, lat: place.lat, radius }}
         zoom={15}
-        className="mb-4 h-60 md:h-80"
+        className="mb-8 h-60 md:h-80"
       />
 
-      <StatStrip
-        className="mb-8"
-        items={[
-          { label: "Visits", value: visitCount.toLocaleString("en-GB") },
-          { label: "Time spent", value: formatLongDuration(place.total_time) },
-        ]}
-      />
 
       <section className="mb-8">
         <SectionHeader title="Photos" />
@@ -203,6 +203,7 @@ export default async function PlaceDetailPage({
                       meta={
                         <span className="tabular-nums">
                           {formatTime(v.started_at, tz)} – {formatTime(v.ended_at, tz)}
+                          <DaysLater from={v.started_at} to={v.ended_at} tz={tz} />
                         </span>
                       }
                       trailing={formatDuration(v.duration)}
@@ -218,7 +219,7 @@ export default async function PlaceDetailPage({
           <Link
             href={`/places/${place.id}?all=1`}
             scroll={false}
-            className="mt-3 inline-flex h-9 items-center rounded-control px-1 text-sm font-medium text-primary hover:underline"
+            className="mt-3 inline-flex h-9 items-center rounded-control text-sm font-medium text-primary hover:underline"
           >
             Show all {visitsLabel(visitCount)}
           </Link>
@@ -228,6 +229,17 @@ export default async function PlaceDetailPage({
         )}
       </section>
     </Page>
+  );
+}
+
+/** "+1" after an end time on a later day (an overnight stay). */
+function DaysLater({ from, to, tz }: { from: Date; to: Date; tz: string }) {
+  const days = Math.round((Date.parse(localDate(to, tz)) - Date.parse(localDate(from, tz))) / 86_400_000);
+  if (days <= 0) return null;
+  return (
+    <sup className="ml-0.5 text-[0.6875rem] text-muted" title={days === 1 ? "the next day" : `${days} days later`}>
+      +{days}
+    </sup>
   );
 }
 

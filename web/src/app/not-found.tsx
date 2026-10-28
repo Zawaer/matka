@@ -13,8 +13,7 @@ export default function NotFound() {
       <p className="mt-5 text-meta text-muted">Error 404</p>
       <h1 className="mt-1 text-title text-text">Nothing here</h1>
       <p className="mt-2 max-w-xs text-sm text-muted">
-        This page doesn&apos;t exist, or what it showed has gone: places and trips are recomputed as new locations come
-        in.
+        This page doesn&apos;t exist, or the place or trip it showed was merged.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         <ButtonLink href="/" variant="primary" icon={NAV_ICONS.overview}>

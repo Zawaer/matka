@@ -143,7 +143,7 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
                 ? " in a straight line"
                 : track.correctionId != null
                   ? " · edited"
-                  : ` · detected: ${DETECTED[track.mode] ?? MODE_META[track.mode].label.toLowerCase()}`}
+                  : ` · Detected: ${DETECTED[track.mode] ?? MODE_META[track.mode].label.toLowerCase()}`}
             </p>
           </div>
           <IconButton icon={X} label="Close" onClick={onClose} className="-mr-2" />

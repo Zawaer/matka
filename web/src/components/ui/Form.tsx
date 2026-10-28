@@ -1,10 +1,11 @@
+import { CircleAlert } from "lucide-react";
 import { cx } from "./cx";
 
 /** Text inputs, selects and textareas share one look. */
 export const inputClass = cx(
   "h-9 w-full min-w-0 rounded-control border border-outline bg-surface px-3 text-sm text-text transition-colors",
-  "placeholder:text-muted hover:border-outline focus:border-primary focus:outline-none focus-visible:outline-2 focus-visible:outline-primary/40",
-  "aria-invalid:border-danger aria-invalid:focus:border-danger aria-invalid:focus-visible:outline-danger/40",
+  "placeholder:text-muted hover:border-outline focus:border-primary focus:outline-none focus-visible:outline-none focus:ring-[3px] focus:ring-primary/20",
+  "aria-invalid:border-danger aria-invalid:focus:border-danger aria-invalid:focus:ring-danger/20",
   "disabled:cursor-not-allowed disabled:opacity-60",
 );
 
@@ -47,7 +48,8 @@ export function Field({
       </label>
       {children}
       {error ? (
-        <p role="alert" className="text-meta text-danger">
+        <p role="alert" className="flex items-start gap-1.5 text-meta text-danger">
+          <CircleAlert size={16} strokeWidth={1.75} aria-hidden className="mt-px shrink-0" />
           {error}
         </p>
       ) : hint ? (

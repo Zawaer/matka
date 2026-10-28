@@ -33,7 +33,28 @@ const dayLabel = (date: string) => formatDate(date);
 /** A table with measures as rows and one column per preset. */
 function Table({ columns, rows }: { columns: { key: string; title: string; sub?: string }[]; rows: [string, string[]][] }) {
   return (
-    <div className="-mx-4 overflow-x-auto px-4 sm:-mx-5 sm:px-5">
+    <>
+    {/* Phones: one small block per preset (its name, then measure / value
+        rows), so no header or label has to wrap into a narrow column. */}
+    <div className="flex flex-col gap-3 sm:hidden">
+      {columns.map((c, ci) => (
+        <div key={c.key} className="rounded-control bg-surface-2/60 px-3 py-2.5">
+          <p className="text-meta font-medium text-text">
+            {c.title}
+            {c.sub && <span className="font-normal text-muted"> · {c.sub}</span>}
+          </p>
+          <dl className="mt-1.5 flex flex-col gap-1 text-meta">
+            {rows.map(([label, values]) => (
+              <div key={label} className="flex items-baseline justify-between gap-3">
+                <dt className="min-w-0 text-muted">{label}</dt>
+                <dd className="shrink-0 tabular-nums text-secondary">{values[ci]}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ))}
+    </div>
+    <div className="-mx-4 hidden overflow-x-auto px-4 sm:-mx-5 sm:block sm:px-5">
       <table className="w-full min-w-[20rem] border-collapse text-meta">
         <thead>
           <tr className="border-b border-border">
@@ -64,6 +85,7 @@ function Table({ columns, rows }: { columns: { key: string; title: string; sub?:
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 

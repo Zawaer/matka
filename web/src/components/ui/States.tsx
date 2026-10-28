@@ -43,7 +43,7 @@ export function EmptyState({
 
 /** A placeholder block while something loads. */
 export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden className={cx("animate-pulse rounded-control bg-surface-2", className)} />;
+  return <div aria-hidden className={cx("mk-skeleton rounded-control", className)} />;
 }
 
 type Tone = "info" | "success" | "warn" | "danger";

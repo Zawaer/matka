@@ -18,7 +18,7 @@ export function SettingsGroup({
 }) {
   return (
     <section id={id} className={cx("scroll-mt-16", className)} aria-label={title}>
-      <h2 className="mb-2 px-1 text-meta font-medium text-muted">{title}</h2>
+      <h2 className="mb-2 text-meta font-medium text-muted">{title}</h2>
       <div className="divide-y divide-border rounded-card border border-border bg-surface shadow-card">{children}</div>
     </section>
   );
@@ -42,16 +42,16 @@ export function SettingRow({
   return (
     <div
       className={cx(
-        "flex gap-x-6 gap-y-3 px-4 py-3.5 sm:px-5",
+        "relative flex gap-x-6 gap-y-3 px-4 py-3.5 sm:px-5",
         stack ? "flex-col sm:flex-row sm:items-start sm:justify-between" : "items-start justify-between",
       )}
     >
       <div className="min-w-0 flex-1">
         <div className="text-label text-text">{label}</div>
         {hint && <p className="mt-0.5 text-meta text-muted">{hint}</p>}
-        {below}
+        {below && <div className="relative z-10">{below}</div>}
       </div>
-      {control && <div className={cx("shrink-0", !stack && "pt-0.5")}>{control}</div>}
+      {control && <div className={cx("relative z-10 shrink-0", !stack && "pt-0.5")}>{control}</div>}
     </div>
   );
 }

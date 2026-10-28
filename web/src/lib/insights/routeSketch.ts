@@ -9,6 +9,7 @@ import { q } from "../db";
 import { PLACE_NAME_SQL } from "../places";
 import { displayModeJoin, displayModeSql } from "../transit/run";
 import type { AwayTrip } from "./awayTrips";
+import { isWater } from "../water";
 import { dayBounds } from "./time";
 
 /** The sketch's box: 16:9. */
@@ -23,6 +24,10 @@ export type RouteSketch = {
   paths: { mode: string; d: string }[];
   /** Where the nights were spent, in the same box. */
   stops: { x: number; y: number }[];
+  /** The land under the box as one SVG path (rows of cells), when known. */
+  land?: string;
+  /** Box (x, y) → lon/lat, for drawing what lies under the routes. */
+  unproject?: (x: number, y: number) => [number, number];
 };
 
 const mercY = (lat: number) => {
@@ -37,8 +42,9 @@ const mercY = (lat: number) => {
 export function projectSketch(
   lines: SketchLine[],
   stops: { lat: number; lon: number }[] = [],
-  // Vertically the routes fit the band above the title scrim (top 8 %–62 %).
-  { w = SKETCH_W, h = SKETCH_H, margin = 0.1, top = 0.08, bottom = 0.62 } = {},
+  // Vertically the routes fit the band above the title scrim (top 9 %–55 %:
+  // 16 px from the top, clear of the title block).
+  { w = SKETCH_W, h = SKETCH_H, margin = 0.1, top = 0.09, bottom = 0.55 } = {},
 ): RouteSketch | null {
   const xy = (lon: number, lat: number): [number, number] => [lon, mercY(lat)];
   const all: [number, number][] = [
@@ -63,9 +69,24 @@ export function projectSketch(
     const [x, y] = xy(lon, lat);
     return [Math.round((w / 2 + (x - cx) * s) * 10) / 10, Math.round((h * ((top + bottom) / 2) - (y - cy) * s) * 10) / 10];
   };
+  const midY = h * ((top + bottom) / 2);
+  const unproject = (x: number, y: number): [number, number] => {
+    const mx = (x - w / 2) / s + cx;
+    const my = -(y - midY) / s + cy;
+    const lat = (2 * Math.atan(Math.exp((my * Math.PI) / 180)) - Math.PI / 2) * (180 / Math.PI);
+    return [mx, lat];
+  };
+  // A line shorter than 3 px is a GPS stub, not a route: it draws as a stray tick.
+  const extent = (pts: [number, number][]) => {
+    const p = pts.map(([lon, lat]) => px(lon, lat));
+    const xs = p.map((q) => q[0]);
+    const ys = p.map((q) => q[1]);
+    return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  };
   return {
+    unproject,
     paths: lines
-      .filter((l) => l.points.length >= 2)
+      .filter((l) => l.points.length >= 2 && extent(l.points) >= 3)
       .map((l) => ({
         mode: l.mode,
         d: l.points.map(([lon, lat], i) => `${i ? "L" : "M"}${px(lon, lat).join(" ")}`).join(""),
@@ -75,6 +96,58 @@ export function projectSketch(
       return { x, y };
     }),
   };
+}
+
+/**
+ * The land in a sketch's box as an SVG path: the box is sampled on a
+ * `cols` × `rows` grid and each row's runs of land become one rectangle.
+ * `isWater` answers true (water), false (land) or null (unknown, drawn as
+ * land). Undefined when the box is all land: the backdrop is land already.
+ */
+/** Where each cell is sampled (fractions of the cell): centre and four quarters. */
+const SAMPLES: [number, number][] = [
+  [0.5, 0.5],
+  [0.2, 0.2],
+  [0.8, 0.2],
+  [0.2, 0.8],
+  [0.8, 0.8],
+];
+
+export function landPath(
+  unproject: (x: number, y: number) => [number, number],
+  isWater: (lat: number, lon: number) => boolean | null,
+  { w = SKETCH_W, h = SKETCH_H, cols = 128, rows = 72 } = {},
+): string | undefined {
+  const cw = w / cols;
+  const ch = h / rows;
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  let d = "";
+  let anyWater = false;
+  for (let r = 0; r < rows; r++) {
+    let start = -1;
+    for (let c = 0; c <= cols; c++) {
+      let land = false;
+      if (c < cols) {
+        // Water only where most of the cell is water: small lakes and
+        // single-sample specks would read as noise at this size.
+        let wet = 0;
+        for (const [dx, dy] of SAMPLES) {
+          const [lon, lat] = unproject((c + dx) * cw, (r + dy) * ch);
+          if (isWater(lat, lon) === true) wet++;
+        }
+        const water = wet >= 4;
+        if (water) anyWater = true;
+        land = !water;
+      }
+      if (land && start < 0) start = c;
+      if (!land && start >= 0) {
+        // Rows overlap by a hair so no seams show between them.
+        d += `M${r1(start * cw)} ${r1(r * ch)}h${r1((c - start) * cw)}v${r1(ch + 0.3)}h${r1(-(c - start) * cw)}z`;
+        start = -1;
+      }
+    }
+  }
+  return anyWater ? d : undefined;
 }
 
 /** A trip's time window in epoch ms: leaving home to getting back (or the end of its last day). */
@@ -141,7 +214,10 @@ export async function getRouteSketches(
   }
   trips.forEach((t, i) => {
     const s = projectSketch(lines[i], nights[i]);
-    if (s) out.set(t.id, s);
+    if (!s) return;
+    // Server components pass sketches to the page as plain data: drop the function.
+    const { unproject, ...plain } = s;
+    out.set(t.id, { ...plain, land: unproject ? landPath(unproject, isWater) : undefined });
   });
   return out;
 }

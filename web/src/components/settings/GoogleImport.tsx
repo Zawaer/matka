@@ -5,6 +5,7 @@ import { CircleAlert, CircleCheck, Trash2, Upload } from "lucide-react";
 import type { ImportSummary } from "@/lib/google/import";
 import { formatDateCompact, formatTime } from "@/lib/format";
 import { Button, Callout, buttonClass, cx } from "@/components/ui";
+import { More } from "./Forms";
 
 /** Below the proxy's 10 MB request body buffer, and small enough for smooth progress. */
 const CHUNK = 4 * 1024 * 1024;
@@ -150,13 +151,10 @@ export function GoogleImport({ initial, timeZone }: { initial: ImportSummary[]; 
         <li>Save the Timeline.json file it gives you (older Takeout files work too: Records.json and the monthly files).</li>
         <li>Choose the file here. Only times Matka didn&apos;t record itself are filled in.</li>
       </ol>
-      <details className="text-meta text-muted">
-        <summary className="cursor-pointer font-medium text-secondary hover:text-text">What happens to the file</summary>
-        <p className="mt-1">
-          Points within 10 minutes of one Matka recorded are skipped. The file is read on this server and deleted right
-          after; only the added points are kept.
-        </p>
-      </details>
+      <More summary="What happens to the file">
+        Points within 10 minutes of one Matka recorded are skipped. The file is read on this server and deleted right
+        after; only the added points are kept.
+      </More>
       <div className="flex flex-wrap items-center gap-2">
         <label
           className={cx(

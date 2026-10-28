@@ -96,7 +96,7 @@ function ModeChip({ m }: { m: StripMode }) {
   const time = m.duration > 0 ? formatDuration(m.duration) : null;
   return (
     <li
-      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface pl-2.5 pr-3 text-meta"
+      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-surface-2 pl-2.5 pr-3 text-meta"
       title={[meta.label, dist, time].filter(Boolean).join(" · ")}
     >
       <span className="flex items-center" style={{ color: meta.color }} aria-hidden>

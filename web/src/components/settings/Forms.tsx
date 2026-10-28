@@ -61,7 +61,16 @@ function AutoToggle({
   const id = `setting-${name}`;
   return (
     <SettingRow
-      label={<label htmlFor={id}>{label}</label>}
+      label={
+        disabled ? (
+          <span className="text-muted">{label}</span>
+        ) : (
+          // The whole row is the switch's label: a big target on phones.
+          <label htmlFor={id} className="cursor-pointer after:absolute after:inset-0 after:content-['']">
+            {label}
+          </label>
+        )
+      }
       hint={hint}
       below={
         <>
@@ -70,6 +79,11 @@ function AutoToggle({
         </>
       }
       control={
+        disabled ? (
+          <span className="inline-flex h-6 items-center rounded-full bg-surface-2 px-2.5 text-caption font-medium text-muted">
+            Not available
+          </span>
+        ) : (
         <Toggle
           id={id}
           checked={disabled ? false : checked}
@@ -82,6 +96,7 @@ function AutoToggle({
             startTransition(() => dispatch(fd));
           }}
         />
+        )
       }
     />
   );
@@ -127,7 +142,7 @@ export function TransitRow({ on, available }: { on: boolean; available: boolean 
       hint={
         available
           ? "Shows the bus, tram, metro or train line you rode, like “Bus 159, Leppävaara → Matinkylä”."
-          : "Not available on this server."
+          : "Needs the transit feeds, which this server doesn't have."
       }
       details={
         available ? (
@@ -185,7 +200,8 @@ export function ImmichForm({ url, connected }: { url: string | null; connected: 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-meta font-medium text-secondary">Server address</span>
-          <Input name="url" defaultValue={url ?? ""} placeholder="http://immich_server:2283" />
+          <Input name="url" defaultValue={url ?? ""} placeholder="https://photos.example.com" />
+          <span className="text-caption text-muted">In Docker, the container name works: http://immich_server:2283</span>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-meta font-medium text-secondary">API key</span>

@@ -41,9 +41,13 @@ export function ModeHistory({
   selected: string;
 }) {
   const color = modeMeta(mode).color;
-  const max = Math.max(1, ...history.map((h) => h.distance));
+  const top = Math.max(0, ...history.map((h) => h.distance));
+  const max = Math.max(1, top);
   return (
-    <div className="mt-4 flex h-20 items-stretch gap-1.5" role="list" aria-label={`${modeMeta(mode).label}, last ${history.length} months`}>
+    <>
+    {/* Each mode has its own scale: say what full height means. */}
+    {top > 0 && <p className="mt-3 text-right text-caption tabular-nums text-muted">max {formatKm(top)}</p>}
+    <div className={`${top > 0 ? "mt-1" : "mt-4"} flex h-20 items-stretch gap-1.5`} role="list" aria-label={`${modeMeta(mode).label}, last ${history.length} months`}>
       {history.map((h) => {
         const pct = (h.distance / max) * 100;
         const on = h.month === selected;
@@ -79,6 +83,7 @@ export function ModeHistory({
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -114,20 +119,23 @@ export function ShareBar({ modes }: { modes: { mode: string; distance: number; d
 export function ModeBars({ modes }: { modes: { mode: string; distance: number; duration: number }[] }) {
   const max = Math.max(1, ...modes.map((m) => m.distance));
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-3.5">
       {modes.map((m) => (
-        <li key={m.mode} className="flex items-center gap-3">
-          <ModeIcon mode={m.mode} size="sm" />
-          <span className="w-20 shrink-0 text-sm text-text">{modeMeta(m.mode).label}</span>
-          <span className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
+        <li key={m.mode}>
+          <div className="flex items-center gap-3">
+            <ModeIcon mode={m.mode} size="sm" />
+            <span className="min-w-0 flex-1 truncate text-sm text-text">{modeMeta(m.mode).label}</span>
+            <span className="shrink-0 whitespace-nowrap text-right text-sm tabular-nums text-text">
+              {formatKm(m.distance)}
+              <span className="text-meta text-muted"> · {formatDuration(m.duration)}</span>
+            </span>
+          </div>
+          {/* The bar under the label line, from the label's start. */}
+          <span className="relative mt-1.5 ml-10 block h-1.5 overflow-hidden rounded-full bg-surface-2">
             <span
               className="absolute inset-y-0 left-0 rounded-full"
               style={{ width: `${Math.max(1, (m.distance / max) * 100)}%`, background: modeMeta(m.mode).color }}
             />
-          </span>
-          <span className="w-24 shrink-0 text-right text-sm tabular-nums">
-            {formatKm(m.distance)}
-            <span className="block text-caption text-muted">{formatDuration(m.duration)}</span>
           </span>
         </li>
       ))}
@@ -135,17 +143,14 @@ export function ModeBars({ modes }: { modes: { mode: string; distance: number; d
   );
 }
 
-/** Small "[dot][train] 412 km" chips for the top modes of a trip or day. */
+/** "[train] 412 km · [car] 54 km": the top modes of a trip or day, as plain meta text (not buttons). */
 export function ModeChips({ modes, max = 4 }: { modes: { mode: string; distance: number }[]; max?: number }) {
   return (
-    <ul className="flex flex-wrap gap-1.5">
+    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-meta text-secondary">
       {modes.slice(0, max).map((m) => {
         const I = modeIcon(m.mode);
         return (
-          <li
-            key={m.mode}
-            className="inline-flex h-6 items-center gap-1.5 rounded-full border border-border bg-surface pl-2 pr-2.5 text-caption text-secondary"
-          >
+          <li key={m.mode} className="inline-flex items-center gap-1 whitespace-nowrap">
             <I size={16} strokeWidth={1.75} aria-hidden style={{ color: modeMeta(m.mode).color }} />
             <span className="sr-only">{modeMeta(m.mode).label}</span>
             <span className="tabular-nums">{formatKm(m.distance)}</span>

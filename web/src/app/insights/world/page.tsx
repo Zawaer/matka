@@ -10,16 +10,16 @@ import { getCovers } from "@/lib/covers";
 import { formatCount, formatLongDuration, formatRelativeInstant } from "@/lib/format";
 import { cityCoverSpecs, cityKey } from "@/lib/insights/coverSpecs";
 import { getWorld } from "@/lib/insights/load";
-import { type WorldEntry, type WorldSort, countryCode, isWorldSort } from "@/lib/insights/world";
+import { type WorldEntry, type WorldSort, isWorldSort } from "@/lib/insights/world";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "World · Matka" };
 
 const SORT_LABEL: Record<WorldSort, string> = {
+  time: "Most time",
   visits: "Visits",
   places: "Places",
-  time: "Time",
   recent: "Recent",
   name: "A–Z",
 };
@@ -42,7 +42,8 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
   const user = await requireUser();
   const tz = user.timezone;
   const sp = await searchParams;
-  const sort: WorldSort = isWorldSort(sp.sort) ? sp.sort : "visits";
+  // Time by default: the figure each row leads with.
+  const sort: WorldSort = isWorldSort(sp.sort) ? sp.sort : "time";
   const country = sp.country || undefined;
   const view = country || sp.view === "cities" ? "cities" : "countries";
   const world = await getWorld(user, sort);
@@ -58,7 +59,7 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
         .catch(() => new Map())
     : new Map();
 
-  const sortParam = (s: WorldSort) => (s === "visits" ? undefined : s);
+  const sortParam = (s: WorldSort) => (s === "time" ? undefined : s);
   const empty = world.countries.length === 0 && world.cities.length === 0;
   const maxCity = Math.max(1, ...world.cities.map((c) => c.duration));
 
@@ -136,6 +137,7 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
                   href={view === "cities" ? cityHref(e) : href({ country: e.name, sort: sortParam(sort) })}
                   isCity={view === "cities"}
                   showCountry={view === "cities" && !country}
+                  sort={sort}
                   thumb={covers.get(cityKey(e.name, e.country))?.assetId ?? null}
                 />
               </li>
@@ -154,7 +156,9 @@ function Row({
   isCity,
   showCountry,
   thumb,
+  sort,
 }: {
+  sort: WorldSort;
   entry: WorldEntry;
   tz: string;
   href: string;
@@ -163,22 +167,20 @@ function Row({
   /** City cover asset id, or null. */
   thumb: string | null;
 }) {
+  const places = `${e.places} ${e.places === 1 ? "place" : "places"}`;
+  const visits = `${formatCount(e.visits)} ${e.visits === 1 ? "visit" : "visits"}`;
+  const time = formatLongDuration(e.duration);
+  // The trailing figure is whatever the list is sorted by; the rest go in the meta line.
+  const lead = sort === "visits" ? visits : sort === "places" ? places : time;
   const counts = [
     e.cities != null ? `${e.cities} ${e.cities === 1 ? "city" : "cities"}` : null,
-    `${e.places} ${e.places === 1 ? "place" : "places"}`,
-    `${formatCount(e.visits)} ${e.visits === 1 ? "visit" : "visits"}`,
-  ].filter(Boolean);
-  const code = isCity ? null : (countryCode(e.name) ?? e.name.slice(0, 2).toUpperCase());
+    places,
+    visits,
+    time,
+  ].filter((x) => x && x !== lead);
   return (
     <Link href={href} className="flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/60 sm:px-5">
-      {code ? (
-        <span
-          aria-hidden
-          className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-2 text-meta font-semibold tracking-wide text-secondary"
-        >
-          {code}
-        </span>
-      ) : thumb ? (
+      {isCity && thumb ? (
         <div aria-hidden className={`relative size-9 shrink-0 overflow-hidden rounded-control ${COVER_BACKDROP}`}>
           <CoverPhoto assetId={thumb} size="thumbnail" />
         </div>
@@ -191,7 +193,7 @@ function Row({
         <p className="truncate text-meta text-muted">{counts.join(" · ")}</p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-label tabular-nums text-text">{formatLongDuration(e.duration)}</p>
+        <p className="text-label tabular-nums text-text">{lead}</p>
         {e.lastVisit && (
           <p className="text-meta text-muted">
             <span className="sr-only">Last visit </span>

@@ -482,3 +482,107 @@ the City stat "Time, all visits". No server change.
 slider. Transit badges keep operator colours (shared decision). The Map tab
 still has no floating search/date pill. Fonts, shadows and the Switch thumb in
 the shots are the browser's.
+
+### Round 3 (web)
+
+Driven by [the round 3 critique](redesign/critique-web-r3.md) (polish 6/10):
+its top 15 and most of its per-page notes. Screenshots:
+`/tmp/shots/redesign/r3/web/review/` (before) and
+`/tmp/shots/redesign/r3/web/after/` (after, with `--extras`, at 390, 768,
+1024 and 1440 px). The harness now also takes `--sizes l` (1024×768) and
+reports any page whose `scrollWidth` is wider than the viewport.
+
+- **Robustness.** No page overflows at 390, 768, 1024 or 1440 px. The Overview
+  chart columns are `min-w-0 basis-0` and the value label is positioned over
+  the bar, so the bars are one width. Form controls inherit
+  `text-rendering` (in the base layer), which fixes "Mo re" and
+  "Europ e/Helsinki".
+- **Tablet.** From 640 to 1024 px the sidebar is a 64 px icon rail (labels as
+  tooltips, the logo mark instead of the wordmark). The phone shell is now
+  below 640 px only. Multi-column grids are gated at `lg` (Overview, Trip
+  detail), the trip-day chips go under the title below `xl`, and `StatStrip`
+  lays out by its own width (a container query): three figures are always
+  one row (no orphan tile on phones), four are 2×2 under 560 px.
+- **Widths and edges.** Two content widths: 688 px for Settings and Devices,
+  1072 px for every other page. Group labels are flush with the card edge;
+  "Show all" has no inset.
+- **Basemap.** `mapStyle.ts` fetches the OpenFreeMap style once per theme and
+  rewrites it before MapLibre sees it (`transformStyle`, tested): no road
+  shields (they drew as empty boxes), no state/province labels, no river or
+  strait labels (only seas and oceans), Latin names, regular weight,
+  sentence case and no letter-spacing in both themes. In dark, water is
+  lifted to about surface-3 and roads sit a step above the land. The
+  attribution is 90% opaque.
+- **Map fits.** `fitPadding` keeps marks clear of the zoom buttons, the Map
+  toolbar and the legend on every map. World fits the visited countries'
+  main landmasses, not just the cities. Small context maps (the place page)
+  have no zoom buttons.
+- **Map chrome.** The Map page's layer toggles use the segmented style (no
+  checkmark) and are disabled with the range when there is nothing to map.
+  Below 1024 px, "Save a place" is an icon button under the zoom buttons.
+  The legend has no title row. Route lines are 2.5 px at country zoom with a
+  page-coloured casing.
+- **Accent for selection and actions only.** World countries, city and place
+  dots, the place circle, trip-sketch stops, overnight markers and the day
+  map's stops are neutral ink; the selected stop is the accent. The Overview
+  chart's past months are neutral (the current month keeps the accent), the
+  calendar strikes through the days without data instead of dotting every
+  day with data, and the Pair tile is neutral. `--mk-accent` (an alias of
+  danger) is gone.
+- **One segmented control.** The selected item is a raised pill on a new
+  `--mk-seg-on` token (white in light, surface-3 in dark, so it reads as
+  raised, not pressed).
+- **Trip covers.** The sketch sits over a land/water silhouette sampled from
+  the bundled OSM land mask (`landPath`, tested; land at surface-2 on water at
+  surface-3, like the basemaps). The graph paper is gone, the routes are
+  inset to the top 55%, stops are neutral, and stubs under 3 px (the stray
+  tick) are dropped.
+- **Timeline.** The date navigation stays in the loading and error states
+  (stepping by calendar day when the list of days is unknown). The skeleton
+  is surface-3 with a slow shimmer. The date trigger is icon-only between the
+  arrows, and its calendar opens aligned to it. Saved-kind badges are
+  text-only. The empty day reads "Nothing recorded on Mon 20 Jul" with "Go to
+  29 Jul". Missing travel lays out by its own width (the button goes under
+  the text in the 480 px column), with "travel · 79.4 km" spacing and nowrap
+  figures. "Right place?" has a tonal Yes (a new `tonal` button variant) and
+  a ghost "Something else", with no gap before the "?". The prev/next/date
+  buttons and the phone "⋯" have 44 px targets. There is a "Skip to content"
+  link. The photo viewer fills the space and its arrows are dark discs.
+- **Other pages.**
+  - Overview: neutral "Most time spent" bars, day groups in two columns on
+    wide screens.
+  - Place: the icon tile on phones too, the stats folded into the subtitle
+    ("73 visits · 46 d in total · last visited yesterday"), a pin on the map,
+    and "+1" after an overnight end time.
+  - Places: the visit count moved under the duration, so truncation never
+    eats it; "Save a place on the map" is desktop-only (the Map tab has it).
+  - Insights: each small multiple says its max, modes unused this month fold
+    into one line, the card headers don't wrap, the empty state has "Pair
+    your phone", and the month trigger reads as a date button.
+  - Trip detail: mode figures are plain meta text with glyphs (no
+    button-like chips), "How you travelled" puts each bar under its label
+    line, and the description is "4 nights away · left 05:51, back 15:42".
+  - World: sorted by time by default, the trailing figure is the sort's
+    metric, ISO tiles dropped, the sort menu has an icon instead of "Sort:".
+  - Devices: the list always shows (with "No phones paired yet" when empty),
+    the quality table becomes one block per preset on phones, Before/After
+    has a direction line and muted units, and the battery chart has
+    fortnightly date ticks and a hatch for days without data.
+  - Settings: an unavailable toggle is a "Not available" badge with a muted
+    title, the whole row is a toggle's label, the Immich placeholder is
+    `https://photos.example.com` (the Docker hostname moved to help text),
+    and every disclosure uses the chevron.
+  - Sign in: the error replaces the hint line (nothing moves) and the ring
+    turns danger; inputs focus with a 1 px primary border plus a 3 px
+    primary/20 ring. Pair landing: no divider, and "Open Matka" on the
+    incomplete-link state. 404: shorter copy.
+  - Copy: "Pair your phone" everywhere, "Detected: cycling".
+- **Demo data.** `seed-demo.mjs` adds a paired "Pixel 8" (with a heartbeat)
+  and a revoked "Galaxy S10" when the user has no devices, so the Devices
+  list can be reviewed.
+
+**Still open.** The day map is still before the list in DOM order on phones
+(the skip link covers desktop), the phone top bar stays on Timeline and Map,
+country rows have no flags, the trip map's wide desktop crop still shows a lot
+of Europe for a Helsinki–Berlin trip, and real-photo covers remain unexercised
+by the harness.

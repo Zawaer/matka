@@ -31,24 +31,22 @@ export function tripLine(t: AwayTrip) {
 
 const modeColor = (mode: string) => (MODE_META[mode as ModeKey] ?? MODE_META.unknown).color;
 
-/** A faint 32 px grid behind the routes, like graph paper. */
-const GRID = [
-  ...Array.from({ length: Math.floor(SKETCH_W / 32) }, (_, i) => `M${(i + 1) * 32} 0V${SKETCH_H}`),
-  ...Array.from({ length: Math.floor(SKETCH_H / 32) }, (_, i) => `M0 ${(i + 1) * 32}H${SKETCH_W}`),
-].join("");
-
-/** The routes drawn in their mode colours on a quiet tile, nights as dots. */
+/**
+ * The routes drawn in their mode colours over a map silhouette (land at
+ * surface on water at surface-3, as on the basemaps), nights as neutral dots.
+ */
 export function RouteSketchSvg({ sketch, className }: { sketch: RouteSketch; className?: string }) {
   return (
     <svg
       viewBox={`0 0 ${SKETCH_W} ${SKETCH_H}`}
-      preserveAspectRatio="xMidYMid meet"
+      preserveAspectRatio="xMidYMid slice"
       aria-hidden
       className={cx("absolute inset-0 h-full w-full", className)}
     >
-      <path d={GRID} fill="none" stroke="var(--mk-border)" strokeWidth={1} />
+      <rect width={SKETCH_W} height={SKETCH_H} fill={sketch.land ? "var(--mk-surface-3)" : "var(--mk-surface)"} />
+      {sketch.land && <path d={sketch.land} fill="var(--mk-surface)" shapeRendering="crispEdges" />}
       {sketch.paths.map((p, i) => (
-        <path key={`c${i}`} d={p.d} fill="none" stroke="var(--mk-surface-2)" strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" />
+        <path key={`c${i}`} d={p.d} fill="none" stroke="var(--mk-surface)" strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" />
       ))}
       {sketch.paths.map((p, i) => (
         <path
@@ -63,7 +61,7 @@ export function RouteSketchSvg({ sketch, className }: { sketch: RouteSketch; cla
         />
       ))}
       {sketch.stops.map((s, i) => (
-        <circle key={i} cx={s.x} cy={s.y} r={3.5} fill="var(--mk-primary)" stroke="var(--mk-surface-2)" strokeWidth={2} />
+        <circle key={i} cx={s.x} cy={s.y} r={3.5} fill="var(--mk-text)" stroke="var(--mk-surface)" strokeWidth={2} />
       ))}
     </svg>
   );
@@ -87,6 +85,7 @@ export function TripCard({
       className={cx(
         "group relative block aspect-[16/9] overflow-hidden rounded-card border border-border shadow-card transition-colors hover:border-strong",
         photo ? COVER_BACKDROP : "bg-surface-2",
+        // One height for every card in a row: the box is the aspect ratio, the text sits on it.
         className,
       )}
     >
@@ -98,7 +97,7 @@ export function TripCard({
       ) : sketch ? (
         <>
           <RouteSketchSvg sketch={sketch} />
-          <div aria-hidden className="pointer-events-none absolute inset-0 bg-linear-to-t from-surface via-surface/70 via-25% to-transparent to-45%" />
+          <div aria-hidden className="pointer-events-none absolute inset-0 bg-linear-to-t from-surface via-surface/80 via-30% to-transparent to-50%" />
         </>
       ) : (
         <div aria-hidden className="pointer-events-none absolute inset-0 bg-linear-to-t from-surface to-transparent" />
