@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FlatList, RefreshControl, TextInput, View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
-import { group, placeLabel } from "../format";
+import { group, isNamed, placeLabel } from "../format";
+import { fmtDate } from "../search";
 import { FONT_FAMILY } from "../design/tokens";
-import { KIND_META, fmtLongDuration, plural } from "../insights-logic";
-import { Card, EmptyState, ErrorState, GroupedItem, Icon, IconButton, IconTile, ListRow, Skeleton } from "../ui";
+import { fmtLongDuration, plural } from "../insights-logic";
+import { Button, Card, EmptyState, ErrorState, GroupedItem, Icon, IconButton, ListRow, RowsSkeleton } from "../ui";
+import { PlaceSheet, PlaceTile, placeKindLine } from "../ui/PlaceSheet";
 import { ScreenHeader } from "../ui/Screen";
-import { SearchAreaRow, SearchPlaceRow } from "../ui/SearchRows";
+import { SearchAreaRow } from "../ui/SearchRows";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
 import { searchPlaces, type SearchArea, type SearchPlace, type SearchResults } from "../search";
@@ -58,12 +60,14 @@ const placeName = (p: Place) => placeLabel(p.name);
 /** `embedded`: shown as a segment of Insights, under its app bar instead of its own. */
 export default function PlacesScreen({ embedded }: { embedded?: boolean }) {
   const t = useTheme();
-  const { authLost, openDay, openInsights } = useSession();
+  const { authLost, openInsights } = useSession();
   const { data, error: err, reload } = useViewerQuery(getPlaces);
   // A renamed place keeps existing after its visits are gone; it isn't one you come back to.
   const places = useMemo(() => data?.filter((p) => p.visitCount > 0), [data]);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
+  // The place opened in its sheet (a list row or a search hit).
+  const [opened, setOpened] = useState<Place | null>(null);
 
   const trimmed = query.trim();
   const q = trimmed.toLowerCase();
@@ -109,7 +113,8 @@ export default function PlacesScreen({ embedded }: { embedded?: boolean }) {
 
   const s = useStyles((th) => ({
     root: { flex: 1, backgroundColor: th.c.bg },
-    content: { paddingHorizontal: th.layout.gutter, paddingTop: th.space.sm, paddingBottom: th.space.xxl },
+    // 16 under the tabs, as on every Insights tab.
+    content: { paddingHorizontal: th.layout.gutter, paddingTop: th.space.lg, paddingBottom: th.space.xxl },
     search: {
       flexDirection: "row",
       alignItems: "center",
@@ -125,12 +130,20 @@ export default function PlacesScreen({ embedded }: { embedded?: boolean }) {
 
   const header = (
     <View style={{ gap: t.space.lg, marginBottom: t.space.lg }}>
+      {/* One fixed line (no swap when the list arrives); the count trails it once there is one. */}
       {embedded ? (
-        <Text variant="callout" color="textSecondary" tabular>
-          {places ? `${group(places.length)} places you come back to` : "Where you spend your time"}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: t.space.md }}>
+          <Text variant="callout" color="textSecondary">
+            Places you come back to
+          </Text>
+          {places && places.length > 0 ? (
+            <Text variant="caption" color="textMuted" tabular>
+              {group(places.length)}
+            </Text>
+          ) : null}
+        </View>
       ) : (
-        <ScreenHeader title="Places" subtitle={places ? `${group(places.length)} places you come back to` : "Where you spend your time"} />
+        <ScreenHeader title="Places" subtitle="Places you come back to" />
       )}
       {authLost ? <PairingLost /> : null}
       <View style={s.search}>
@@ -149,7 +162,8 @@ export default function PlacesScreen({ embedded }: { embedded?: boolean }) {
       </View>
       {err && !places && !authLost && <ErrorState message={err} onRetry={reload} />}
       {!places && !err && !authLost && (
-        <Skeleton height={6 * 68} />
+        // The loading shape: the list's own rows (tile, two lines, a trailing value).
+        <RowsSkeleton />
       )}
       {places && places.length === 0 && (
         <Card>
@@ -168,13 +182,19 @@ export default function PlacesScreen({ embedded }: { embedded?: boolean }) {
       )}
       {noMatches && (
         <Card>
-          <EmptyState icon="search" title="Nothing matches" body={`No place found for “${trimmed}”. Try part of a name, a street, a city or a type like “library”.`} />
+          <EmptyState
+            icon="search"
+            title="Nothing matches"
+            body={`No place found for “${trimmed}”. Try part of a name, a street, a city or a type like “library”.`}
+            action={<Button label="Clear search" variant="tonal" onPress={() => setQuery("")} />}
+          />
         </Card>
       )}
     </View>
   );
 
   return (
+    <>
     <FlatList
       style={s.root}
       contentContainerStyle={s.content}
@@ -209,21 +229,27 @@ export default function PlacesScreen({ embedded }: { embedded?: boolean }) {
         const first = !prev || prev.type === "heading";
         const last = !nextRow || nextRow.type === "heading";
         let body: ReactNode;
-        if (item.type === "hit") body = <SearchPlaceRow place={item.hit} onOpenDay={openDay} />;
-        else if (item.type === "area") body = <SearchAreaRow area={item.area} onPress={() => openInsights("world")} />;
+        if (item.type === "area") body = <SearchAreaRow area={item.area} onPress={() => openInsights("world")} />;
         else {
-          const p = item.place;
-          const meta = categoryMeta(p.category, p.kind);
-          const locale = [p.city, p.country === "Finland" ? null : p.country].filter(Boolean).join(", ");
-          const kind = p.kind ? (p.kind === "other" ? "Saved" : KIND_META[p.kind].label) : meta.label;
+          // A place and a search hit are one row: the same anatomy, both open the place.
+          // While searching, the trailing line says when you were last there.
+          const hit = item.type === "hit" ? item.hit : null;
+          const p: Place = hit
+            ? { id: hit.id, name: hit.name, city: hit.city, country: hit.country, category: hit.category, visitCount: hit.visitCount, totalTime: hit.totalTime, lastVisit: hit.lastVisit, kind: hit.kind }
+            : (item as { place: Place }).place;
+          const sub = placeKindLine(p);
+          const second = hit ? (hit.lastVisitDate ? `last ${fmtDate(hit.lastVisitDate)}` : null) : fmtLongDuration(p.totalTime);
           body = (
             <ListRow
-              leading={<IconTile icon={p.kind ? KIND_META[p.kind].icon : meta.icon} />}
+              leading={<PlaceTile place={p} />}
               title={placeName(p)}
               titleLines={2}
-              subtitle={`${kind}${locale ? ` · ${locale}` : ""}`}
+              muted={!isNamed(p.name)}
+              subtitle={sub || null}
               trailing={plural(p.visitCount, "visit")}
-              trailingSub={fmtLongDuration(p.totalTime)}
+              trailingSub={second}
+              onPress={() => setOpened(p)}
+              accessibilityLabel={`${placeName(p)}${sub ? `, ${sub}` : ""}, ${plural(p.visitCount, "visit")}${second ? `, ${second}` : ""}. Opens the place`}
             />
           );
         }
@@ -234,5 +260,7 @@ export default function PlacesScreen({ embedded }: { embedded?: boolean }) {
         );
       }}
     />
+    <PlaceSheet place={opened} onClose={() => setOpened(null)} />
+    </>
   );
 }

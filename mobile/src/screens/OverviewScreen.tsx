@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Animated, Easing, Pressable, View } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
-import { count, fmtCompact, fmtDayHeading, fmtDuration, fmtLongDuration, fmtPercent, fmtSpan, fmtTime, group, isNamed, monthShort, MONTHS, placeLabel } from "../format";
+import { count, fmtCompact, fmtDuration, fmtLongDuration, fmtPercent, fmtSpan, fmtVisitRange, group, isNamed, monthShort, MONTHS, placeLabel } from "../format";
+import { recentDays as groupRecent } from "../overview-logic";
 import { startTracking, stopTracking } from "../tracking";
-import { Banner, Button, Card, Divider, EmptyState, ErrorState, ListGroup, ListRow, SectionHeader, Skeleton } from "../ui";
+import { Banner, Button, Card, Divider, EmptyState, ErrorState, Icon, ListGroup, ListRow, SectionHeader, Skeleton } from "../ui";
 import { MonthBars } from "../ui/charts";
 import { Screen, ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
@@ -54,7 +55,7 @@ export default function OverviewScreen({
   refreshCollector: () => Promise<void>;
 }) {
   const t = useTheme();
-  const { authLost, goTab, openInsights } = useSession();
+  const { authLost, goTab, openInsights, openDay } = useSession();
   const { data, error: loadErr, reload } = useViewerQuery(getOverview);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -145,14 +146,9 @@ export default function OverviewScreen({
     </Card>
   );
 
-  // Recent visits under day headings ("Today", "Yesterday", "Sun 18 Oct") instead of a date on every row.
-  const recentDays: { day: string; rows: NonNullable<typeof data>["recent"] }[] = [];
-  for (const v of data?.recent ?? []) {
-    const day = fmtDayHeading(new Date(v.startedAt));
-    const last = recentDays[recentDays.length - 1];
-    if (last && last.day === day) last.rows.push(v);
-    else recentDays.push({ day, rows: [v] });
-  }
+  // Recent visits under day headings ("Today", "Yesterday", "Sun 18 Oct") instead of a date on every row;
+  // back-to-back visits to one place joined, short unnamed stops left out.
+  const recentDays = groupRecent(data?.recent ?? []);
 
   const stat = (label: string, value: string) => (
     <View style={{ flex: 1, gap: 2, paddingVertical: t.space.md, paddingHorizontal: t.space.lg }}>
@@ -285,6 +281,8 @@ export default function OverviewScreen({
                     key={p.id}
                     title={placeLabel(p.name)}
                     trailing={fmtLongDuration(p.hours * 3600)}
+                    trailingWidth={76}
+                    muted={!isNamed(p.name)}
                     below={
                       <View style={{ height: 4, borderRadius: 2, backgroundColor: t.c.surfaceAlt, marginTop: 6, overflow: "hidden" }}>
                         <View style={{ width: `${Math.max(3, (p.hours / maxHours) * 100)}%`, height: 4, borderRadius: 2, backgroundColor: t.c.barMuted }} />
@@ -304,17 +302,22 @@ export default function OverviewScreen({
                   <Text variant="label" color="textSecondary" style={{ paddingHorizontal: t.space.lg }}>
                     {g.day}
                   </Text>
-                  <ListGroup inset={0}>
+                  <ListGroup inset={20}>
                     {g.rows.map((v) => {
                       const named = isNamed(v.name);
-                      const end = v.duration ? new Date(Date.parse(v.startedAt) + v.duration * 1000).toISOString() : null;
+                      // Overnight: "18:35 – until 07:10 tomorrow" under the evening's day.
+                      const times = fmtVisitRange(v.startedAt, v.endedAt, g.date);
                       return (
                         <ListRow
-                          key={v.id}
+                          key={v.key}
+                          leading={<Icon name="place" size={20} color={t.c.textMuted} />}
                           title={placeLabel(v.name)}
-                          subtitle={end ? `${fmtTime(v.startedAt)}–${fmtTime(end)}` : `From ${fmtTime(v.startedAt)}`}
+                          muted={!named}
+                          subtitle={times}
+                          subtitleLines={2}
                           trailing={fmtDuration(v.duration)}
-                          accessibilityLabel={`${named ? placeLabel(v.name) : "Unnamed place"}, ${g.day} ${fmtTime(v.startedAt)}, ${fmtDuration(v.duration)}`}
+                          onPress={() => openDay(g.date)}
+                          accessibilityLabel={`${placeLabel(v.name)}, ${g.day}, ${times}, ${fmtDuration(v.duration)}. Open timeline`}
                         />
                       );
                     })}

@@ -5,7 +5,7 @@ import { Children, Fragment, isValidElement, type ReactElement, type ReactNode }
 import { Pressable, View } from "react-native";
 import { useTheme } from "../design/theme";
 import { Icon } from "./Icon";
-import { Card, Divider } from "./primitives";
+import { Card, Divider, Skeleton } from "./primitives";
 import { Text } from "./Text";
 
 const LEAD_GAP = 12;
@@ -32,8 +32,11 @@ export function ListRow({
   title,
   titleLines = 1,
   subtitle,
+  subtitleLines = 1,
   trailing,
   trailingSub,
+  trailingWidth,
+  muted,
   below,
   onPress,
   accessibilityLabel,
@@ -42,8 +45,13 @@ export function ListRow({
   title: string;
   titleLines?: number;
   subtitle?: string | null;
+  subtitleLines?: number;
   trailing?: string | null;
   trailingSub?: string | null;
+  /** A fixed trailing column, so content beside it (bars) ends at the same x on every row. */
+  trailingWidth?: number;
+  /** The title in secondary text (a place without a name). */
+  muted?: boolean;
   /** Extra content under the text (chips, badges). */
   below?: ReactNode;
   onPress?: () => void;
@@ -70,18 +78,18 @@ export function ListRow({
     >
       {leading ? <View style={{ alignSelf: multi ? "flex-start" : "center" }}>{leading}</View> : null}
       <View style={{ flex: 1, gap: 2 }}>
-        <Text variant="headline" numberOfLines={titleLines}>
+        <Text variant="headline" numberOfLines={titleLines} color={muted ? "textSecondary" : "text"}>
           {title}
         </Text>
         {subtitle ? (
-          <Text variant="callout" color="textSecondary" numberOfLines={1}>
+          <Text variant="callout" color="textSecondary" numberOfLines={subtitleLines}>
             {subtitle}
           </Text>
         ) : null}
         {below}
       </View>
       {trailing != null ? (
-        <View style={{ alignItems: "flex-end", gap: 2, maxWidth: "40%", alignSelf: multi ? "flex-start" : "center" }}>
+        <View style={{ alignItems: "flex-end", gap: 2, maxWidth: "40%", width: trailingWidth, alignSelf: multi ? "flex-start" : "center" }}>
           <Text variant="callout" color="textSecondary" tabular numberOfLines={1} style={{ lineHeight: 20 }}>
             {trailing}
           </Text>
@@ -220,5 +228,24 @@ export function GroupedItem({ first, last, inset = 40, children }: { first: bool
       {first ? null : <Divider inset={t.space.lg + (inset ? inset + LEAD_GAP : 0)} />}
       {children}
     </View>
+  );
+}
+
+/** The loading shape of a ListGroup: rows with a 40 tile, two lines and a trailing value. */
+export function RowsSkeleton({ rows = 5, tile = true }: { rows?: number; tile?: boolean }) {
+  const t = useTheme();
+  return (
+    <Card padded={false}>
+      {Array.from({ length: rows }, (_, i) => (
+        <View key={i} style={{ flexDirection: "row", gap: 12, minHeight: t.layout.row2, paddingVertical: t.space.md, paddingHorizontal: t.space.lg, borderTopWidth: i ? 1 : 0, borderTopColor: t.c.border }}>
+          {tile ? <Skeleton height={40} width={40} radius={t.radius.sm} /> : null}
+          <View style={{ flex: 1, gap: 8, paddingTop: 2 }}>
+            <Skeleton height={14} width={i % 2 ? "55%" : "70%"} radius={6} />
+            <Skeleton height={12} width="40%" radius={6} />
+          </View>
+          <Skeleton height={12} width={52} radius={6} style={{ marginTop: 4 }} />
+        </View>
+      ))}
+    </Card>
   );
 }

@@ -156,7 +156,7 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
       </Group>
 
       {state?.preset === "custom" ? (
-        <Group title="Custom">
+        <Group title="Custom preset">
           <GroupBlock>
             <Segmented
               showLabel
@@ -254,7 +254,8 @@ function ActionRow({
   disabled?: boolean;
 }) {
   const t = useTheme();
-  const fg = danger ? t.c.danger : t.c.text;
+  // Disabled reads as disabled (muted), not as a pale error tint.
+  const fg = disabled ? t.c.textMuted : danger ? t.c.danger : t.c.text;
   return (
     <Pressable
       onPress={onPress}
@@ -269,10 +270,10 @@ function ActionRow({
         minHeight: 56,
         paddingHorizontal: t.space.lg,
         backgroundColor: pressed ? t.c.surfaceAlt : "transparent",
-        opacity: disabled ? 0.45 : 1,
+        opacity: disabled ? 0.7 : 1,
       })}
     >
-      <Icon name={icon} size={20} color={danger ? t.c.danger : t.c.textSecondary} />
+      <Icon name={icon} size={20} color={disabled ? t.c.textMuted : danger ? t.c.danger : t.c.textSecondary} />
       <Text variant="body" style={{ flex: 1, color: fg }}>
         {label}
       </Text>

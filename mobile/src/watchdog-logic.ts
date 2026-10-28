@@ -188,8 +188,9 @@ export function describeRecovery(r: Recovery, time: (ms: number) => string): str
       : r.lastFixAt == null
         ? "No location arrived"
         : `No location for ${duration(r.at - r.lastFixAt)}${r.reason === "stale_moving" ? " while moving" : r.reason === "stale_standby" ? " in standby" : ""}`;
-  if (r.ok) return `${what} — restarted at ${time(r.at)}`;
-  return `${what} — couldn't restart at ${time(r.at)}${r.error ? ` (${r.error})` : ""}`;
+  // Time first, so the list scans as a log: "14:02 · The phone stopped recording · restarted".
+  if (r.ok) return `${time(r.at)} · ${what} · restarted`;
+  return `${time(r.at)} · ${what} · couldn't restart${r.error ? ` (${r.error})` : ""}`;
 }
 
 // ---- Heartbeat ---------------------------------------------------------------

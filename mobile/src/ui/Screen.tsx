@@ -17,11 +17,14 @@ export function Screen({
   refreshing,
   onRefresh,
   appBar,
+  padTop,
 }: {
   children: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
   appBar?: ReactNode;
+  /** Space above the first block: 8 under an app bar, 16 under tabs (`"tabs"`) so content doesn't hug the divider. */
+  padTop?: "tabs";
 }) {
   const t = useTheme();
   const s = useStyles((th) => ({
@@ -31,7 +34,7 @@ export function Screen({
   const body = (
     <ScrollView
       style={s.root}
-      contentContainerStyle={s.content}
+      contentContainerStyle={[s.content, padTop === "tabs" && { paddingTop: t.space.lg }]}
       showsVerticalScrollIndicator={false}
       refreshControl={
         onRefresh ? (

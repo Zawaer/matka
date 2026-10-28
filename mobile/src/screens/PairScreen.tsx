@@ -120,7 +120,7 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
   return (
     <Screen appBar={<ScreenHeader title="Pair this phone" />}>
       <View style={{ gap: t.space.sm }}>
-        {["In the Matka web app, open Devices → Pair a device.", "Scan the QR code it shows."].map((step, i) => (
+        {["In the Matka web app, open Devices → Pair a device.", mode === "manual" ? "Copy the server address and token it shows." : "Scan the QR code it shows."].map((step, i) => (
           <View key={i} style={{ flexDirection: "row", gap: t.space.md, alignItems: "flex-start" }}>
             <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.c.surfaceAlt, alignItems: "center", justifyContent: "center", marginTop: -1 }}>
               <Text variant="label" color="textSecondary" tabular>

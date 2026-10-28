@@ -1,4 +1,4 @@
-import { ago, count, displayName, fmtDayHeading, fmtDistance, fmtDuration, fmtLongDuration, fmtPercent, fmtSpan, fmtTime, inFuture, placeLabel, sentenceCase } from "../format";
+import { ago, count, displayName, fmtDayHeading, fmtDistance, fmtDuration, fmtLongDuration, fmtPercent, fmtSpan, fmtTime, fmtVisitRange, inFuture, localDateOf, placeLabel, sentenceCase } from "../format";
 
 const now = 1_760_781_600_000;
 
@@ -70,4 +70,17 @@ test("place names lose the leading postcode; tags become labels", () => {
   expect(displayName("1917 Bar")).toBe("1917 Bar");
   expect(placeLabel("00990 Esimerkkitie 2")).toBe("Esimerkkitie 2");
   expect(sentenceCase("artwork")).toBe("Artwork");
+});
+
+test("fmtVisitRange across midnight", () => {
+  // Local times (the test runs in the machine's zone): build instants from local parts.
+  const at = (d: number, h: number, m: number) => new Date(2026, 9, d, h, m).toISOString();
+  expect(fmtVisitRange(at(18, 9, 5), at(18, 11, 40), "2026-10-18")).toBe("09:05–11:40");
+  expect(fmtVisitRange(at(17, 22, 5), at(18, 8, 20), "2026-10-18")).toBe("Since 22:05 yesterday, until 08:20");
+  expect(fmtVisitRange(at(18, 18, 35), at(19, 7, 10), "2026-10-18")).toBe("18:35 – until 07:10 tomorrow");
+  expect(fmtVisitRange(at(17, 23, 0), at(19, 7, 0), "2026-10-18")).toBe("23:00 yesterday – 07:00 tomorrow");
+  // Without a day: the start's own day.
+  expect(fmtVisitRange(at(17, 22, 5), at(18, 8, 20))).toBe("22:05 – until 08:20 tomorrow");
+  expect(fmtVisitRange(at(17, 22, 5), null)).toBe("From 22:05");
+  expect(localDateOf(at(3, 0, 30))).toBe("2026-10-03");
 });

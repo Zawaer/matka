@@ -23,6 +23,6 @@ export {
   toneColors,
   type Tone,
 } from "./primitives";
-export { Group, GroupBlock, GroupedItem, InfoRow, ListGroup, ListRow, type ValueTone } from "./lists";
+export { Group, GroupBlock, GroupedItem, InfoRow, ListGroup, ListRow, RowsSkeleton, type ValueTone } from "./lists";
 export { APP_BAR, AppBar, Pager, Screen, ScreenHeader } from "./Screen";
 export { Sheet } from "./Sheet";

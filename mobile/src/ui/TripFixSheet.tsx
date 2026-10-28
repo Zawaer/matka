@@ -93,7 +93,9 @@ function FixSheet({ move, onClose, onSaved }: { move: Move; onClose: () => void;
   const [error, setError] = useState<string | null>(null);
   const run = useState(() => (q: string) => searchRoutes(pairing, q))[0];
   const routes = useSearch(term, run);
-  const transit = isTransit(draft.mode);
+  // Adding travel starts with nothing picked (Save waits for a choice): a reflex Save mustn't record a walk you didn't make.
+  const [picked, setPicked] = useState(!(move.added && move.correctionId == null));
+  const transit = picked && isTransit(draft.mode);
 
   async function send(req: Promise<{ ok: true } | { ok: false; unauthorized: boolean; error: string }>) {
     setBusy(true);
@@ -111,7 +113,7 @@ function FixSheet({ move, onClose, onSaved }: { move: Move; onClose: () => void;
 
   const title = move.added ? (move.correctionId != null ? "Trip you added" : "Add travel") : "Fix this trip";
   const subtitle = `${fmtTime(move.startedAt)}–${fmtTime(move.endedAt)}${move.distance != null ? ` · ${fmtDistance(move.distance)}` : ""}${
-    move.added ? " in a straight line" : move.correctionId != null ? " · edited" : ` · shown as ${modeMeta(move.mode).label}`
+    move.added ? " in a straight line" : move.correctionId != null ? " · you edited this" : ` · shown as ${modeMeta(move.mode).label}`
   }`;
 
   return (
@@ -135,7 +137,7 @@ function FixSheet({ move, onClose, onSaved }: { move: Move; onClose: () => void;
             </View>
           ) : null}
           <View style={{ flex: 1 }}>
-            <Button label="Save" busy={busy} onPress={() => send(postCorrection(pairing, correctionBody(move, draft)))} />
+            <Button label="Save" busy={busy} disabled={!picked} onPress={() => send(postCorrection(pairing, correctionBody(move, draft)))} />
           </View>
         </>
       }
@@ -146,12 +148,15 @@ function FixSheet({ move, onClose, onSaved }: { move: Move; onClose: () => void;
         </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: t.space.sm }} accessibilityRole="radiogroup">
           {FIX_MODES.map((m) => {
-            const on = m === draft.mode;
+            const on = picked && m === draft.mode;
             const meta = modeMeta(m);
             return (
               <Pressable
                 key={m}
-                onPress={() => setDraft((d) => ({ ...d, mode: m }))}
+                onPress={() => {
+                  setPicked(true);
+                  setDraft((d) => ({ ...d, mode: m }));
+                }}
                 accessibilityRole="radio"
                 accessibilityState={{ checked: on }}
                 accessibilityLabel={meta.label}
@@ -171,11 +176,6 @@ function FixSheet({ move, onClose, onSaved }: { move: Move; onClose: () => void;
                 <Text variant="caption" numberOfLines={1} style={{ color: on ? t.c.primary : t.c.textSecondary, fontWeight: "500" }}>
                   {meta.label}
                 </Text>
-                {on ? (
-                  <View style={{ position: "absolute", top: 4, right: 4 }}>
-                    <Icon name="check" size={16} color={t.c.primary} />
-                  </View>
-                ) : null}
               </Pressable>
             );
           })}
@@ -190,11 +190,14 @@ function FixSheet({ move, onClose, onSaved }: { move: Move; onClose: () => void;
           {draft.legs.map((l, i) => (
             <View key={i}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm }}>
-                <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.c.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
-                  <Text variant="micro" color="textSecondary" tabular>
-                    {i + 1}
-                  </Text>
-                </View>
+                {/* The order only matters with two or more lines. */}
+                {draft.legs.length > 1 ? (
+                  <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.c.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
+                    <Text variant="micro" color="textSecondary" tabular>
+                      {i + 1}
+                    </Text>
+                  </View>
+                ) : null}
                 <LineBadge kind={l.kind} line={l.line} />
                 <View style={{ flex: 1 }} />
                 {i > 0 ? <IconButton icon="moveUp" label={`Move ${l.line} up`} color={t.c.textSecondary} onPress={() => setDraft((d) => moveUp(d, i))} /> : null}

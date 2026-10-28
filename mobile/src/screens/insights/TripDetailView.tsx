@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useTheme } from "../../design/theme";
-import { fmtDuration, fmtTime } from "../../format";
+import { fmtTime } from "../../format";
 import { getTrip, type TripDetail } from "../../insights";
 import { fmtDay, fmtDateRange, fmtKm, fmtLongDuration, modeShares, plural, roundShares } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
@@ -40,8 +40,10 @@ export default function TripDetailView({
   const { refreshing, onRefresh } = useRefresh(reload);
   const [viewing, setViewing] = useState<number | null>(null);
 
+  // One line of facts; the dates come from "Out … · back …" when it is known, so they aren't said twice.
+  const outBack = trip ? outAndBack(trip) : null;
   const meta = trip
-    ? [fmtDateRange(trip.startDate, trip.endDate), plural(trip.days, "day"), plural(trip.nights, "night"), trip.countries.join(", ") || null]
+    ? [outBack ? null : fmtDateRange(trip.startDate, trip.endDate), plural(trip.days, "day"), plural(trip.nights, "night"), trip.countries.join(", ") || null]
         .filter(Boolean)
         .join(" · ")
     : null;
@@ -54,18 +56,26 @@ export default function TripDetailView({
     <Screen
       refreshing={refreshing}
       onRefresh={onRefresh}
-      appBar={<AppBar title={trip?.name ?? (error ? name : null)} subtitle={cover ? null : meta} onBack={onBack} backLabel={backLabel} />}
+      appBar={<AppBar title={trip?.name ?? (error ? name : null)} onBack={onBack} backLabel={backLabel} />}
     >
       {authLost ? <PairingLost /> : null}
 
       {authLost && !trip ? null : error && !trip ? (
         <ErrorState message={error} onRetry={reload} />
       ) : !trip ? (
+        // The loading shape: the full-bleed 16:9 hero, the stat strip, the share card.
         <View style={{ gap: t.space.lg }}>
-          <Skeleton height={200} />
-          <Skeleton height={70} />
+          <View style={{ aspectRatio: 16 / 9, marginHorizontal: -t.layout.gutter, marginTop: -t.space.sm, backgroundColor: t.c.surfaceAlt }} />
+          <Card padded={false} style={{ flexDirection: "row" }}>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={{ flex: 1, gap: 6, padding: t.space.md, borderLeftWidth: i ? 1 : 0, borderLeftColor: t.c.border }}>
+                <Skeleton height={12} width="55%" radius={6} />
+                <Skeleton height={18} width="50%" radius={6} />
+              </View>
+            ))}
+          </Card>
+          <Skeleton height={18} width={170} radius={6} style={{ marginTop: t.space.lg }} />
           <Skeleton height={110} />
-          <Skeleton height={180} />
         </View>
       ) : (
         <>
@@ -73,19 +83,31 @@ export default function TripDetailView({
             // Full-bleed hero: the cover edge to edge under the app bar.
             <View style={{ aspectRatio: 16 / 9, marginHorizontal: -t.layout.gutter, marginTop: -t.space.sm }}>
               <Photo id={cover} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
-              <Scrim />
-              <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: t.layout.gutter, paddingBottom: t.space.lg }}>
-                <Text variant="callout" style={[onPhotoText, { opacity: 0.92 }]} tabular numberOfLines={2}>
+              {/* Darkening over the bottom half so the two caption lines hold on a bright photo. */}
+              <Scrim from={0.4} to={0.78} />
+              <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: t.layout.gutter, paddingBottom: t.space.lg, gap: 2 }}>
+                <Text variant="headline" style={onPhotoText} tabular numberOfLines={1}>
                   {meta}
                 </Text>
+                {outBack ? (
+                  <Text variant="callout" style={[onPhotoText, { opacity: 0.92 }]} tabular numberOfLines={1}>
+                    {outBack}
+                  </Text>
+                ) : null}
               </View>
             </View>
-          ) : null}
-          {outAndBack(trip) ? (
-            <Text variant="callout" color="textSecondary" tabular style={{ marginTop: cover ? -t.space.xs : 0 }}>
-              {outAndBack(trip)}
-            </Text>
-          ) : null}
+          ) : (
+            <View style={{ gap: 2 }}>
+              <Text variant="callout" color="textSecondary" tabular>
+                {meta}
+              </Text>
+              {outBack ? (
+                <Text variant="callout" color="textSecondary" tabular>
+                  {outBack}
+                </Text>
+              ) : null}
+            </View>
+          )}
 
           {trip.photos.length > 0 && (
             <ScrollView
@@ -107,7 +129,7 @@ export default function TripDetailView({
             columns={3}
             items={[
               { label: "Distance", value: fmtKm(trip.distance) },
-              { label: "On the move", value: fmtDuration(trip.duration) },
+              { label: "On the move", value: fmtLongDuration(trip.duration) },
               { label: "Cities", value: String(away.length) },
             ]}
           />

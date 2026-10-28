@@ -1,11 +1,11 @@
 import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useTheme } from "../../design/theme";
-import { group } from "../../format";
+import { fmtLongDuration, group } from "../../format";
 import { WORLD_SORTS, getWorld, type WorldEntry, type WorldSort } from "../../insights";
-import { countryCode, plural, worldMeta, worldTrailing } from "../../insights-logic";
+import { countryCode, worldMeta, worldTrailing } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
-import { Button, Card, EmptyState, ErrorState, Icon, ListGroup, ListRow, Sheet, Skeleton, StatGrid, Tabs } from "../../ui";
+import { Button, Card, EmptyState, ErrorState, Icon, ListGroup, ListRow, RowsSkeleton, Segmented, Sheet, Skeleton, StatGrid } from "../../ui";
 import { AppBar, Screen } from "../../ui/Screen";
 import { useSession, useViewerQuery } from "../../ui/session";
 import { Text } from "../../ui/Text";
@@ -106,6 +106,8 @@ export default function WorldView({
   const list: WorldEntry[] = view === "cities" ? cities : (data?.countries ?? []);
   const shown = all ? list : list.slice(0, FIRST_ROWS);
   const placeCount = cities.reduce((a, c) => a + c.places, 0);
+  const visitCount = cities.reduce((a, c) => a + c.visits, 0);
+  const timeTotal = cities.reduce((a, c) => a + c.duration, 0);
 
   const sortButton = (
     <Pressable
@@ -131,24 +133,29 @@ export default function WorldView({
     </Pressable>
   );
 
-  const appBar = country ? (
-    <AppBar
-      title={country}
-      subtitle={data ? `${plural(cities.length, "city", "cities")} · ${plural(placeCount, "place")}` : null}
-      onBack={onBack ?? (() => {})}
-      backLabel={backLabel ?? "World"}
-    />
-  ) : undefined;
+  // A single-line app bar like every pushed view; the counts open the content.
+  const appBar = country ? <AppBar title={country} onBack={onBack ?? (() => {})} backLabel={backLabel ?? "World"} /> : undefined;
 
   return (
-    <Screen refreshing={refreshing} onRefresh={onRefresh} appBar={appBar}>
+    <Screen refreshing={refreshing} onRefresh={onRefresh} appBar={appBar} padTop="tabs">
       {authLost && !data ? null : error && !data ? (
         <ErrorState message={error} onRetry={reload} />
       ) : !data ? (
+        // The loading shape: the stat strip, the list header row, then rows.
         <View style={{ gap: t.space.lg }}>
-          {country ? null : <Skeleton height={70} />}
-          <Skeleton height={48} />
-          <Skeleton height={340} />
+          <Card padded={false} style={{ flexDirection: "row" }}>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={{ flex: 1, gap: 6, padding: t.space.md, borderLeftWidth: i ? 1 : 0, borderLeftColor: t.c.border }}>
+                <Skeleton height={12} width="55%" radius={6} />
+                <Skeleton height={18} width="40%" radius={6} />
+              </View>
+            ))}
+          </Card>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", height: 48 }}>
+            <Skeleton height={40} width={country ? 70 : 200} radius={country ? 6 : 20} />
+            <Skeleton height={16} width={90} radius={6} />
+          </View>
+          <RowsSkeleton rows={6} tile={!country} />
         </View>
       ) : !country && data.countries.length === 0 && data.cities.length === 0 ? (
         <Card>
@@ -156,7 +163,17 @@ export default function WorldView({
         </Card>
       ) : (
         <>
-          {!country && (
+          {country ? (
+            <StatGrid
+              size="sm"
+              columns={3}
+              items={[
+                { label: "Cities", value: group(cities.length) },
+                { label: "Visits", value: group(visitCount) },
+                { label: "Time", value: fmtLongDuration(timeTotal) },
+              ]}
+            />
+          ) : (
             <StatGrid
               size="sm"
               columns={3}
@@ -168,34 +185,30 @@ export default function WorldView({
             />
           )}
 
-          {/* The list's header: what it lists, and how it is sorted. */}
-          <View style={{ gap: t.space.xs, marginTop: t.space.sm }}>
+          {/* The list's header, one 48 row: what it lists (a segmented switch on World), and the sort as a trailing text button. */}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: t.space.md, minHeight: 48, marginTop: t.space.sm }}>
             {country ? (
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 40 }}>
-                <Text variant="title3" accessibilityRole="header">
-                  Cities
-                </Text>
-                {sortButton}
-              </View>
+              <Text variant="title3" accessibilityRole="header">
+                Cities
+              </Text>
             ) : (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
-                <View style={{ flex: 1 }}>
-                  <Tabs
-                    label="Show"
-                    options={[
-                      { value: "countries", label: "Countries" },
-                      { value: "cities", label: "Cities" },
-                    ]}
-                    value={view}
-                    onChange={(v) => {
-                      setView(v);
-                      setAll(false);
-                    }}
-                  />
-                </View>
-                {sortButton}
+              <View style={{ width: 216 }}>
+                <Segmented
+                  role="tablist"
+                  label="Show"
+                  options={[
+                    { value: "countries", label: "Countries" },
+                    { value: "cities", label: "Cities" },
+                  ]}
+                  value={view}
+                  onChange={(v) => {
+                    setView(v);
+                    setAll(false);
+                  }}
+                />
               </View>
             )}
+            {sortButton}
           </View>
 
           {list.length === 0 ? (

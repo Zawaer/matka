@@ -45,17 +45,17 @@ export function Photo({ id, size = "preview", style }: { id: string; size?: "thu
 
 /**
  * Bottom-heavy darkening so white text over any photo stays legible: a real
- * gradient (react-native-svg), clear over the top 45 %, then black 0 → 65 %
- * over the bottom 55 % (eased, no visible bands).
+ * gradient (react-native-svg), clear down to `from` (45 %), then black 0 → `to`
+ * (65 %) over the rest (eased, no visible bands).
  */
-export function Scrim({ to = 0.65 }: { to?: number }) {
+export function Scrim({ to = 0.65, from = 0.45 }: { to?: number; from?: number }) {
   return (
     <View pointerEvents="none" style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>
       <Svg width="100%" height="100%" preserveAspectRatio="none">
         <Defs>
           <LinearGradient id="scrim" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.45" stopColor="#000" stopOpacity={0} />
-            <Stop offset="0.7" stopColor="#000" stopOpacity={to * 0.45} />
+            <Stop offset={String(from)} stopColor="#000" stopOpacity={0} />
+            <Stop offset={String(from + (1 - from) * 0.45)} stopColor="#000" stopOpacity={to * 0.45} />
             <Stop offset="1" stopColor="#000" stopOpacity={to} />
           </LinearGradient>
         </Defs>

@@ -174,6 +174,33 @@ const SHOTS = [
   { name: "error-insights", query: "scenario=error", steps: (p) => tab(p, "Insights") },
   { name: "loading-overview", query: "scenario=slow", wait: 600 },
   { name: "loading-timeline", query: "scenario=slow", wait: 600, steps: (p) => tab(p, "Timeline") },
+  // Round 3 review extras: pickers, menus, expanded sections and the remaining states.
+  { name: "timeline-daypicker", steps: async (p) => (await tab(p, "Timeline"), press(p, "Go to a day")) },
+  { name: "overview-recording", query: "tracking=1" },
+  { name: "recorder-off" , pages: true, steps: (p) => tab(p, "Recorder") },
+  {
+    name: "recorder-details",
+    query: "tracking=1&recovered=1",
+    pages: true,
+    steps: async (p) => {
+      await tab(p, "Recorder");
+      await p.getByText("Battery and server").first().click();
+      await settle(p);
+      await reveal(p, p.getByText("Battery today"));
+    },
+  },
+  { name: "settings-distance", query: "preset=custom", steps: async (p) => (await tab(p, "Recorder"), await press(p, "Settings"), p.getByText("Distance between points").first().click(), settle(p)) },
+  { name: "insights-world-sort", steps: async (p) => (await tab(p, "Insights"), await tab(p, "World"), p.getByText(/^Sort:/).first().click(), settle(p)) },
+  { name: "error-timeline", query: "scenario=error", steps: (p) => tab(p, "Timeline") },
+  { name: "loading-insights", query: "scenario=slow", wait: 600, steps: (p) => tab(p, "Insights") },
+  { name: "loading-places", query: "scenario=slow", wait: 600, steps: async (p) => (await tab(p, "Insights"), tab(p, "Places")) },
+  { name: "empty-places", query: "scenario=empty", steps: async (p) => (await tab(p, "Insights"), tab(p, "Places")) },
+  { name: "empty-travel", query: "scenario=empty", steps: (p) => tab(p, "Insights") },
+  // Round 3 (app): places open a sheet, a By mode row opens its months.
+  { name: "insights-place-sheet", steps: async (p) => (await tab(p, "Insights"), await tab(p, "Places"), press(p, /Opens the place$/)) },
+  { name: "insights-travel-mode", steps: async (p) => (await tab(p, "Insights"), press(p, /Show the last 6 months$/)) },
+  { name: "loading-trips", query: "scenario=slow", wait: 600, steps: async (p) => (await tab(p, "Insights"), tab(p, "Trips")) },
+  { name: "loading-world", query: "scenario=slow", wait: 600, steps: async (p) => (await tab(p, "Insights"), tab(p, "World")) },
 ];
 
 // ---- run -------------------------------------------------------------------

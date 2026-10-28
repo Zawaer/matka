@@ -1,11 +1,14 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { View } from "react-native";
-import { categoryMeta } from "../../design/categories";
+import { useTheme } from "../../design/theme";
 import { getCity } from "../../insights";
-import { group, placeLabel } from "../../format";
+import { group, isNamed, placeLabel } from "../../format";
 import { fmtCompactDate, fmtLongDuration, plural } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
-import { Card, EmptyState, ErrorState, IconTile, ListGroup, ListRow, SectionHeader, Skeleton, StatGrid } from "../../ui";
+import { Card, EmptyState, ErrorState, ListGroup, ListRow, RowsSkeleton, SectionHeader, Skeleton, StatGrid } from "../../ui";
+import { PlaceSheet, PlaceTile, placeKindLine } from "../../ui/PlaceSheet";
+import { Text } from "../../ui/Text";
+import type { Place } from "../../viewer";
 import { AppBar, Screen } from "../../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../../ui/session";
 import { useRefresh } from "./parts";
@@ -22,7 +25,9 @@ export default function CityView({
   backLabel: string;
   onBack: () => void;
 }) {
+  const t = useTheme();
   const { authLost } = useSession();
+  const [opened, setOpened] = useState<Place | null>(null);
   const fetcher = useCallback((p: Pairing) => getCity(p, name, country), [name, country]);
   const { data, error, reload } = useViewerQuery(fetcher);
   const { refreshing, onRefresh } = useRefresh(reload);
@@ -34,16 +39,19 @@ export default function CityView({
   const subtitle = [country, data && places.length ? `last visited ${fmtCompactDate(last)}` : null].filter(Boolean).join(" · ") || null;
 
   return (
-    <Screen refreshing={refreshing} onRefresh={onRefresh} appBar={<AppBar title={name} subtitle={subtitle} onBack={onBack} backLabel={backLabel} />}>
+    // A single-line app bar like every pushed view; the country and last visit open the content.
+    <Screen refreshing={refreshing} onRefresh={onRefresh} padTop="tabs" appBar={<AppBar title={name} onBack={onBack} backLabel={backLabel} />}>
       {authLost ? <PairingLost /> : null}
+      {country || data ? (
+        <Text variant="callout" color="textSecondary" tabular style={{ marginBottom: -t.space.xs }}>
+          {subtitle ?? " "}
+        </Text>
+      ) : null}
 
       {authLost && !data ? null : error && !data ? (
         <ErrorState message={error} onRetry={reload} />
       ) : !data ? (
-        <View style={{ gap: 16 }}>
-          <Skeleton height={70} />
-          <Skeleton height={300} />
-        </View>
+        <CitySkeleton />
       ) : places.length === 0 ? (
         <Card>
           <EmptyState icon="city" title="No places here" body="No visited places are in this city any more." />
@@ -62,21 +70,44 @@ export default function CityView({
           <SectionHeader title="Places" trailing="Most visited first" />
           <ListGroup>
             {places.map((p) => {
-              const meta = categoryMeta(p.category, p.kind);
+              const kind = placeKindLine({ ...p, city: null, country: null });
               return (
                 <ListRow
                   key={p.id}
-                  leading={<IconTile icon={meta.icon} />}
+                  leading={<PlaceTile place={p} />}
                   title={placeLabel(p.name)}
                   titleLines={2}
-                  subtitle={`${meta.label} · ${fmtLongDuration(p.totalTime)}`}
+                  muted={!isNamed(p.name)}
+                  subtitle={kind || null}
                   trailing={plural(p.visitCount, "visit")}
+                  trailingSub={fmtLongDuration(p.totalTime)}
+                  onPress={() => setOpened(p)}
                 />
               );
             })}
           </ListGroup>
         </>
       )}
+      <PlaceSheet place={opened} onClose={() => setOpened(null)} />
     </Screen>
+  );
+}
+
+/** The loading shape: the three-up stat strip, the list header and place rows with tiles. */
+export function CitySkeleton() {
+  const t = useTheme();
+  return (
+    <View style={{ gap: t.space.lg }}>
+      <Card padded={false} style={{ flexDirection: "row" }}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={{ flex: 1, gap: 6, paddingHorizontal: t.space.md, paddingVertical: t.space.md, borderLeftWidth: i ? 1 : 0, borderLeftColor: t.c.border }}>
+            <Skeleton height={12} width="55%" radius={6} />
+            <Skeleton height={18} width="45%" radius={6} />
+          </View>
+        ))}
+      </Card>
+      <Skeleton height={18} width={90} radius={6} style={{ marginTop: t.space.lg }} />
+      <RowsSkeleton />
+    </View>
   );
 }

@@ -3,7 +3,6 @@ import { errorLine } from "../error-copy";
 import { Platform, Pressable, Switch, View } from "react-native";
 import { useTheme } from "../design/theme";
 import { ago, count, fmtDateShort, fmtDuration, fmtTime, group, inFuture } from "../format";
-import { displayServer } from "../pairing";
 import { openAppSettings, requestIgnoreBatteryOptimizations } from "../system";
 import { PRESETS, startTracking, stopTracking } from "../tracking";
 import { Banner, Button, Card, Group, GroupBlock, Icon, IconButton, IconTile, InfoRow, Skeleton, type IconName, type ValueTone } from "../ui";
@@ -22,11 +21,11 @@ function clock(ms: number): string {
   return `${fmtDateShort(d)} ${time}`;
 }
 
-/** The one line under the status card: everything fine, or the most important problem in plain words. */
+/** The status card's second line: everything fine, or the most important problem in plain words. */
 function health(state: CollectorState): { icon: IconName; tone: "ok" | "warn" | "bad" | "off"; text: string } | null {
   const perm = state.permissions;
   const uploaded = state.lastSuccessAt ? `last upload ${ago(state.lastSuccessAt)}` : "nothing uploaded yet";
-  if (!state.trackingEnabled) return { icon: "info", tone: "off", text: "Recording is off · nothing new is logged" };
+  if (!state.trackingEnabled) return { icon: "info", tone: "off", text: "Nothing new is logged" };
   if (!state.trackingRunning) return { icon: "error", tone: "bad", text: "Recording should be on but isn't running" };
   // These have a banner of their own above; don't say it twice.
   if ((perm && perm.background !== "granted") || !state.pairing || state.authLost) return null;
@@ -118,7 +117,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
     state.lastErrorAt != null && state.lastSuccessAt != null && state.lastSuccessAt > state.lastErrorAt;
 
   const status = !state.trackingEnabled
-    ? { title: "Off", tone: "neutral" as const, icon: "stop" as const }
+    ? { title: "Recording is off", tone: "neutral" as const, icon: "recordingOff" as const }
     : trackingProblem
       ? { title: "On, but not running", tone: "danger" as const, icon: "error" as const }
       : state.standby
@@ -148,8 +147,12 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
       {state.trackingEnabled && perm && perm.background !== "granted" ? (
         <Banner
           tone="danger"
-          title="Location permission missing"
-          message={`Nothing is recorded in the background. Allow location ${Platform.OS === "android" ? '"All the time"' : '"Always"'} in settings.`}
+          title={perm.foreground === "granted" ? "Background location is off" : "Location permission is off"}
+          message={
+            perm.foreground === "granted"
+              ? `Matka can only record while the app is open. Set location to ${Platform.OS === "android" ? "“Allow all the time”" : "“Always”"} in settings.`
+              : `Nothing is recorded. Set location to ${Platform.OS === "android" ? "“Allow all the time”" : "“Always”"} in settings.`
+          }
         >
           <Button label="Open app settings" icon="settings" variant="tonal" tone="danger" size="sm" onPress={openAppSettings} />
         </Banner>
@@ -170,11 +173,27 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         <IconTile icon={status.icon} tone={status.tone} />
         <View style={{ flex: 1, gap: 2 }}>
           <Text variant="headline">{status.title}</Text>
-          <Text variant="callout" color="textSecondary">
-            {state.standby
-              ? `GPS sleeps until you move · ${PRESETS[state.preset].label}`
-              : `${PRESETS[state.preset].label} preset${state.smartTracking && state.preset !== "low" ? " · smart tracking" : ""}`}
-          </Text>
+          {/* The health line lives in the card (the preset is on Settings); a banner above covers the rest. */}
+          {state.standby ? (
+            <Text variant="callout" color="textSecondary">
+              GPS sleeps until you move
+            </Text>
+          ) : h ? (
+            <View style={{ flexDirection: "row", gap: 6 }} accessible accessibilityLabel={h.text}>
+              {h.tone === "off" ? null : (
+                <View style={{ height: 20, justifyContent: "center" }}>
+                  <Icon name={h.icon} size={16} color={hColor} />
+                </View>
+              )}
+              <Text variant="callout" color="textSecondary" tabular style={{ flex: 1 }}>
+                {h.text}
+              </Text>
+            </View>
+          ) : (
+            <Text variant="callout" color="textSecondary">
+              {`${PRESETS[state.preset].label} preset`}
+            </Text>
+          )}
         </View>
         <Switch
           value={state.trackingEnabled}
@@ -186,18 +205,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         />
       </Card>
 
-      {h ? (
-        <View style={{ flexDirection: "row", gap: t.space.sm, paddingHorizontal: t.space.lg, marginTop: -t.space.xs }} accessible accessibilityLabel={h.text}>
-          <View style={{ height: 18, justifyContent: "center" }}>
-            <Icon name={h.icon} size={16} color={hColor} />
-          </View>
-          <Text variant="callout" color="textSecondary" tabular style={{ flex: 1 }}>
-            {h.text}
-          </Text>
-        </View>
-      ) : null}
-
-      <Group title="Recording">
+      <Group title="Location">
         <InfoRow label="Location permission" value={permText} tone={permTone} />
         <InfoRow label="Last location" value={ago(state.lastFixAt)} tone={state.lastFixAt ? undefined : "dim"} />
         {state.activityStatus ? (
@@ -271,38 +279,43 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
 
       {message ? <Banner tone="info" message={message} /> : null}
 
-      <Pressable
-        onPress={() => setDetails(!showDetails)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: showDetails }}
-        accessibilityLabel={showDetails ? "Hide battery and server details" : "Show battery and server details"}
-        style={({ pressed }) => ({
-          flexDirection: "row",
-          alignItems: "center",
-          gap: t.space.sm,
-          minHeight: 48,
-          marginTop: t.space.sm,
-          opacity: pressed ? 0.6 : 1,
-        })}
-      >
-        <Text variant="title3" style={{ flex: 1 }}>
-          Details
-        </Text>
-        <Text variant="callout" color="textSecondary">
-          Battery and server
-        </Text>
-        <Icon name={showDetails ? "collapse" : "expand"} size={20} color={t.c.textSecondary} />
-      </Pressable>
+      {/* Closed: one row in its own group. Open: the sections follow directly (no extra header). */}
+      {showDetails ? null : (
+        <Card padded={false} style={{ marginTop: t.space.sm, overflow: "hidden" }}>
+          <Pressable
+            onPress={() => setDetails(true)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: false }}
+            accessibilityLabel="Show battery and server details"
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: t.space.md,
+              minHeight: 56,
+              paddingHorizontal: t.space.lg,
+              backgroundColor: pressed ? t.c.surfaceAlt : "transparent",
+            })}
+          >
+            <Text variant="body" style={{ flex: 1 }}>
+              Battery and server
+            </Text>
+            <Icon name="expand" size={20} color={t.c.textSecondary} />
+          </Pressable>
+        </Card>
+      )}
 
       {showDetails ? (
         <>
           {state.usage ? <UsageToday usage={state.usage} /> : null}
 
-          <Group title="Server" footer={state.pairing ? `Checked ${ago(state.serverAt)}` : undefined}>
+          {/* Server address and device name are on Settings → Pairing; here only what the server knows. */}
+          <Group
+            title="Server"
+            right={<Button label="Hide" variant="ghost" size="sm" onPress={() => setDetails(false)} />}
+            footer={state.pairing ? `Status refreshed ${ago(state.serverAt)}` : undefined}
+          >
             {state.pairing ? (
               <>
-                <InfoRow label="Server" value={displayServer(state.pairing.server)} />
-                <InfoRow label="Device" value={state.server?.device ?? "–"} />
                 <InfoRow label="Points on server" value={count(state.server?.points)} />
                 <InfoRow label="Newest on server" value={state.server?.last ? ago(Date.parse(state.server.last)) : "–"} />
                 <InfoRow

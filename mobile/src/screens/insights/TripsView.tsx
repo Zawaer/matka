@@ -10,31 +10,34 @@ import { PHOTO_BACKDROP, Photo, Scrim, onPhotoText, useRefresh } from "./parts";
 
 /**
  * Photo-led card (Polarsteps): the cover fills it (16:9), the title (22/600)
- * and one meta line sit on a gradient, both left-aligned. No cover: a quiet
- * tonal backdrop with a muted glyph (dark in dark mode, light in light mode).
+ * and one meta line sit on a gradient, both left-aligned. No cover: the same
+ * 16:9 frame on the photo backdrop with a faint route glyph, the same scrim
+ * and white title, so every card in the list is one object.
  */
 function PhotoCard({ trip: t, onPress }: { trip: Trip; onPress: () => void }) {
   const th = useTheme();
   const photo = !!t.cover;
-  const fg = photo ? onPhotoText : { color: th.c.text };
   return (
     <Card padded={false} style={{ overflow: "hidden" }} onPress={onPress} accessibilityLabel={`${t.name}, ${tripDates(t)}`}>
-      <View style={{ aspectRatio: 16 / 9, backgroundColor: photo ? PHOTO_BACKDROP : th.c.surfaceAlt }}>
+      <View style={{ aspectRatio: 16 / 9, backgroundColor: PHOTO_BACKDROP }}>
         {photo ? (
           <>
             <Photo id={t.cover!} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
             <Scrim />
           </>
         ) : (
-          <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 56, alignItems: "center", justifyContent: "center" }}>
-            <Icon name="trip" size={32} color={th.c.textMuted} />
-          </View>
+          <>
+            <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 64, alignItems: "center", justifyContent: "center" }}>
+              <Icon name="route" size={32} color="rgba(255,255,255,0.28)" />
+            </View>
+            <Scrim />
+          </>
         )}
         <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: th.space.lg, gap: 2 }}>
-          <Text variant="title2" style={fg} numberOfLines={2}>
+          <Text variant="title2" style={onPhotoText} numberOfLines={2}>
             {t.name}
           </Text>
-          <Text variant="callout" style={photo ? [onPhotoText, { opacity: 0.92 }] : { color: th.c.textSecondary }} tabular numberOfLines={1}>
+          <Text variant="callout" style={[onPhotoText, { opacity: 0.92 }]} tabular numberOfLines={1}>
             {tripMeta(t)}
           </Text>
         </View>
@@ -71,7 +74,7 @@ export default function TripsView({ onOpen }: { onOpen: (t: Trip) => void }) {
   const photoCards = !!data?.trips.some((t) => t.cover);
 
   return (
-    <Screen refreshing={refreshing} onRefresh={onRefresh}>
+    <Screen refreshing={refreshing} onRefresh={onRefresh} padTop="tabs">
       <Text variant="callout" color="textSecondary">
         Trips are nights you spent 30 km or more from home.
       </Text>
@@ -81,8 +84,8 @@ export default function TripsView({ onOpen }: { onOpen: (t: Trip) => void }) {
       ) : !data ? (
         <View style={{ gap: t.space.md }}>
           <Skeleton height={28} width="30%" radius={6} />
-          <Skeleton height={194} />
-          <Skeleton height={194} />
+          <Skeleton height={201} />
+          <Skeleton height={201} />
         </View>
       ) : data.trips.length === 0 ? (
         <Card>

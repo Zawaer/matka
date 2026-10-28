@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
-import { fmtDateShort, fmtDayHeading, fmtDistance, fmtDuration, fmtTime, isLikelyDrift, isNamed, localDay, displayName } from "../format";
+import { fmtDateShort, fmtDayHeading, fmtDistance, fmtDuration, fmtTime, fmtVisitRange, isLikelyDrift, isNamed, localDay, displayName } from "../format";
 import type { Pairing } from "../pairing";
 import { Badge, Button, Card, EmptyState, ErrorState, Icon, IconButton, Skeleton } from "../ui";
 import { Screen, ScreenHeader } from "../ui/Screen";
@@ -19,7 +19,7 @@ import { legBadgeText } from "../design/transit";
 import { LineBadge } from "../ui/LineBadge";
 import { TripFixSheet } from "../ui/TripFixSheet";
 import { addedMove, adjacentDays, dayHasMap, gapBetween, missingTravel, selectionKey, subRows, type Gap } from "../timeline-logic";
-import { DayMapCard, type DayMapSelection } from "../ui/DayMapCard";
+import { DayMapCard, MAP_HEIGHT, type DayMapSelection } from "../ui/DayMapCard";
 
 /** The rail column: glyphs centre on it; every row's text starts after it. */
 const RAIL = 40;
@@ -59,25 +59,50 @@ function Note({ icon, color, children }: { icon: "wait" | "warning" | "stationar
   );
 }
 
-/** Time with nothing recorded between two rows (location off, phone dead). */
+/**
+ * Time with nothing recorded between two rows (location off, phone dead): the
+ * same two-line anatomy as "Missing travel", in neutral colours ("No location"
+ * over "13:20–16:55 · 3 h 35 min").
+ */
 function GapRow({ gap }: { gap: Gap }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: "row", gap: RAIL_GAP }} accessible accessibilityLabel={`No location recorded for ${fmtDuration(gap.secs)}`}>
-      <DashedRail rail={RAIL} color={t.c.borderStrong} dashes={4} />
-      <View style={{ flex: 1, justifyContent: "center", paddingVertical: t.space.sm }}>
-        <Note icon="noLocation">{`${fmtTime(gap.from)}–${fmtTime(gap.to)} · ${fmtDuration(gap.secs)} · no location recorded`}</Note>
+    <View style={{ flexDirection: "row", gap: RAIL_GAP }} accessible accessibilityLabel={`No location, ${fmtTime(gap.from)} to ${fmtTime(gap.to)}, ${fmtDuration(gap.secs)}`}>
+      <DashedRail rail={RAIL} color={t.c.borderStrong} dashes={5} />
+      <View style={{ flex: 1, gap: 2, paddingVertical: t.space.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Icon name="noLocation" size={16} color={t.c.textMuted} />
+          <Text variant="headline" color="textSecondary">
+            No location
+          </Text>
+        </View>
+        <Text variant="callout" color="textSecondary" tabular>
+          {`${fmtTime(gap.from)}–${fmtTime(gap.to)} · ${fmtDuration(gap.secs)}`}
+        </Text>
       </View>
     </View>
   );
 }
 
-/** The loading shape: a rail with stops on it and lines of text beside them. */
+/**
+ * The loading shape, as loaded: the full-bleed map block at the map's height,
+ * the day's stats card, then a rail with stops on it and lines of text.
+ */
 function TimelineSkeleton() {
   const t = useTheme();
   return (
     <View style={{ gap: t.space.lg }}>
-      <Skeleton height={88} />
+      <View style={{ height: MAP_HEIGHT, marginHorizontal: -t.layout.gutter, marginTop: -t.space.sm, backgroundColor: t.c.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
+        <Icon name="tabMap" size={24} color={t.c.textMuted} />
+      </View>
+      <Card style={{ gap: t.space.md }}>
+        <Skeleton height={18} width="70%" radius={6} />
+        <Skeleton height={10} radius={5} />
+        <View style={{ flexDirection: "row", gap: t.space.lg }}>
+          <Skeleton height={14} width="25%" radius={6} />
+          <Skeleton height={14} width="25%" radius={6} />
+        </View>
+      </Card>
       <View>
         <View style={{ position: "absolute", left: RAIL / 2 - 1, top: DOT_TOP + DOT / 2, bottom: 40, width: 2, backgroundColor: t.c.skeleton }} />
         {[0, 1, 2, 3].map((i) => (
@@ -203,17 +228,16 @@ export default function TimelineScreen() {
         ) : err && !resp ? (
           "Timeline"
         ) : (
-          <Skeleton height={22} width={140} radius={6} />
+          <Skeleton height={22} width={150} radius={6} />
         )
       }
+      // The same three buttons in every state (disabled while loading or with no days), so the bar never changes shape.
       right={
-        resp && date ? (
-          <>
-            <IconButton icon="back" label="Previous day" onPress={() => prev && setWant(prev)} disabled={!prev} />
-            <IconButton icon="forward" label="Next day" onPress={() => next && setWant(next)} disabled={!next} />
-            <IconButton icon="calendarDays" label="Go to a day" onPress={() => setPicking(true)} />
-          </>
-        ) : null
+        <>
+          <IconButton icon="back" label="Previous day" onPress={() => prev && setWant(prev)} disabled={!prev} />
+          <IconButton icon="forward" label="Next day" onPress={() => next && setWant(next)} disabled={!next} />
+          <IconButton icon="calendarDays" label="Go to a day" onPress={() => setPicking(true)} disabled={!(resp && date)} />
+        </>
       }
     />
   );
@@ -316,7 +340,6 @@ export default function TimelineScreen() {
     const after = items[i + 1];
     // A gap or "Missing travel" row breaks the rail with its own dashes.
     const joinedAbove = !!before && !missingTravel(before, it) && !gapBetween(before, it);
-    const joinedBelow = !!after && !missingTravel(it, after) && !gapBetween(it, after);
     const key = selectionKey(it);
 
     if (it.kind === "visit") {
@@ -329,34 +352,38 @@ export default function TimelineScreen() {
       const asking = !!v.candidates?.length;
       const set = photoSets.get(key);
       const on = selected?.key === key;
-      const meta = [`${fmtTime(v.startedAt)}–${fmtTime(v.endedAt)}`, fmtDuration(v.duration), named && cat ? cat : null].filter(Boolean).join(" · ");
+      // Across midnight the times say which day ("Since 22:05 yesterday, until 08:20").
+      const times = fmtVisitRange(v.startedAt, v.endedAt, date);
+      const meta = [times, fmtDuration(v.duration), named && cat ? cat : null].filter(Boolean).join(" · ");
       return (
         <View style={s.row}>
           <View style={s.rail}>
             {/* Mode-coloured from the move above down to this stop, neutral past it. */}
             {before ? <View style={[s.line, { top: 0, height: DOT_TOP, backgroundColor: railColor(before, joinedAbove) }]} /> : null}
-            {after ? <View style={[s.line, { top: DOT_TOP + DOT, bottom: 0, backgroundColor: joinedBelow ? railColor(after, true) : t.c.borderStrong }]} /> : null}
+            {/* Under the stop the rail stays neutral; the next trip's colour starts at its own row. */}
+            {after ? <View style={[s.line, { top: DOT_TOP + DOT, bottom: 0, backgroundColor: t.c.borderStrong }]} /> : null}
             <View style={[s.dot, on && s.dotOn]} accessible accessibilityLabel={icon.label}>
               <Icon name={icon.icon} size={16} color={on ? t.c.primary : t.c.textSecondary} />
             </View>
           </View>
-          <View style={[s.body, on && s.bodyOn]}>
+          <View style={[s.body, { paddingVertical: 0 }, (asking || set) && { paddingBottom: t.space.md }, on && s.bodyOn]}>
+            {/* The text block is the touch target: padded to 64+ for two lines. */}
             <Pressable
               onPress={hasMap ? () => pick(key) : undefined}
               disabled={!hasMap}
               accessibilityRole={hasMap ? "button" : undefined}
               accessibilityState={hasMap ? { selected: on } : undefined}
-              style={{ gap: 2, paddingTop: 2 }}
+              style={{ gap: 2, paddingTop: t.space.md + 2, paddingBottom: asking || set ? 0 : t.space.md, minHeight: 64 }}
             >
               <Text variant="headline" numberOfLines={2} color={named || cat ? "text" : "textSecondary"}>
                 {title}
               </Text>
-              <Text variant="callout" color="textSecondary" tabular numberOfLines={1}>
+              <Text variant="callout" color="textSecondary" tabular numberOfLines={2}>
                 {meta}
               </Text>
             </Pressable>
             {asking ? <PlaceQuestion key={v.placeId} visit={v} shownName={title} onAnswered={refreshDay} /> : null}
-            {set ? <PhotoStrip set={set} onOpen={(start) => setViewing({ set, start, caption: `${title} · ${fmtTime(v.startedAt)}–${fmtTime(v.endedAt)}` })} /> : null}
+            {set ? <PhotoStrip set={set} onOpen={(start) => setViewing({ set, start, caption: `${title} · ${times}` })} /> : null}
           </View>
         </View>
       );
@@ -387,6 +414,9 @@ export default function TimelineScreen() {
     const facts = `${fmtDistance(m.distance)} · ${fmtDuration(m.duration)}`;
     const action = m.added ? "edit the trip you added" : m.correctionId != null ? "edit the fix of this trip" : "fix this trip";
     const subs = subRows(m);
+    // A ride on more than one kind of line is titled by all of them ("Bus + Metro"), as the mode legend counts them.
+    const legKinds = [...new Set(m.legs.map((l) => l.kind))];
+    const label = legKinds.length > 1 ? legKinds.map((k) => modeMeta(k).label).join(" + ") : meta.label;
     return (
       <View style={s.row}>
         <View style={s.rail}>
@@ -402,13 +432,13 @@ export default function TimelineScreen() {
             setFixing(m);
           }}
           accessibilityRole="button"
-          accessibilityLabel={`${meta.label}, ${facts}: ${action}`}
+          accessibilityLabel={`${label}, ${facts}: ${action}`}
           style={({ pressed }) => [s.body, { paddingVertical: t.space.sm + 2, minHeight: 44 }, (picked || pressed) && s.bodyOn]}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm }}>
             <Text variant="callout" color="textSecondary" tabular numberOfLines={1} style={{ flexShrink: 1 }}>
               <Text variant="label" style={{ fontSize: 13 }}>
-                {meta.label}
+                {label}
               </Text>
               {` · ${facts}`}
             </Text>

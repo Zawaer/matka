@@ -1,5 +1,6 @@
 // "Go to a day": a month calendar in a sheet (weeks start on Monday). Days
-// with something recorded can be picked; the rest are muted.
+// with something recorded carry a dot under the numeral (Google Maps
+// Timeline) and can be picked; the rest are muted.
 
 import { useState } from "react";
 import { Pressable, View } from "react-native";
@@ -79,7 +80,7 @@ function Body({ dates, selected, onPick, onClose }: { dates: string[]; selected:
                     onClose();
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={date}
+                  accessibilityLabel={can ? `${date}, has recordings` : date}
                   accessibilityState={{ selected: on, disabled: !can }}
                   hitSlop={2}
                   style={({ pressed }) => ({
@@ -89,7 +90,8 @@ function Body({ dates, selected, onPick, onClose }: { dates: string[]; selected:
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: on ? t.c.primary : pressed ? t.c.surfaceAlt : "transparent",
-                    borderWidth: date === todayIso && !on ? 1 : 0,
+                    // Today's ring only where it can be opened (an empty today isn't a target).
+                    borderWidth: date === todayIso && !on && can ? 1 : 0,
                     borderColor: t.c.borderStrong,
                   })}
                 >
@@ -100,14 +102,16 @@ function Body({ dates, selected, onPick, onClose }: { dates: string[]; selected:
                   >
                     {d}
                   </Text>
+                  {can ? (
+                    <View
+                      style={{ position: "absolute", bottom: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: on ? t.c.onPrimary : t.c.textMuted }}
+                    />
+                  ) : null}
                 </Pressable>
               </View>
             );
           })}
         </View>
-        <Text variant="caption" color="textMuted">
-          Days with something recorded can be opened.
-        </Text>
       </View>
     </Sheet>
   );

@@ -175,6 +175,8 @@ export const ICONS = {
   stop: Square,
   radioOn: CircleDot,
   radioOff: Circle,
+  /** Recording off: the hollow ring of the on state's circle-dot. */
+  recordingOff: Circle,
 
   // ---- status ----
   error: CircleAlert,

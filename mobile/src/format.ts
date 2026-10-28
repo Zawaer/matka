@@ -191,4 +191,31 @@ export function displayName(name: string): string {
 /** "artwork" → "Artwork", "bus stop" → "Bus stop": a lowercase tag as a label. */
 export const sentenceCase = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
-// TEMP (insights fork, for screenshots while Overview is mid-rewrite): remove.
+
+/** An instant's local calendar day, "2026-10-18" (the Timeline's day key). */
+export function localDateOf(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * A visit's times as seen from `day` (YYYY-MM-DD), the shared rule (palette.md
+ * → "Times", web Timeline): "16:58–18:20"; across midnight "Since 22:05
+ * yesterday, until 08:20" / "18:35 – until 07:10 tomorrow"; both ends on other days
+ * "22:05 yesterday – 07:10 tomorrow". Without `day`, the start's own day.
+ */
+export function fmtVisitRange(startIso: string, endIso: string | null | undefined, day?: string | null): string {
+  const start = fmtTime(startIso);
+  const end = endIso ? fmtTime(endIso) : null;
+  const ref = day ?? localDateOf(startIso);
+  const startDay = localDateOf(startIso);
+  const endDay = endIso ? localDateOf(endIso) : ref;
+  const earlier = !!ref && !!startDay && startDay < ref;
+  const later = !!ref && !!endDay && endDay > ref;
+  if (earlier && later) return `${start} yesterday – ${end} tomorrow`;
+  if (earlier) return `Since ${start} yesterday${end ? `, until ${end}` : ""}`;
+  if (later) return `${start} – until ${end} tomorrow`;
+  return end ? `${start}–${end}` : `From ${start}`;
+}

@@ -93,18 +93,22 @@ export function MonthBars({
           </View>
         </View>
         <View style={s.labels}>
-          {data.map((d, i) => (
-            <View key={d.key} style={{ flex: 1, alignItems: "center" }}>
-              <Text variant="caption" color={i === sel ? "text" : "textMuted"} style={[AXIS, i === sel && { fontWeight: "500" }]}>
-                {d.label}
+          {data.map((d, i) => {
+            const shown = data.length <= 8 || i === sel || ((data.length - 1 - i) % 2 === 0 && Math.abs(i - sel) !== 1);
+            return (
+            <View key={d.key} style={{ flex: 1, alignItems: "center", overflow: "visible" }}>
+              {/* Past 8 columns, every other month (ending on the latest) plus the selected one (its neighbours give way), so labels never touch. */}
+              <Text variant="caption" color={i === sel ? "text" : "textMuted"} numberOfLines={1} style={[AXIS, { width: 40, textAlign: "center" }, i === sel && { fontWeight: "500" }]}>
+                {shown ? d.label : ""}
               </Text>
-              {d.year != null && (i === 0 || d.label === "Jan") ? (
+              {shown && d.year != null && (i === 0 || d.label === "Jan") ? (
                 <Text variant="caption" color="textMuted" tabular style={AXIS}>
                   {d.year}
                 </Text>
               ) : null}
             </View>
-          ))}
+            );
+          })}
         </View>
       </View>
     </View>

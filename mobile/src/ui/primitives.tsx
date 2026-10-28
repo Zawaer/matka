@@ -88,12 +88,12 @@ export function IconTile({ icon, tone = "neutral", size = 40 }: { icon: IconName
   );
 }
 
-/** A travel mode's glyph in its data colour on a 12 % tint of it (the glyph is the data). */
+/** A travel mode's glyph in its data colour on the neutral rounded tile (the same shape as IconTile; colour stays on the glyph, a data mark). */
 export function ModeIcon({ mode, size = 32 }: { mode: string; size?: 24 | 32 | 40 }) {
   const t = useTheme();
   const color = t.mode(mode);
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: t.alpha(color, 0.14), alignItems: "center", justifyContent: "center" }}>
+    <View style={{ width: size, height: size, borderRadius: t.radius.sm, backgroundColor: toneColors(t, "neutral").bg, alignItems: "center", justifyContent: "center" }}>
       <Icon name={modeMeta(mode).icon} size={size >= 32 ? 20 : 16} color={color} />
     </View>
   );
@@ -413,27 +413,45 @@ export function Tabs<T extends string>({
 
 /* ---------------- numbers ---------------- */
 
-/** "1 148 km" → ["1 148", "km"]; durations and plain counts stay whole. */
-function splitUnit(value: string): [string, string | null] {
-  const m = /^([\d\s.,  ]+?)\s?(km|m|%)$/.exec(value);
-  return m ? [m[1], m[2]] : [value, null];
+const UNITS = new Set(["km", "m", "%", "d", "h", "min", "s"]);
+
+/**
+ * "1,148 km" → [["1,148", false], [" km", true]]; "1 d 21 h" → numbers and
+ * units alternating. Null when the value isn't numbers with known units (a
+ * date, a dash), which then shows whole.
+ */
+export function splitUnits(value: string): [string, boolean][] | null {
+  const parts = value.split(/(\d[\d,.]*)/).filter((x) => x !== "");
+  if (!parts.some((x) => /^\d/.test(x))) return null;
+  const out: [string, boolean][] = [];
+  for (const x of parts) {
+    if (/^\d/.test(x)) out.push([x, false]);
+    else if (UNITS.has(x.trim())) out.push([x, true]);
+    else return null;
+  }
+  return out;
 }
 
-/** A stat: small label on top, big tabular number, the unit smaller and muted. */
+/** A stat: small label on top, big tabular number, every unit (km, d, h, min) smaller and muted. */
 export function Stat({ label, value, size = "md", style }: { label: string; value: string; size?: "md" | "sm"; style?: StyleProp<ViewStyle> }) {
-  const [num, unit] = splitUnit(value);
+  const parts = splitUnits(value);
   return (
     <View style={[{ gap: 2 }, style]}>
       <Text variant="caption" color="textSecondary" numberOfLines={1}>
         {label}
       </Text>
       <Text variant={size === "md" ? "stat" : "statSm"} tabular numberOfLines={1} adjustsFontSizeToFit>
-        {num}
-        {unit ? (
-          <Text variant={size === "md" ? "title3" : "callout"} color="textSecondary">
-            {` ${unit}`}
-          </Text>
-        ) : null}
+        {parts
+          ? parts.map(([x, unit], i) =>
+              unit ? (
+                <Text key={i} variant={size === "md" ? "title3" : "callout"} color="textSecondary">
+                  {x.startsWith(" ") || x === "%" ? x : ` ${x}`}
+                </Text>
+              ) : (
+                x
+              ),
+            )
+          : value}
       </Text>
     </View>
   );
@@ -488,7 +506,10 @@ export function SectionHeader({
         {title}
       </Text>
       {action ? (
-        <Button label={action.label} variant="ghost" size="sm" onPress={action.onPress} />
+        // The label's right edge lines up with the cards' outer edge (the ghost button's padding hangs outside).
+        <View style={{ marginRight: -t.space.md }}>
+          <Button label={action.label} variant="ghost" size="sm" onPress={action.onPress} />
+        </View>
       ) : trailing ? (
         <Text variant="caption" color="textMuted">
           {trailing}

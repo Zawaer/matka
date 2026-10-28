@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { FlatList, Image, Linking, Modal, Pressable, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { categoryLabel } from "../design/categories";
 import { useTheme } from "../design/theme";
 import { assetSource } from "../insights";
@@ -58,18 +59,46 @@ export function PlaceQuestion({ visit, shownName, onAnswered }: { visit: Visit; 
   });
   return (
     <View style={{ marginTop: t.space.md, gap: t.space.sm }}>
+      {/* While picking, the row turns into the list's header: "Yes" next to other names would be ambiguous. */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm }}>
         <Text variant="callout" color="textSecondary" style={{ flex: 1 }}>
-          Were you here?
+          {open ? "Where were you?" : "Were you here?"}
         </Text>
-        <Button label="Yes" size="sm" variant="tonal" disabled={busy} onPress={() => answer({ confirm: true })} />
-        <Button label={open ? "Close" : "Pick another"} size="sm" variant="ghost" disabled={busy} onPress={() => setOpen((o) => !o)} />
+        {open ? null : <Button label="Yes" size="sm" variant="tonal" disabled={busy} onPress={() => answer({ confirm: true })} />}
+        <Button
+          label={open ? "Cancel" : "Pick another"}
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onPress={() => {
+            setOpen((o) => !o);
+            setTyping(false);
+          }}
+        />
       </View>
       {open ? (
         <View style={{ borderTopWidth: 1, borderTopColor: t.c.border, marginRight: t.space.sm }}>
-          {others.map((c, i) => (
+          {/* The shown guess first, with a check: picking it is the same as "Yes". */}
+          <Pressable
+            onPress={() => answer({ confirm: true })}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel={`${shownName}, the current name`}
+            style={({ pressed }) => [row(pressed), { flexDirection: "row", alignItems: "center", gap: t.space.md }]}
+          >
+            <Icon name="check" size={20} color={t.c.primary} />
+            <View style={{ flex: 1, gap: 2, paddingVertical: t.space.sm }}>
+              <Text variant="headline" numberOfLines={1}>
+                {shownName}
+              </Text>
+              <Text variant="callout" color="textMuted">
+                Current name
+              </Text>
+            </View>
+          </Pressable>
+          {others.map((c) => (
             <View key={c.name}>
-              {i > 0 ? <Divider /> : null}
+              <Divider />
               <Pressable
                 onPress={() => answer({ name: c.name, category: c.category })}
                 disabled={busy}
@@ -89,7 +118,7 @@ export function PlaceQuestion({ visit, shownName, onAnswered }: { visit: Visit; 
               </Pressable>
             </View>
           ))}
-          {others.length > 0 ? <Divider /> : null}
+          <Divider />
           {typing ? (
             <View style={[row(false), { flexDirection: "row", alignItems: "center", gap: t.space.sm, paddingVertical: t.space.sm }]}>
               <View style={{ flex: 1 }}>
@@ -247,12 +276,14 @@ export function PhotoViewer({
 function Viewer({ set, start, linkBase, caption, onClose }: { set: PhotoSet; start: number; linkBase: string | null; caption?: string; onClose: () => void }) {
   const { pairing } = useSession();
   const { width, height } = useWindowDimensions();
+  // Clear the status bar and the gesture handle (the modal draws under both).
+  const insets = useSafeAreaInsets();
   const [i, setI] = useState(Math.min(start, set.ids.length - 1));
   const id = set.ids[i];
   return (
     // Opaque black, like a media viewer: nothing of the timeline shows through.
     <View style={{ flex: 1, backgroundColor: "#000000" }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 44, paddingHorizontal: 8, paddingLeft: 16, paddingBottom: 8 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: Math.max(44, insets.top + 8), paddingHorizontal: 8, paddingLeft: 16, paddingBottom: 8 }}>
         <Text variant="label" tabular style={{ color: "#FFFFFFD9", flex: 1 }}>
           {i + 1} / {set.ids.length}
           {set.total > set.ids.length ? ` (of ${set.total})` : ""}
@@ -294,7 +325,7 @@ function Viewer({ set, start, linkBase, caption, onClose }: { set: PhotoSet; sta
         )}
       />
       {caption ? (
-        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: Math.max(32, insets.bottom + 16) }}>
           <Text variant="callout" tabular numberOfLines={2} style={{ color: "#FFFFFFB3" }}>
             {caption}
           </Text>

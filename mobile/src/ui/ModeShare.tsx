@@ -7,6 +7,7 @@ import { View } from "react-native";
 import { modeMeta } from "../design/modes";
 import { useTheme } from "../design/theme";
 import { fmtPercent } from "../format";
+import { Icon } from "./Icon";
 import { Text } from "./Text";
 
 export type ModeShare = { mode: string; share: number };
@@ -29,7 +30,7 @@ export function ModeShareBar({ shares }: { shares: ModeShare[] }) {
 }
 
 /**
- * Legend: two columns of "● Walk ……… 52%" (dot, label, right-aligned tabular
+ * Legend: two columns of "Walk ……… 52%" after the mode glyph in its colour (label, right-aligned tabular
  * share). `percents` overrides the rounding (e.g. largest-remainder shares).
  */
 export function ModeLegend({ shares, percents }: { shares: ModeShare[]; percents?: number[] }) {
@@ -39,7 +40,8 @@ export function ModeLegend({ shares, percents }: { shares: ModeShare[]; percents
     <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: t.space.sm, columnGap: t.space.xl }}>
       {used.map((m) => (
         <View key={m.mode} style={{ width: "45%", flexGrow: 1, flexDirection: "row", alignItems: "center", gap: t.space.sm }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.mode(m.mode) }} />
+          {/* The mode's glyph in its colour, not a dot: Train and Metro (Bus and Tram) share a hue family. */}
+          <Icon name={modeMeta(m.mode).icon} size={16} color={t.mode(m.mode)} />
           <Text variant="callout" numberOfLines={1} style={{ flex: 1 }}>
             {modeMeta(m.mode).label}
           </Text>

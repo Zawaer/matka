@@ -38,7 +38,7 @@ import { Text } from "./Text";
 
 export const DAY_MAP_COLLAPSED_KEY = "timeline_map_collapsed";
 /** About 40% of a phone screen under the app bar. */
-const MAP_HEIGHT = 300;
+export const MAP_HEIGHT = 300;
 /** The page must say hello within this long, or we give up on it. */
 const READY_TIMEOUT_MS = 20_000;
 

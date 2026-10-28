@@ -586,3 +586,110 @@ reports any page whose `scrollWidth` is wider than the viewport.
 country rows have no flags, the trip map's wide desktop crop still shows a lot
 of Europe for a Helsinki–Berlin trip, and real-photo covers remain unexercised
 by the harness.
+
+## Round 3 (app)
+
+The final pass before the phone, from `docs/redesign/critique-app-r3.md`
+(7.5/10). It was mostly about behaviour and truth, so most changes are about
+what a tap does and what a line says. Shots: `/tmp/shots/redesign/r3/app/after/{light,dark}/`
+(`mobile/preview/screens.mjs`, which adds `insights-place-sheet`,
+`insights-travel-mode`, `loading-trips` and `loading-world`). No native
+dependencies were added.
+
+**Places open.** A place row in Insights → Places, a search hit and a row in a
+city's list all open one place sheet (`ui/PlaceSheet.tsx`). It shows the kind
+and city, a three-up strip (Visits, Time, Last visit), and the recent days as
+rows that open that day's timeline, plus "Open on the web" for editing. The
+days come from `GET /api/search` (the one call that lists `recentDates`),
+matched by id; a place with no name shows its last visit only. A list row and
+a search hit now share one anatomy: tile, title, "Kind · City" (the generic
+"Place" is dropped), visits over time, or "last 3 Oct" while searching, and a
+chevron.
+
+**Overnight times.** `fmtVisitRange` in `src/format.ts` follows the web's
+rule: "Since 22:05 yesterday, until 08:20", "18:35 – until 07:10 tomorrow". It
+is used in the Timeline (the meta line may wrap to two lines), in the photo
+caption and in Overview → Recent visits. Recent visits (`src/overview-logic.ts`)
+are grouped by the day the visit started. Back-to-back visits to one place are
+joined, and unnamed stops under 30 min are left out. Rows have a place glyph
+and open the day they are listed under.
+
+**Travel → By mode.** Each sparkline is scaled to its own mode's busiest
+month and is no longer a control. The whole row opens a "Walk by month" sheet
+with the six months as bars, and a tap there switches the month. The header
+reads "By mode in October", with "Bars: last 6 months". The "Tap a bar"
+footnote is gone. Mode tiles are the neutral rounded square with the glyph in
+its mode colour, and the share legends (Travel, Trip detail) use mode glyphs
+instead of dots.
+
+**Timeline.**
+
+- The rail under a visit stays neutral; a mode colour starts at its travel row.
+- Gap rows match Missing travel: "No location" over "13:20–16:55 · 3 h 35 min".
+- Rides on more than one kind of line are titled "Bus + Metro".
+- A visit's text block is at least 64 tall.
+- While you pick, "Were you here?" becomes "Where were you?" with Cancel, and
+  the current name is listed first with a check.
+- The app bar always has its three buttons (disabled while loading or empty).
+- The day picker puts a dot under days with data, rings today only when it has
+  data, and drops its footnote.
+
+**Loading.** Every skeleton now has the loaded layout:
+
+- Timeline: the full-bleed map block at 300, the day card and the rail.
+- Travel: the stat strip, the share card and the mode rows.
+- Places: tiled rows under the fixed "Places you come back to" line (the
+  count trails it once there is one).
+- World, City and Country: a strip, the header row and rows.
+- Trips: 16:9 cards. Trip detail: the 16:9 hero.
+
+`RowsSkeleton` (`ui/lists.tsx`) is the shared row skeleton.
+
+**Spacing and headers.** `Screen padTop="tabs"` puts 16 under the Insights
+tabs (Trips, World, Places, and Country/City). City and Country have a
+single-line app bar. The subtitle moved into the content on City; Country got
+a Cities · Visits · Time strip. World's Countries/Cities toggle is a two-segment
+`Segmented`, with "Sort: Visits" on the same 48 row.
+
+**Trips and trip detail.**
+
+- No-cover trip cards use the photo card's frame: the dark backdrop, a faint
+  route glyph, the scrim and a white two-line title. The server's route sketch
+  isn't in the API.
+- "On the move" uses `fmtLongDuration` ("1 d 4 h").
+- `Stat` gives every unit (km, d, h, min, %) the muted unit style.
+- The hero caption is two lines on a deeper scrim: "6 days · 5 nights ·
+  Portugal" over "Out … · back …". The dates are no longer said twice.
+
+**Recorder, Settings and Pair.**
+
+- Recorder: "Recording is off" with a hollow ring. The health line ("All
+  good · last upload 5 min ago") moved into the status card. The "Recording"
+  section is now "Location".
+- The banner reads "Background location is off" and "Allow all the time".
+- "Battery and server" is a row in its own card, with Hide on the Server group
+  once it is open. Server and Device moved out (Settings has them), and the
+  footnote reads "Status refreshed …".
+- Watchdog lines lead with the time.
+- Settings: "Custom preset", and disabled rows are muted rather than pale red.
+- Pair: step 2 follows the mode ("Copy the server address and token it
+  shows.").
+
+**Small fixes.**
+
+- Overview's place-time bars end at one x (a 76 trailing column).
+- Section actions line up with the card edge.
+- Month labels skip every other month at 12 bars.
+- Add travel starts with nothing picked, and Save waits for a choice.
+- Selected mode tiles lose the corner tick.
+- "edited" reads "you edited this".
+- Line numbers in the fix sheet show only with two or more lines.
+- The photo viewer clears the safe-area insets.
+
+**Still open.**
+
+- "Near ‹street›" for unnamed places: the visit and overview APIs carry no
+  street. Unnamed places are muted, and short ones are hidden from summaries.
+- The route sketch on no-cover trip cards needs the server to send it.
+- The category glyph mapping is shared with the web and was left alone.
+- The rail under a multi-line ride isn't split by leg.

@@ -158,13 +158,13 @@ describe("recoveries in the kv store", () => {
   test("describeRecovery", () => {
     const t = () => "14:02";
     expect(describeRecovery(rec(now, { reason: "not_running", action: "start" }), t)).toBe(
-      "The phone stopped recording — restarted at 14:02",
+      "14:02 · The phone stopped recording · restarted",
     );
     expect(describeRecovery(rec(now, { reason: "stale_moving", lastFixAt: now - 25 * MIN }), t)).toBe(
-      "No location for 25 min while moving — restarted at 14:02",
+      "14:02 · No location for 25 min while moving · restarted",
     );
     expect(describeRecovery(rec(now, { ok: false, error: "denied", lastFixAt: now - 3 * H }), t)).toBe(
-      "No location for 3 h — couldn't restart at 14:02 (denied)",
+      "14:02 · No location for 3 h · couldn't restart (denied)",
     );
   });
 });
