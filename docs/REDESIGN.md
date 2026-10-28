@@ -194,3 +194,124 @@ Screenshots: `/tmp/shots/redesign/r1/web/before/` and `.../after/` (76 each).
     button.
   - auth key, pair landing and pairing, 404.
 - **Harness:** `web/scripts/screens.mjs` (see above).
+
+
+## How to screenshot (app)
+
+The phone app is shot from the browser preview (`mobile/preview`, see its
+README): the real screens, rendered by react-native-web with a mock API that
+covers every state (timeline extras, corrections, photos, recorder problems,
+battery stats, empty, error and loading).
+
+```sh
+cd mobile
+# Node >= 22.13 (expo). Web-only extras, not in package.json:
+npm i --no-save --include=dev react-native-web@~0.21.4 react-dom@19.3.0 @expo/metro-runtime@~58.0.14 playwright-core
+# Start the preview (no CI=1: it turns off Metro's file watching)
+MATKA_PREVIEW=1 npx expo start --web --port 3127 --host localhost
+# In another shell: every tab, sub-view, sheet and state, light and dark
+node preview/screens.mjs /tmp/shots/app
+#   --only timeline,sheet   --scheme dark   --base http://localhost:3127
+```
+
+`screens.mjs` uses playwright-core with the headless shell in
+`/opt/playwright` (or `PLAYWRIGHT_CHROMIUM`), a 390x844 viewport at 2x,
+`en-GB` and Europe/Helsinki. Long screens are captured page by page
+(`overview-1.png`, `overview-2.png`, …). Judge layout, hierarchy and
+consistency there; fonts, shadows and the switch thumb are drawn by the
+browser, not Android.
+
+## Round 1 (app)
+
+Screenshots: `/tmp/shots/redesign/r1/app/{before,after}/{light,dark}/`.
+
+**Icons.** Every icon is now Lucide (`lucide-react-native` + `react-native-svg`,
+added with `npx expo install`; react-native-svg is native, so the APK needs a
+rebuild). Screens ask for semantic names from one map,
+`mobile/src/design/icons.ts` (modes, place groups, saved kinds, tabs, actions,
+status), imported per icon so the bundle only carries those glyphs.
+`design/modes.ts`, `design/placeIcons.ts` (same groups as the web, emoji
+column removed), `design/categories.ts` (now derived from placeIcons) and
+`KIND_META` all use those names. Sizes 16 / 20 / 24 (32 for empty states),
+stroke 2. No emoji in the app; MaterialCommunityIcons and the icon font load
+are gone.
+
+**Tokens** (`mobile/src/design/tokens.ts`):
+
+- Colour: one cool neutral for surfaces, borders and text (`bg`, `surface`,
+  `surfaceAlt`, `raised`; `border` hairline, `borderStrong` 3:1 for inputs and
+  the rail; `text` / `textSecondary` / `textMuted`, all at least 4.5:1 on every
+  surface in both themes). One indigo accent (`primary`, `primarySoft`) for the
+  primary action, selection and links. Status `danger` / `warning` / `success`
+  with soft backgrounds. The decorative tint palette and the violet "hero" are
+  gone. Mode colours unchanged (validated data palette) and used only for marks
+  and mode glyphs.
+- Type: the iOS sizes only (11/12/13/15/17/22/28/34). `title1` 28 screen titles,
+  `title2` 22 detail titles and pagers, `title3` 17/500 section and card titles,
+  `headline` 15/500 row titles, `callout` 13 metadata, `caption` 12, `label`
+  13/500 buttons and chips, `stat` 28 / `statSm` 17 numbers, `display` 34 for
+  the one hero number. Weights 400, 500 and 800 (Android draws 600/700 as
+  regular), at most two per row. Every number is tabular.
+- Spacing 2/4/8/12/16/24/32/48, gutter 16. Radii: badge 6, control 10, card 14,
+  sheet 28, pill. Cards are flat (tone + hairline); only sheets cast a shadow,
+  and none in dark mode.
+
+**Components** (`mobile/src/ui/`): `Card` (optionally pressable), `ListGroup` +
+`ListRow` (56/68 rows, inset hairlines, trailing tabular values, chevron when
+it navigates), `GroupedItem` (the same inside a FlatList), `Group` + `InfoRow` +
+`GroupBlock` (settings-style grouped lists with an overline label and a
+footnote), `SectionHeader` (32 above, 8 below), `Button` (primary, secondary
+tonal, ghost, danger, surface; 48 tall or 36 with a 48 touch area),
+`IconButton` (40 visible, 48 to touch, always labelled), `Chip` (32, check when
+selected), `Badge`, `Segmented` (tabs or radio group), `Stat` / `StatGrid` (one
+card with hairline cells, unit smaller and muted), `IconTile` (40, neutral or a
+tone), `ModeIcon`, `EmptyState`, `ErrorState`, `Skeleton`, `Banner` (title,
+message, actions), `Field` (48, outlined, 2 px accent focus), `Sheet` (bottom
+sheet shell), `ScreenHeader`, `BackLink`, `DetailTitle`, `Pager`.
+
+**Screens.** All migrated: Overview (status card with the one solid button, a
+neutral hero card instead of the violet block with rings, stats in one grid,
+month chart with a pinned readout, sections with text actions), Map (edge to
+edge, quiet loading and error), Timeline (40 px rail with 32 px visit glyphs and
+uncoloured tiles, mode glyph on a mode-coloured rail for travel, edit as a
+labelled icon button, "Were you here?" with Yes / Pick another, missing travel
+and no-data gaps as dashed rail segments, day stats in one card, photo strip
+and viewer restyled), the "Fix this trip" sheet on the shared Sheet,
+Insights (segmented control, Travel with month pager, 3-up stats, one
+"By mode" card whose mini bars highlight only the shown month, Trips with
+photo-led cards and a smoother scrim, Trip detail, World, Country, City and
+Places with grouped rows, tonal search field and badges), Recorder (status card
+with switch, banners with titles and surface buttons, grouped Recording /
+Battery today / Upload / Server lists; battery stats as rows instead of one
+long sentence), Settings (back link, radio rows, labelled segmented controls,
+grouped toggles), Pair (segmented scan / manual, camera permission as an empty
+state, confirm card). The tab bar uses Lucide at 24 with the M3 pill and
+neutral labels.
+
+**Preview and mocks.** The mock API now has realistic coordinates (so "Missing
+travel" appears), a guessed visit with candidates, an edited and an added trip,
+per-day photos, place search, transit routes and stops, and the corrections and
+confirm endpoints; the db mock seeds today's battery/usage stats and watchdog
+recoveries (`?recovered=1`), and queued points use epoch ms like the real
+queue. The WebView mock passes a load event (the day map crashed the Timeline
+in the preview before) and draws a quiet street-grid placeholder.
+
+**Checklist (DESIGN_REFERENCES.md section 5), still failing or unverified:**
+
+- One solid button per screen holds except where a banner, sheet or
+  permission state adds its own primary action next to Overview's Start; the
+  Pair confirm screen and the Fix sheet are fine.
+- Touch targets: the transit line badges and the photo thumbnails in the strip
+  are under 48 dp (thumbnails are up to 56 but shrink on narrow cards).
+- Text on photos relies on the stacked-band scrim; contrast is not measured on
+  real covers, and trips without a cover show a neutral backdrop with a route
+  glyph rather than a map thumbnail.
+- `adjustsFontSizeToFit` on stat values is native-only: on the web preview long
+  durations in 3-up stats can still truncate.
+- Muted text on `primarySoft` / `warningSoft` and mode-coloured glyphs on their
+  12 % tints were not all measured; walking, bus and running mode colours are
+  under 3:1 on white (each is always paired with a label, as before).
+- Focus rings (keyboard / switch access) are not defined beyond the 2 px focus
+  border on inputs.
+- The Map tab and the day map are the web app's page; their chrome is the web
+  redesign's.

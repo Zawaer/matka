@@ -6,6 +6,26 @@ import { flag, params } from "./params";
 export const QUEUE_CAP = 200_000;
 
 const now = Date.now();
+
+/** Today's recorder usage (usage-logic.ts UsageState): GPS and standby time, fixes, phone current draw. */
+function usageToday() {
+  const d = new Date(now);
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const agg = (ma: number, n: number) => ({ n, sum: ma * n, hist: { [String(Math.floor(ma / 10))]: n } });
+  return {
+    v: 1, at: now - 60_000, mode: "active", preset: params.get("preset") ?? "balanced", motion: "still", motionAt: now - 60_000,
+    charge: null, unit: "mA",
+    days: {
+      [day]: {
+        [params.get("preset") ?? "balanced"]: {
+          activeS: 3 * 3600 + 1200, standbyS: 6 * 3600, offS: 0, fixes: 1480, movingS: 2 * 3600, stillS: 7 * 3600,
+          cur: { active: agg(124, 40), standby: agg(38, 60), screen: agg(410, 12) },
+          dropMah: 290, dropS: 8 * 3600,
+        },
+      },
+    },
+  };
+}
 const kv = new Map<string, string>(
   Object.entries({
     tracking_enabled: flag("tracking") ? "1" : "0",
@@ -18,6 +38,16 @@ const kv = new Map<string, string>(
     last_fix_at: String(now - 90_000),
     last_attempt_at: String(now - 5 * 60_000),
     last_success_at: String(now - (flag("failing") ? 6 * 3600_000 : 5 * 60_000)),
+    heartbeat_sent_at: String(now - 20 * 60_000),
+    usage: JSON.stringify(usageToday()),
+    ...(flag("recovered") || flag("failing")
+      ? {
+          watchdog_recoveries: JSON.stringify([
+            { at: now - 3 * 3600_000, reason: "stale_moving", action: "restart", lastFixAt: now - 3.3 * 3600_000, ok: true },
+            { at: now - 26 * 3600_000, reason: "not_running", action: "start", lastFixAt: null, ok: !flag("failing") },
+          ]),
+        }
+      : {}),
     ...(flag("authLost") ? { auth_lost: "1" } : {}),
     ...(flag("failing")
       ? { last_error: "Can't reach the server: timed out.", last_error_at: String(now - 120_000), failures: "4", next_retry_at: String(now + 8 * 60_000) }
@@ -29,7 +59,7 @@ const kv = new Map<string, string>(
 let nextId = 1;
 const queue: QueuedPoint[] = Array.from({ length: Number(params.get("queued") ?? 0) }, (_, i) => ({
   id: nextId++,
-  ts: Math.floor(now / 1000) - 3600 + i * 30,
+  ts: now - 3600_000 + i * 30_000, // epoch ms, like the real queue
   lat: 60.18 + i * 1e-4,
   lon: 24.83 + i * 1e-4,
   accuracy: 8,

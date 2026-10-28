@@ -20,6 +20,8 @@ export type Theme = {
   layout: typeof layout;
   type: typeof type;
   elev: (typeof elevation)[Scheme];
+  /** A colour at the given alpha (0-1): tinted backgrounds of mode colours. */
+  alpha: (hex: string, a: number) => string;
   mode: (key: string) => string;
 };
 
@@ -34,6 +36,7 @@ function build(scheme: Scheme): Theme {
     type,
     elev: elevation[scheme],
     mode: (key) => modeColor(key, scheme, c.textMuted),
+    alpha: (hex, a) => `${hex.slice(0, 7)}${Math.round(Math.max(0, Math.min(1, a)) * 255).toString(16).padStart(2, "0")}`,
   };
 }
 

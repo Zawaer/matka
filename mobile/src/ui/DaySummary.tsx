@@ -12,7 +12,7 @@ import { Text } from "./Text";
 export const DAY_STRIP_HEIGHT = 32;
 
 /**
- * "🚗 19.1 km 25 min  🚶 1.2 km 18 min …": distance and time per travel mode,
+ * "[car] 19.1 km 25 min  [walk] 1.2 km 18 min …": distance and time per travel mode,
  * largest first, scrolling sideways. Text stays in text colours; only the
  * icon carries the mode colour. `summary` null = still loading. Meant for
  * inside a Card: the row bleeds over the card's padding so chips scroll to its edges.
@@ -51,19 +51,15 @@ export function DaySummaryStrip({ summary }: { summary: DaySummary | null }) {
               flexDirection: "row",
               alignItems: "center",
               gap: 6,
-              paddingLeft: 4,
+              paddingLeft: 10,
               paddingRight: 12,
               borderRadius: t.radius.pill,
-              borderWidth: 1,
-              borderColor: t.c.border,
-              backgroundColor: t.c.bg,
+              backgroundColor: t.c.surfaceAlt,
             }}
           >
-            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: `${color}26`, alignItems: "center", justifyContent: "center" }}>
-              <Icon name={meta.icon} size={15} color={color} />
-            </View>
+            <Icon name={meta.icon} size={16} color={color} />
             {parts[0] ? (
-              <Text variant="callout" tabular style={{ fontWeight: "800" }}>
+              <Text variant="label" tabular>
                 {parts[0]}
               </Text>
             ) : null}

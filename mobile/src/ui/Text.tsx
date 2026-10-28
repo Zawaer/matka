@@ -2,10 +2,15 @@ import { Text as RNText, type TextProps as RNTextProps } from "react-native";
 import { useTheme } from "../design/theme";
 import type { Colors, TypeVariant } from "../design/tokens";
 
+export type TextColor = keyof Pick<
+  Colors,
+  "text" | "textSecondary" | "textMuted" | "primary" | "onPrimary" | "danger" | "warning" | "success"
+>;
+
 type Props = RNTextProps & {
   variant?: TypeVariant;
-  color?: keyof Pick<Colors, "text" | "textSecondary" | "textMuted" | "primary" | "onPrimary" | "accent" | "danger" | "success" | "onHero" | "onHeroMuted">;
-  /** Fixed-width digits: for columns of numbers only. */
+  color?: TextColor;
+  /** Fixed-width digits: every time, duration, distance and count. */
   tabular?: boolean;
 };
 

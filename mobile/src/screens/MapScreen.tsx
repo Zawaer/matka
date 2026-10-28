@@ -27,7 +27,7 @@ import {
   sameOrigin,
   withTheme,
 } from "../embed-logic";
-import { Button, Icon, PingRings } from "../ui";
+import { Button, EmptyState, Icon } from "../ui";
 import { PairingLost, useSession } from "../ui/session";
 import { Text } from "../ui/Text";
 import { getEmbedTicket } from "../viewer";
@@ -132,14 +132,15 @@ export default function MapScreen() {
   );
 
   const s = useStyles((th) => ({
-    root: { flex: 1, backgroundColor: th.c.bg, paddingHorizontal: th.space.md, paddingTop: th.space.md, paddingBottom: th.space.md },
-    frame: { flex: 1, borderRadius: th.radius.xl, overflow: "hidden", borderWidth: 1, borderColor: th.c.border, backgroundColor: th.c.surface, boxShadow: th.elev.e2 },
-    overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, alignItems: "center", justifyContent: "center", backgroundColor: th.c.surface, gap: th.space.sm, padding: th.space.xxl },
+    // The map is the content: edge to edge, no frame.
+    root: { flex: 1, backgroundColor: th.c.bg },
+    frame: { flex: 1, overflow: "hidden", backgroundColor: th.c.surfaceAlt },
+    overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, alignItems: "center", justifyContent: "center", backgroundColor: th.c.bg, gap: th.space.md, padding: th.space.xl },
   }));
 
   if (authLost) {
     return (
-      <View style={[s.root, { paddingHorizontal: t.layout.gutter }]}>
+      <View style={[s.root, { padding: t.layout.gutter }]}>
         <PairingLost />
       </View>
     );
@@ -176,18 +177,16 @@ export default function MapScreen() {
         ) : null}
         {phase.kind === "error" ? (
           <View style={s.overlay}>
-            <Icon name="map-search-outline" size={40} color={t.c.textMuted} />
-            <Text variant="title3">The map didn&apos;t load</Text>
-            <Text variant="callout" color="textSecondary" style={{ textAlign: "center", marginBottom: 8 }}>
-              {describeError(phase.error).body}
-            </Text>
-            <Button label="Try again" icon="refresh" onPress={() => renew(false)} />
+            <EmptyState
+              icon="tabMap"
+              title="The map didn't load"
+              body={describeError(phase.error).body}
+              action={<Button label="Try again" icon="refresh" onPress={() => renew(false)} />}
+            />
           </View>
         ) : loading ? (
           <View style={s.overlay} pointerEvents="none">
-            <PingRings size={120} color={t.c.primary}>
-              <Icon name="map-marker-path" size={32} color={t.c.primary} />
-            </PingRings>
+            <Icon name="route" size={32} color={t.c.textMuted} />
             <Text variant="callout" color="textSecondary">
               Drawing your journeys…
             </Text>

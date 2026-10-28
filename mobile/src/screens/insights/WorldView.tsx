@@ -4,11 +4,11 @@ import { useTheme } from "../../design/theme";
 import { getWorld, type WorldEntry, type WorldSort } from "../../insights";
 import { fmtCompactDate, fmtLongDuration, plural, worldCounts } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
-import { Button, Card, EmptyState, ErrorState, Skeleton } from "../../ui";
-import { Screen } from "../../ui/Screen";
+import { Button, Card, Chip, EmptyState, ErrorState, IconTile, ListGroup, ListRow, Segmented, Skeleton, StatGrid } from "../../ui";
+import { BackLink, DetailTitle, Screen } from "../../ui/Screen";
 import { useSession, useViewerQuery } from "../../ui/session";
 import { Text } from "../../ui/Text";
-import { BackRow, Chip, IconTile, ListRow, SegmentBar, StatRow, StatTile, useRefresh } from "./parts";
+import { useRefresh } from "./parts";
 
 const SORT_LABEL: Record<WorldSort, string> = {
   visits: "Visits",
@@ -56,13 +56,8 @@ export default function WorldView({
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
       {country ? (
         <>
-          <BackRow label="Countries" onPress={onBack ?? (() => {})} />
-          <View style={{ gap: 2 }}>
-            <Text variant="title1">{country}</Text>
-            <Text variant="callout" color="textSecondary">
-              {data ? `${plural(cities.length, "city", "cities")} · ${plural(placeCount, "place")}` : "Cities you have been to"}
-            </Text>
-          </View>
+          <BackLink label="World" onPress={onBack ?? (() => {})} />
+          <DetailTitle title={country} subtitle={data ? `${plural(cities.length, "city", "cities")} · ${plural(placeCount, "place")}` : "Cities you have been to"} />
         </>
       ) : (
         <>
@@ -76,29 +71,30 @@ export default function WorldView({
       {authLost && !data ? null : error && !data ? (
         <ErrorState message={error} onRetry={reload} />
       ) : !data ? (
-        <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <Skeleton height={76} radius={20} style={{ flex: 1, width: undefined }} />
-            <Skeleton height={76} radius={20} style={{ flex: 1, width: undefined }} />
-          </View>
-          <Skeleton height={44} radius={14} />
-          <Skeleton height={320} radius={20} />
+        <View style={{ gap: t.space.lg }}>
+          <Skeleton height={70} />
+          <Skeleton height={44} />
+          <Skeleton height={340} />
         </View>
       ) : !country && data.countries.length === 0 && data.cities.length === 0 ? (
         <Card>
-          <EmptyState icon="earth" title="No cities yet" body="They appear as places get their addresses from the geocoder." />
+          <EmptyState icon="world" title="No cities yet" body="They appear as places get their addresses from the geocoder." />
         </Card>
       ) : (
         <>
           {!country && (
-            <StatRow>
-              <StatTile label="Countries" value={String(data.countries.length)} accent />
-              <StatTile label="Cities" value={String(data.cities.length)} />
-              <StatTile label="Places" value={placeCount.toLocaleString()} style={{ flexBasis: "100%" }} />
-            </StatRow>
+            <StatGrid
+              size="sm"
+              columns={3}
+              items={[
+                { label: "Countries", value: String(data.countries.length) },
+                { label: "Cities", value: String(data.cities.length) },
+                { label: "Places", value: placeCount.toLocaleString() },
+              ]}
+            />
           )}
           {!country && (
-            <SegmentBar
+            <Segmented
               label="Show"
               options={[
                 { value: "countries", label: "Countries" },
@@ -111,38 +107,42 @@ export default function WorldView({
               }}
             />
           )}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -t.layout.gutter }} contentContainerStyle={{ gap: 6, paddingHorizontal: t.layout.gutter, alignItems: "center" }}>
-            <Text variant="caption" color="textMuted" style={{ marginRight: 4 }}>
-              Sort
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginHorizontal: -t.layout.gutter, flexGrow: 0 }}
+            contentContainerStyle={{ gap: t.space.sm, paddingHorizontal: t.layout.gutter, alignItems: "center", height: 48 }}
+          >
+            <Text variant="callout" color="textSecondary" style={{ marginRight: t.space.xs }}>
+              Sort by
             </Text>
             {(Object.keys(SORT_LABEL) as WorldSort[]).map((k) => (
-              <Chip key={k} label={SORT_LABEL[k]} on={k === sort} onPress={() => setSort(k)} />
+              <Chip key={k} label={SORT_LABEL[k]} selected={k === sort} onPress={() => setSort(k)} />
             ))}
           </ScrollView>
 
           {list.length === 0 ? (
             <Card>
               <EmptyState
-                icon="earth"
+                icon="world"
                 title={view === "cities" ? "No cities yet" : "No countries yet"}
                 body="They appear as places get their addresses from the geocoder."
               />
             </Card>
           ) : (
-            <Card style={{ padding: 0, overflow: "hidden", opacity: loading ? 0.5 : 1 }}>
-              {shown.map((e, i) => (
+            <ListGroup dim={loading}>
+              {shown.map((e) => (
                 <ListRow
                   key={`${e.name}/${e.country ?? ""}`}
-                  leading={<IconTile icon={view === "cities" ? "city-variant-outline" : "flag-outline"} />}
-                  title={view === "cities" && !country && e.country ? `${e.name} · ${e.country}` : e.name}
+                  leading={<IconTile icon={view === "cities" ? "city" : "country"} />}
+                  title={view === "cities" && !country && e.country ? `${e.name}, ${e.country}` : e.name}
                   subtitle={worldCounts(e)}
                   trailing={fmtLongDuration(e.duration)}
-                  trailingSub={`Last ${fmtCompactDate(e.lastVisit)}`}
+                  trailingSub={fmtCompactDate(e.lastVisit)}
                   onPress={() => (view === "cities" ? onOpenCity(e.name, e.country) : onOpenCountry(e.name))}
-                  last={i === shown.length - 1}
                 />
               ))}
-            </Card>
+            </ListGroup>
           )}
           {shown.length < list.length && (
             <View style={{ alignItems: "center" }}>
@@ -150,7 +150,7 @@ export default function WorldView({
             </View>
           )}
           {!country && data.unplaced > 0 && (
-            <Text variant="caption" color="textMuted">
+            <Text variant="caption" color="textMuted" style={{ paddingHorizontal: t.space.lg }}>
               {data.unplaced} {data.unplaced === 1 ? "place has" : "places have"} no address yet.
             </Text>
           )}

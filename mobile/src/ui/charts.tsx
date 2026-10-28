@@ -4,7 +4,9 @@ import { useStyles, useTheme } from "../design/theme";
 import { fmtCompact, niceMax } from "../format";
 import { Text } from "./Text";
 
-const PLOT_H = 148;
+const PLOT_H = 140;
+/** Axis and tick labels: 11, regular, tabular. */
+const AXIS = { fontSize: 11, lineHeight: 13, fontWeight: "400" as const };
 
 /**
  * Single-series column chart (emphasis form): the selected column carries the
@@ -27,7 +29,7 @@ export function MonthBars({
   const ticks = [top, top / 2, 0];
   const s = useStyles((th) => ({
     wrap: { flexDirection: "row", gap: th.space.sm },
-    axis: { width: 34, height: PLOT_H, justifyContent: "space-between", alignItems: "flex-end", paddingVertical: 0 },
+    axis: { width: 36, height: PLOT_H, justifyContent: "space-between", alignItems: "flex-end", marginTop: -6, marginBottom: 6 },
     plot: { flex: 1 },
     grid: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: th.c.grid },
     cols: { height: PLOT_H, flexDirection: "row", alignItems: "flex-end" },
@@ -44,7 +46,7 @@ export function MonthBars({
     <View style={s.wrap}>
       <View style={s.axis}>
         {ticks.map((v, i) => (
-          <Text key={i} variant="caption" color="textMuted" style={{ lineHeight: 12 }}>
+          <Text key={i} variant="caption" color="textMuted" tabular style={AXIS}>
             {fmtCompact(v)}
           </Text>
         ))}
@@ -64,12 +66,13 @@ export function MonthBars({
                   style={s.slot}
                   onPress={() => pick(i)}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
                   accessibilityLabel={`${d.label}: ${d.value.toLocaleString()} ${unit}`}
                 >
                   <View
                     style={{
-                      width: "62%",
-                      maxWidth: 24,
+                      width: "64%",
+                      maxWidth: 20,
                       height: h,
                       backgroundColor: on ? t.c.primary : t.c.barMuted,
                       borderTopLeftRadius: 4,
@@ -83,7 +86,7 @@ export function MonthBars({
         </View>
         <View style={s.labels}>
           {data.map((d, i) => (
-            <Text key={d.key} variant="caption" color={i === sel ? "text" : "textMuted"} style={[s.label, i === sel && { fontWeight: "800" }]}>
+            <Text key={d.key} variant="caption" color={i === sel ? "text" : "textMuted"} style={[s.label, AXIS, i === sel && { fontWeight: "500" }]}>
               {d.label}
             </Text>
           ))}
@@ -99,14 +102,16 @@ export function ShareBar({ label, value, display, max }: { label: string; value:
   const pct = max > 0 ? Math.max(0.03, value / max) : 0;
   return (
     <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" }}>
-        <Text variant="headline">{label}</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <Text variant="headline" numberOfLines={1} style={{ flexShrink: 1 }}>
+          {label}
+        </Text>
         <Text variant="callout" color="textSecondary" tabular>
           {display}
         </Text>
       </View>
-      <View style={{ height: 8, borderRadius: 4, backgroundColor: t.c.surfaceAlt, overflow: "hidden" }}>
-        <View style={{ width: `${pct * 100}%`, height: 8, borderTopRightRadius: 4, borderBottomRightRadius: 4, backgroundColor: t.c.primary }} />
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: t.c.surfaceAlt, overflow: "hidden" }}>
+        <View style={{ width: `${pct * 100}%`, height: 6, borderRadius: 3, backgroundColor: t.c.primary }} />
       </View>
     </View>
   );

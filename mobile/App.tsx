@@ -1,4 +1,3 @@
-import { useFonts } from "expo-font";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppState, Linking, Pressable, View } from "react-native";
@@ -13,7 +12,7 @@ import SettingsScreen from "./src/screens/SettingsScreen";
 import StatusScreen from "./src/screens/StatusScreen";
 import TimelineScreen from "./src/screens/TimelineScreen";
 import { resumeTracking } from "./src/tracking";
-import { Icon, iconFont, Skeleton, type IconName } from "./src/ui";
+import { Icon, Skeleton, type IconName } from "./src/ui";
 import { SessionContext, type InsightsSegment, type Session, type Tab } from "./src/ui/session";
 import { Text } from "./src/ui/Text";
 import { useCollectorState, type CollectorState } from "./src/ui/useCollectorState";
@@ -21,19 +20,20 @@ import { markPairingLost, refreshServerStatus, uploadNow } from "./src/uploader"
 import { runWatchdog, sendHeartbeat } from "./src/watchdog";
 
 
-const TABS: { key: Tab; label: string; icon: IconName; iconOn: IconName }[] = [
-  { key: "overview", label: "Overview", icon: "view-dashboard-outline", iconOn: "view-dashboard" },
-  { key: "map", label: "Map", icon: "map-outline", iconOn: "map" },
-  { key: "timeline", label: "Timeline", icon: "timeline-clock-outline", iconOn: "timeline-clock" },
-  { key: "insights", label: "Insights", icon: "chart-box-outline", iconOn: "chart-box" },
-  { key: "recorder", label: "Recorder", icon: "record-circle-outline", iconOn: "record-circle" },
+const TABS: { key: Tab; label: string; icon: IconName }[] = [
+  { key: "overview", label: "Overview", icon: "tabOverview" },
+  { key: "map", label: "Map", icon: "tabMap" },
+  { key: "timeline", label: "Timeline", icon: "tabTimeline" },
+  { key: "insights", label: "Insights", icon: "tabInsights" },
+  { key: "recorder", label: "Recorder", icon: "tabRecorder" },
 ];
 
 export default function App() {
-  const [fontsReady] = useFonts(iconFont);
   return (
     <SafeAreaProvider>
-      <ThemeProvider>{fontsReady ? <Root /> : null}</ThemeProvider>
+      <ThemeProvider>
+        <Root />
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
@@ -88,8 +88,8 @@ function Root() {
   if (!state) {
     body = (
       <View style={{ padding: t.layout.gutter, gap: t.space.lg }}>
-        <Skeleton height={40} radius={12} width="60%" />
-        <Skeleton height={208} radius={28} />
+        <Skeleton height={34} width="55%" />
+        <Skeleton height={168} />
       </View>
     );
   } else if (pairing) {
@@ -169,16 +169,16 @@ function Tabs({
   const s = useStyles((th) => ({
     bar: {
       flexDirection: "row",
-      backgroundColor: th.c.tabBar,
+      backgroundColor: th.c.surface,
       borderTopWidth: 1,
       borderTopColor: th.c.border,
-      paddingTop: th.space.sm,
+      paddingTop: th.space.md,
       paddingHorizontal: th.space.xs,
     },
-    tab: { flex: 1, alignItems: "center", gap: 4 },
+    tab: { flex: 1, alignItems: "center", gap: th.space.xs, minHeight: 56 },
     pill: { width: 56, height: 32, alignItems: "center", justifyContent: "center" },
     pillBg: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 16, backgroundColor: th.c.primarySoft },
-    dot: { position: "absolute", top: 2, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: th.c.danger },
+    dot: { position: "absolute", top: 3, right: 13, width: 8, height: 8, borderRadius: 4, backgroundColor: th.c.danger, borderWidth: 1.5, borderColor: th.c.surface },
   }));
 
   const goTab = useCallback((tab: Tab) => {
@@ -238,7 +238,7 @@ function Tabs({
           </View>
         ))}
       </View>
-      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, t.space.sm) + 4 }]} accessibilityRole="tablist">
+      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, t.space.sm) }]} accessibilityRole="tablist">
         {TABS.map((tab) => {
           const on = active === tab.key;
           const alert = tab.key === "recorder" && (state.authLost || (state.trackingEnabled && !state.trackingRunning));
@@ -255,10 +255,13 @@ function Tabs({
                 {/* Own layer, mounted only when active: toggling the container's background
                     drew a square on Android. */}
                 {on && <View style={s.pillBg} />}
-                <Icon name={on ? tab.iconOn : tab.icon} size={24} color={on ? t.c.primary : t.c.textMuted} />
+                {/* Own View: on the web an absolutely placed layer paints over a bare SVG. */}
+                <View>
+                  <Icon name={tab.icon} size={24} color={on ? t.c.primary : t.c.textSecondary} />
+                </View>
                 {alert ? <View style={s.dot} /> : null}
               </View>
-              <Text variant="caption" numberOfLines={1} style={{ color: on ? t.c.primary : t.c.textMuted, fontWeight: on ? "800" : "500" }}>
+              <Text variant="caption" numberOfLines={1} style={{ color: on ? t.c.text : t.c.textSecondary, fontWeight: "500" }}>
                 {tab.label}
               </Text>
             </Pressable>

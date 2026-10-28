@@ -1,13 +1,12 @@
 import { CameraView, useCameraPermissions, type BarcodeSettings, type ScanningResult } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { getStatus } from "../api";
 import { savePairing } from "../credentials";
 import * as db from "../db";
 import { useStyles, useTheme } from "../design/theme";
 import { displayServer, isPairingLink, parsePairingUrl, validatePairing, type Pairing } from "../pairing";
-import { Button, Icon, PingRings } from "../ui";
-import { Banner, Field, Panel } from "../ui/components";
+import { Banner, Button, Card, EmptyState, Field, IconTile, Segmented } from "../ui";
 import { Screen, ScreenHeader } from "../ui/Screen";
 import { Text } from "../ui/Text";
 import { resetUploadState, uploadNow } from "../uploader";
@@ -31,12 +30,6 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
   const [busy, setBusy] = useState(false);
   const [server, setServer] = useState("");
   const [token, setToken] = useState("");
-
-  const s = useStyles((th) => ({
-    tabs: { flexDirection: "row", gap: th.space.xs, backgroundColor: th.c.surfaceAlt, borderRadius: th.radius.pill, padding: th.space.xs },
-    tab: { flex: 1, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center", paddingVertical: th.space.sm + 2, borderRadius: th.radius.pill },
-    tabOn: { backgroundColor: th.c.surface, boxShadow: th.elev.e1 },
-  }));
 
   const fromManual = () => {
     // Accept a whole pasted pairing link (either form) in either field too.
@@ -81,33 +74,38 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
     const switching = currentServer != null && currentServer !== candidate.server;
     return (
       <Screen>
-        <ScreenHeader title="Pair device" subtitle="Check the server before you continue" />
-        <Panel title="Confirm server">
-          <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm }}>
-            <Icon name={candidate.server.startsWith("https://") ? "lock-outline" : "lock-open-alert-outline"} size={20} color={t.c.primary} />
-            <Text variant="title3" style={{ flex: 1 }}>
-              {displayServer(candidate.server)}
-            </Text>
+        <ScreenHeader title="Pair this phone" subtitle="Check the server before you continue." />
+        <Card style={{ gap: t.space.md }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
+            <IconTile
+              icon={candidate.server.startsWith("https://") ? "secure" : "insecure"}
+              tone={candidate.server.startsWith("https://") ? "neutral" : "warning"}
+            />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text variant="callout" color="textSecondary">
+                Server
+              </Text>
+              <Text variant="headline">{displayServer(candidate.server)}</Text>
+            </View>
           </View>
           <Text variant="callout" color="textSecondary">
-            Only continue if this is your own Matka server. Every location point recorded on this phone will be sent
-            there.
+            Only continue if this is your own Matka server. Every location point recorded on this phone will be sent there.
           </Text>
-          {candidate.server.startsWith("http://") ? (
-            <Banner tone="warn" message="This is an unencrypted development URL. Release builds block plain HTTP." />
-          ) : null}
-          {switching ? (
-            <Banner
-              tone="warn"
-              message={`This replaces the current pairing with ${displayServer(currentServer)}. Points still queued on the phone will be uploaded to the new server.`}
-            />
-          ) : null}
-        </Panel>
-        {error ? <Banner tone="bad" message={error} /> : null}
+        </Card>
+        {candidate.server.startsWith("http://") ? (
+          <Banner tone="warning" message="This is an unencrypted development address. Release builds block plain HTTP." />
+        ) : null}
+        {switching ? (
+          <Banner
+            tone="warning"
+            message={`This replaces the current pairing with ${displayServer(currentServer)}. Points still queued on the phone will be uploaded to the new server.`}
+          />
+        ) : null}
+        {error ? <Banner tone="danger" message={error} /> : null}
         <Button label="Verify and pair" icon="check" onPress={confirm} busy={busy} />
         <Button
           label="Back"
-          variant="secondary"
+          variant="ghost"
           onPress={() => {
             setCandidate(null);
             setError(null);
@@ -119,30 +117,20 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
 
   return (
     <Screen>
-      <ScreenHeader title="Pair device" subtitle="In the Matka web app open Devices → Pair a device, then scan the QR code it shows." />
+      <ScreenHeader title="Pair this phone" subtitle="In the Matka web app, open Devices → Pair a device and scan the QR code it shows." />
 
-      <View style={s.tabs} accessibilityRole="tablist">
-        {(["scan", "manual"] as const).map((m) => {
-          const on = mode === m;
-          return (
-            <Pressable
-              key={m}
-              onPress={() => {
-                setMode(m);
-                setError(null);
-              }}
-              style={[s.tab, on && s.tabOn]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-            >
-              <Icon name={m === "scan" ? "qrcode-scan" : "keyboard-outline"} size={18} color={on ? t.c.primary : t.c.textMuted} />
-              <Text variant="callout" style={{ fontWeight: "700", color: on ? t.c.text : t.c.textMuted }}>
-                {m === "scan" ? "Scan QR" : "Enter manually"}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Segmented
+        label="How to pair"
+        options={[
+          { value: "scan", label: "Scan QR", icon: "qr" },
+          { value: "manual", label: "Enter manually", icon: "keyboard" },
+        ]}
+        value={mode}
+        onChange={(m) => {
+          setMode(m);
+          setError(null);
+        }}
+      />
 
       {mode === "scan" ? (
         <Scanner
@@ -158,9 +146,9 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
           }}
         />
       ) : (
-        <Panel>
-          <Text variant="caption" color="textSecondary" style={{ fontWeight: "700" }}>
-            Server URL
+        <Card style={{ gap: t.space.sm }}>
+          <Text variant="label" color="textSecondary">
+            Server address
           </Text>
           <Field
             value={server}
@@ -171,7 +159,7 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
             keyboardType="url"
             textContentType="URL"
           />
-          <Text variant="caption" color="textSecondary" style={{ fontWeight: "700" }}>
+          <Text variant="label" color="textSecondary" style={{ marginTop: t.space.sm }}>
             Device token
           </Text>
           <Field
@@ -185,12 +173,14 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
           <Text variant="caption" color="textMuted">
             You can also paste the whole pairing link (https://…/pair#… or matka://pair?…) into the server field.
           </Text>
-          <Button label="Continue" onPress={fromManual} />
-        </Panel>
+          <View style={{ marginTop: t.space.sm }}>
+            <Button label="Continue" onPress={fromManual} />
+          </View>
+        </Card>
       )}
 
-      {error ? <Banner tone="bad" message={error} /> : null}
-      <Button label="Cancel" variant="secondary" onPress={onCancel} />
+      {error ? <Banner tone="danger" message={error} /> : null}
+      <Button label="Not now" variant="ghost" onPress={onCancel} />
     </Screen>
   );
 }
@@ -199,7 +189,6 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
 const QR_ONLY: BarcodeSettings = { barcodeTypes: ["qr"] };
 
 function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
-  const t = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   // Barcode callbacks fire many times per second; handle one at a time and
   // ignore repeats of a code we already rejected.
@@ -210,7 +199,7 @@ function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
     camera: {
       aspectRatio: 1,
       width: "100%",
-      borderRadius: th.radius.xl,
+      borderRadius: th.radius.md,
       overflow: "hidden",
       backgroundColor: "#000",
       borderWidth: 1,
@@ -254,8 +243,8 @@ function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
   };
   const systemScanner = modern ? (
     <>
-      <Button label="Use the system scanner" icon="qrcode-scan" variant="secondary" onPress={launchSystemScanner} />
-      {scannerError ? <Banner tone="bad" message={scannerError} /> : null}
+      <Button label="Use the system scanner" icon="qr" variant="secondary" onPress={launchSystemScanner} />
+      {scannerError ? <Banner tone="danger" message={scannerError} /> : null}
     </>
   ) : null;
 
@@ -263,21 +252,18 @@ function Scanner({ onScan }: { onScan: (data: string) => boolean }) {
   if (!permission.granted) {
     return (
       <>
-        <Panel style={{ alignItems: "center" }}>
-          <PingRings size={110} color={t.c.primary}>
-            <Icon name="camera-outline" size={30} color={t.c.primary} />
-          </PingRings>
-          <Text variant="callout" color="textSecondary" style={{ textAlign: "center" }}>
-            Matka needs the camera only to read the pairing QR code.
-          </Text>
-          {permission.canAskAgain ? (
-            <Button label="Allow camera" icon="camera-outline" onPress={requestPermission} />
-          ) : (
-            <Text variant="caption" color="textMuted" style={{ textAlign: "center" }}>
-              Camera access was denied. Enable it in system settings, or enter the code manually.
-            </Text>
-          )}
-        </Panel>
+        <Card>
+          <EmptyState
+            icon="camera"
+            title="Scan the pairing code"
+            body={
+              permission.canAskAgain
+                ? "Matka uses the camera only to read the QR code."
+                : "Camera access was denied. Allow it in system settings, or enter the details manually."
+            }
+            action={permission.canAskAgain ? <Button label="Allow camera" icon="camera" onPress={requestPermission} /> : undefined}
+          />
+        </Card>
         {systemScanner}
       </>
     );

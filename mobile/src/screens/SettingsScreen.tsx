@@ -18,9 +18,8 @@ import {
 } from "../preset-logic";
 import { PRESETS, setCustom, setPreset, setSmartTracking, type PresetKey } from "../tracking";
 import { presetChanged } from "../watchdog";
-import { Button, Icon } from "../ui";
-import { LinkText, Panel, Row, Segmented } from "../ui/components";
-import { Screen, ScreenHeader } from "../ui/Screen";
+import { Button, Group, GroupBlock, Icon, InfoRow, Segmented } from "../ui";
+import { BackLink, DetailTitle, Screen } from "../ui/Screen";
 import { Text } from "../ui/Text";
 import type { CollectorState } from "../ui/useCollectorState";
 import { resetUploadState } from "../uploader";
@@ -101,11 +100,31 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
       ],
     );
 
+  const toggleRow = (label: string, value: boolean, onChange: (v: boolean) => void, disabled: boolean) => (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md, minHeight: 56, paddingHorizontal: t.space.lg }}>
+      <Text variant="body" style={{ flex: 1 }}>
+        {label}
+      </Text>
+      <Switch
+        value={value}
+        disabled={disabled}
+        onValueChange={onChange}
+        trackColor={{ true: t.c.primary, false: t.c.borderStrong }}
+        thumbColor="#FFFFFF"
+        accessibilityLabel={label}
+      />
+    </View>
+  );
+
   return (
     <Screen>
-      <ScreenHeader title="Settings" right={<LinkText label="Done" onPress={onBack} />} />
+      <BackLink label="Recorder" onPress={onBack} />
+      <DetailTitle title="Settings" />
 
-      <Panel title="Recording preset">
+      <Group
+        title="Recording preset"
+        footer="Points are only recorded when you move at least the given distance, and reach the app in batches to save battery. Changing the preset restarts recording."
+      >
         {(Object.keys(PRESETS) as PresetKey[]).map((k) => {
           const p = PRESETS[k];
           const on = state?.preset === k;
@@ -116,23 +135,22 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               onPress={() => choose(k)}
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
-              style={{
+              style={({ pressed }) => ({
                 flexDirection: "row",
-                alignItems: "center",
+                alignItems: "flex-start",
                 gap: t.space.md,
-                borderWidth: 1,
-                borderColor: on ? t.c.primary : t.c.border,
-                backgroundColor: on ? t.c.primarySoft : "transparent",
-                borderRadius: t.radius.md,
-                padding: t.space.md,
-              }}
+                minHeight: 64,
+                paddingHorizontal: t.space.lg,
+                paddingVertical: t.space.md,
+                backgroundColor: pressed ? t.c.surfaceAlt : "transparent",
+              })}
             >
-              <Icon name={on ? "radiobox-marked" : "radiobox-blank"} size={22} color={on ? t.c.primary : t.c.textMuted} />
+              <View style={{ height: 20, justifyContent: "center" }}>
+                <Icon name={on ? "radioOn" : "radioOff"} size={20} color={on ? t.c.primary : t.c.textMuted} />
+              </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text variant="headline" color={on ? "primary" : "text"}>
-                  {p.label}
-                </Text>
-                <Text variant="caption" color="textSecondary">
+                <Text variant="headline">{p.label}</Text>
+                <Text variant="callout" color="textSecondary">
                   {k === "custom" ? (on ? describeCustom(custom) : p.description) : p.description}
                 </Text>
               </View>
@@ -140,8 +158,10 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
           );
         })}
         {state?.preset === "custom" ? (
-          <View style={{ gap: t.space.md }}>
+          <GroupBlock gap={t.space.lg}>
             <Segmented
+              role="radiogroup"
+              showLabel
               label="Accuracy"
               options={CUSTOM_ACCURACIES.map((a) => ({ value: a.key, label: a.label }))}
               value={custom.accuracy}
@@ -149,6 +169,8 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               onChange={(accuracy) => changeCustom({ accuracy })}
             />
             <Segmented
+              role="radiogroup"
+              showLabel
               label="Distance between points"
               options={CUSTOM_DISTANCES.map((d) => ({ value: d, label: `${d} m` }))}
               value={custom.distance}
@@ -156,87 +178,74 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               onChange={(distance) => changeCustom({ distance })}
             />
             <Segmented
+              role="radiogroup"
+              showLabel
               label="Time between points"
               options={CUSTOM_TIMES.map((ms) => ({ value: ms, label: formatInterval(ms) }))}
               value={custom.time}
               disabled={busy}
               onChange={(time) => changeCustom({ time })}
             />
-          </View>
+          </GroupBlock>
         ) : null}
-        <Text variant="caption" color="textMuted">
-          Fixes are only recorded when you move at least the given distance, and are delivered to the app in batches
-          to save battery. Changing the preset restarts recording.
-        </Text>
-      </Panel>
+      </Group>
 
-      <Panel title="Smart tracking">
-        <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
-          <Text variant="headline" style={{ flex: 1 }}>
-            Rest GPS when the phone is still
-          </Text>
-          <Switch
-            value={state?.smartTracking ?? true}
-            disabled={busy || !state}
-            onValueChange={(on) => run("smart tracking", () => setSmartTracking(on))}
-            trackColor={{ true: t.c.primary, false: t.c.borderStrong }}
-            thumbColor={t.c.surface}
-            accessibilityLabel="Smart tracking"
-          />
-        </View>
-        <Text variant="caption" color="textMuted">
-          After 3 minutes without moving, Matka switches to Wi-Fi/cell positioning and lets GPS sleep. It switches
-          back as soon as motion detection or location shows you moving; the first metres of a trip may be coarse.
-          Needs motion detection. Not used with Low power.
-        </Text>
-      </Panel>
+      <Group
+        title="Smart tracking"
+        footer="After 3 minutes without moving, Matka switches to Wi-Fi and cell positioning and lets GPS sleep. It switches back as soon as motion detection or location shows you moving, so the first metres of a trip may be coarse. Needs motion detection; not used with Low power."
+      >
+        {toggleRow("Rest GPS when the phone is still", state?.smartTracking ?? true, (on) => run("smart tracking", () => setSmartTracking(on)), busy || !state)}
+      </Group>
 
-      <Panel title="Keep it running">
+      <Group
+        title="Keep it running"
+        footer={
+          Platform.OS === "android"
+            ? "Android's battery optimisation can stop or delay background apps. Some phones (Samsung, Xiaomi, Huawei, OnePlus) have an extra vendor setting: see dontkillmyapp.com."
+            : 'Set Location to "Always" with Precise Location on, and keep Background App Refresh enabled.'
+        }
+      >
         {Platform.OS === "android" ? (
-          <>
-            <Text variant="callout" color="textSecondary">
-              Android&apos;s battery optimisation can stop or delay background apps. For an always-on collector, let
-              Matka run unrestricted. Some phones (Samsung, Xiaomi, Huawei, OnePlus…) have an extra vendor setting —
-              see dontkillmyapp.com.
-            </Text>
-            <Row
-              label="Battery optimisation"
-              value={state?.batteryOptimized == null ? "unknown" : state.batteryOptimized ? "on (restricted)" : "off"}
-              tone={state?.batteryOptimized ? "warn" : "ok"}
-            />
-            <Button label="Disable battery optimisation" variant="secondary" onPress={requestIgnoreBatteryOptimizations} />
-          </>
-        ) : (
-          <Text variant="callout" color="textSecondary">
-            Set Location to &quot;Always&quot; with Precise Location on, and keep Background App Refresh enabled.
-          </Text>
-        )}
-        <Button label="Open app settings" icon="cog-outline" variant="secondary" onPress={openAppSettings} />
-      </Panel>
+          <InfoRow
+            label="Battery optimisation"
+            value={state?.batteryOptimized == null ? "Unknown" : state.batteryOptimized ? "On (restricted)" : "Off"}
+            tone={state?.batteryOptimized ? "warn" : "ok"}
+          />
+        ) : null}
+        <GroupBlock>
+          {Platform.OS === "android" ? (
+            <Button label="Allow unrestricted battery use" icon="battery" variant="secondary" onPress={requestIgnoreBatteryOptimizations} />
+          ) : null}
+          <Button label="Open app settings" icon="settings" variant="secondary" onPress={openAppSettings} />
+        </GroupBlock>
+      </Group>
 
-      <Panel title="Pairing">
-        {state?.pairing ? (
-          <>
-            <Row label="Server" value={displayServer(state.pairing.server)} />
-            <Row label="Device" value={state.server?.device ?? "—"} />
-            <Button label="Pair again" icon="qrcode-scan" variant="secondary" onPress={onPair} />
-            <Button label="Unpair" icon="link-variant-off" variant="danger" onPress={unpair} />
-          </>
-        ) : (
-          <Button label="Pair with server" icon="qrcode-scan" onPress={onPair} />
-        )}
-      </Panel>
+      <Group title="Pairing">
+        {state?.pairing ? <InfoRow label="Server" value={displayServer(state.pairing.server)} /> : null}
+        {state?.pairing ? <InfoRow label="Device" value={state.server?.device ?? "–"} /> : null}
+        <GroupBlock>
+          {state?.pairing ? (
+            <>
+              <Button label="Pair again" icon="qr" variant="secondary" onPress={onPair} />
+              <Button label="Unpair this phone" icon="unlink" variant="danger" onPress={unpair} />
+            </>
+          ) : (
+            <Button label="Pair with server" icon="qr" onPress={onPair} />
+          )}
+        </GroupBlock>
+      </Group>
 
-      <Panel title="Queue">
-        <Row label="Queued points" value={count(state?.queued)} />
-        <Text variant="caption" color="textMuted">
-          Points are stored on the phone until the server confirms them. Beyond {count(db.QUEUE_CAP)} queued points the
-          oldest are discarded.
-        </Text>
-        <Button label="Delete queued points" icon="delete-outline" variant="secondary" onPress={clearQueue} disabled={!state?.queued} />
-      </Panel>
+      <Group
+        title="Queue"
+        footer={`Points stay on the phone until the server confirms them. Beyond ${count(db.QUEUE_CAP)} queued points the oldest are discarded.`}
+      >
+        <InfoRow label="Queued points" value={count(state?.queued)} />
+        <GroupBlock>
+          <Button label="Delete queued points" icon="delete" variant="danger" onPress={clearQueue} disabled={!state?.queued} />
+        </GroupBlock>
+      </Group>
 
-      <Text variant="caption" color="textMuted" style={{ textAlign: "center" }}>
+      <Text variant="caption" color="textMuted" tabular style={{ textAlign: "center" }}>
         Matka {Application.nativeApplicationVersion ?? "?"} ({Application.nativeBuildVersion ?? "?"}) · {Platform.OS}
       </Text>
     </Screen>

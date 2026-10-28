@@ -4,13 +4,13 @@ import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
 import { fmtDistance, fmtDuration, fmtTime, isLikelyDrift, isNamed, localDay } from "../format";
 import type { Pairing } from "../pairing";
-import { Card, EmptyState, ErrorState, Icon, RoundButton, Skeleton } from "../ui";
-import { Screen, ScreenHeader } from "../ui/Screen";
+import { Badge, Card, EmptyState, ErrorState, Icon, IconButton, Skeleton } from "../ui";
+import { Pager, Screen, ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
 import { getDayPhotos, getTimeline, type DayPhotos, type Leg, type Move, type Timeline, type TimelineItem } from "../viewer";
 import { placeIcon } from "../design/placeIcons";
-import { MissingTravelRow, PhotoStrip, PhotoViewer, PlaceQuestion, type PhotoSet } from "../ui/TimelineExtras";
+import { DashedRail, MissingTravelRow, PhotoStrip, PhotoViewer, PlaceQuestion, type PhotoSet } from "../ui/TimelineExtras";
 import { getDaySummary, stripModes, type DaySummary } from "../daySummary";
 import { DaySummaryStrip } from "../ui/DaySummary";
 import { modeMeta } from "../design/modes";
@@ -19,21 +19,22 @@ import { TripFixSheet } from "../ui/TripFixSheet";
 import { addedMove, adjacentDays, dayHasMap, gapBetween, missingTravel, selectionKey, subRows, type Gap } from "../timeline-logic";
 import { DayMapCard, type DayMapSelection } from "../ui/DayMapCard";
 
-const RAIL = 28;
+const RAIL = 40;
 
 /** "Bus 159  Leppävaara → Matinkylä (M)", in HSL's line colours ("Metro M1/M2" on shared track). */
 function LegBadge({ leg }: { leg: Leg }) {
+  const t = useTheme();
   const b = LEG_BADGE[leg.kind];
   const route = [leg.fromStop, leg.toStop].filter(Boolean).join(" → ");
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 5 }}>
-      <View style={{ backgroundColor: b.bg, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
-        <Text variant="caption" style={{ color: b.fg, fontWeight: "800" }}>
+    <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: t.space.sm, rowGap: 2, marginTop: t.space.xs }}>
+      <View style={{ backgroundColor: b.bg, borderRadius: t.radius.xs, paddingHorizontal: 8, height: 22, justifyContent: "center" }}>
+        <Text variant="micro" style={{ color: b.fg }}>
           {legBadgeText(leg.kind, leg.lines)}
         </Text>
       </View>
       {route ? (
-        <Text variant="caption" color="textSecondary" style={{ flexShrink: 1 }}>
+        <Text variant="callout" color="textSecondary" style={{ flexShrink: 1 }}>
           {route}
         </Text>
       ) : null}
@@ -45,9 +46,9 @@ function LegBadge({ leg }: { leg: Leg }) {
 function WaitLine({ stop, secs }: { stop: string | null; secs: number }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 5 }}>
-      <Icon name="timer-sand" size={13} color={t.c.textMuted} />
-      <Text variant="caption" color="textSecondary" style={{ flexShrink: 1 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: t.space.xs }}>
+      <Icon name="wait" size={16} color={t.c.textMuted} />
+      <Text variant="callout" color="textSecondary" tabular style={{ flexShrink: 1 }}>
         {stop ? `Waited at ${stop}` : "Change"} · {fmtDuration(secs)}
       </Text>
     </View>
@@ -59,15 +60,11 @@ function GapRow({ gap }: { gap: Gap }) {
   const t = useTheme();
   return (
     <View style={{ flexDirection: "row", gap: t.space.md }} accessible accessibilityLabel={`No location recorded for ${fmtDuration(gap.secs)}`}>
-      <View style={{ width: RAIL, alignItems: "center", paddingVertical: 2, gap: 4 }}>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <View key={i} style={{ width: 2, height: 5, borderRadius: 1, backgroundColor: t.c.borderStrong }} />
-        ))}
-      </View>
-      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <Icon name="map-marker-off-outline" size={15} color={t.c.textMuted} />
-        <Text variant="caption" color="textMuted" style={{ flexShrink: 1, fontStyle: "italic" }}>
-          No location recorded · {fmtDuration(gap.secs)} ({fmtTime(gap.from)} – {fmtTime(gap.to)})
+      <DashedRail rail={RAIL} color={t.c.borderStrong} dashes={4} />
+      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: t.space.sm }}>
+        <Icon name="noLocation" size={16} color={t.c.textMuted} />
+        <Text variant="callout" color="textMuted" tabular style={{ flexShrink: 1 }}>
+          No location recorded · {fmtDuration(gap.secs)} · {fmtTime(gap.from)}–{fmtTime(gap.to)}
         </Text>
       </View>
     </View>
@@ -142,22 +139,54 @@ export default function TimelineScreen() {
   if (hasMap) for (const it of items) if (it.kind === "visit") visitNo.set(selectionKey(it), visitNo.size + 1);
 
   const s = useStyles((th) => ({
-    nav: { flexDirection: "row", alignItems: "center", gap: th.space.md },
-    summary: { paddingVertical: th.space.md, gap: th.space.md },
+    summary: { padding: 0 },
     stats: { flexDirection: "row" },
-    hairline: { height: 1, backgroundColor: th.c.border, marginHorizontal: -th.space.lg },
-    sumCell: { flex: 1, alignItems: "center", gap: 2 },
-    divider: { width: 1, backgroundColor: th.c.border, marginVertical: 4 },
+    divider: { width: 1, backgroundColor: th.c.border },
     row: { flexDirection: "row", gap: th.space.md },
     rail: { width: RAIL, alignItems: "center" },
     line: { position: "absolute", width: 2, backgroundColor: th.c.borderStrong, borderRadius: 1 },
-    icon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: th.c.surface, borderWidth: 1.5, borderColor: th.c.primary },
-    num: { position: "absolute", top: -7, right: -8, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: "center", justifyContent: "center", backgroundColor: th.c.primary, borderWidth: 1.5, borderColor: th.c.bg },
-    picked: { borderColor: th.c.primary, borderWidth: 2 },
-    pickedMove: { backgroundColor: th.c.surfaceAlt, borderRadius: th.radius.md, marginHorizontal: -th.space.sm, paddingHorizontal: th.space.sm },
-    visit: { flex: 1, marginVertical: 5, padding: th.space.md + 2 },
-    move: { flex: 1, flexDirection: "row", alignItems: "center", gap: th.space.md, paddingVertical: th.space.sm },
+    tile: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: th.c.surface,
+      borderWidth: 1,
+      borderColor: th.c.borderStrong,
+    },
+    tileOn: { borderColor: th.c.primary, borderWidth: 2, backgroundColor: th.c.primarySoft },
+    num: {
+      position: "absolute",
+      top: -6,
+      right: -8,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      paddingHorizontal: 4,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: th.c.text,
+      borderWidth: 2,
+      borderColor: th.c.bg,
+    },
+    visit: { flex: 1, marginVertical: th.space.xs },
+    visitOn: { borderColor: th.c.primary },
+    move: { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: th.space.xs, paddingVertical: th.space.md },
+    moveOn: { backgroundColor: th.c.surfaceAlt, borderRadius: th.radius.sm, marginLeft: -th.space.sm, paddingLeft: th.space.sm },
+    glyph: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: th.c.bg },
   }));
+
+  const dayStat = (label: string, value: string) => (
+    <View style={{ flex: 1, paddingHorizontal: t.space.md, paddingVertical: t.space.md, gap: 2 }}>
+      <Text variant="caption" color="textSecondary" numberOfLines={1}>
+        {label}
+      </Text>
+      <Text variant="statSm" tabular numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  );
 
   return (
     <Screen
@@ -167,92 +196,71 @@ export default function TimelineScreen() {
         reloadSum();
       }}
     >
-      <ScreenHeader title="Timeline" subtitle="Your day, stop by stop" />
+      <ScreenHeader title="Timeline" />
       {authLost ? <PairingLost /> : null}
 
       {/* No day at all (nothing recorded yet): the empty state below says so. */}
       {resp && !date ? null : (
-        <View style={s.nav}>
-          <RoundButton icon="chevron-left" label="Previous day" onPress={() => prev && setWant(prev)} disabled={!prev} />
-          <View style={{ flex: 1, alignItems: "center" }}>
-            <Text variant="overline" color="primary">
-              {day
-                ? `${day.toLocaleDateString([], { weekday: "long" })}${day.getFullYear() !== new Date().getFullYear() ? ` · ${day.getFullYear()}` : ""}`
-                : " "}
-            </Text>
-            <Text variant="title2">{day ? day.toLocaleDateString([], { day: "numeric", month: "long" }) : "…"}</Text>
-          </View>
-          <RoundButton icon="chevron-right" label="Next day" onPress={() => next && setWant(next)} disabled={!next} />
-        </View>
+        <Pager
+          kicker={
+            day
+              ? `${day.toLocaleDateString([], { weekday: "long" })}${day.getFullYear() !== new Date().getFullYear() ? ` · ${day.getFullYear()}` : ""}`
+              : " "
+          }
+          title={day ? day.toLocaleDateString([], { day: "numeric", month: "long" }) : "…"}
+          onPrev={prev ? () => setWant(prev) : undefined}
+          onNext={next ? () => setWant(next) : undefined}
+          prevLabel="Previous day"
+          nextLabel="Next day"
+        />
       )}
 
       {resp && date ? (
-        <DayMapCard
-          date={date}
-          visible={hasMap}
-          selected={selected}
-          onSelect={(key) => setSel({ key, from: "map", date })}
-        />
+        <DayMapCard date={date} visible={hasMap} selected={selected} onSelect={(key) => setSel({ key, from: "map", date })} />
       ) : null}
 
       {authLost && !resp ? null : err && !resp ? (
         <ErrorState message={err} onRetry={reload} />
       ) : !resp ? (
-        <View style={{ gap: 12 }}>
-          <Skeleton height={76} radius={20} />
-          <Skeleton height={72} radius={20} />
-          <Skeleton height={44} radius={14} />
-          <Skeleton height={72} radius={20} />
+        <View style={{ gap: t.space.md }}>
+          <Skeleton height={124} />
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ flexDirection: "row", gap: t.space.md }}>
+              <Skeleton height={32} width={32} radius={16} style={{ marginLeft: 4, marginTop: 16 }} />
+              <View style={{ flex: 1, gap: t.space.md }}>
+                <Skeleton height={68} />
+                <Skeleton height={20} width="50%" radius={6} />
+              </View>
+            </View>
+          ))}
         </View>
       ) : items.length === 0 ? (
         <Card>
           {date ? (
-            <EmptyState icon="sleep" title="A quiet day" body="Nothing was recorded on this day. Use the arrows to browse the days you were out and about." />
+            <EmptyState icon="quiet" title="A quiet day" body="Nothing was recorded on this day. Use the arrows to go to a day with visits or trips." />
           ) : (
-            <EmptyState icon="map-marker-path" title="No days yet" body="Visits and trips show up here once the server has processed what this phone recorded." />
+            <EmptyState icon="route" title="No days yet" body="Visits and trips show up here once the server has processed what this phone recorded." />
           )}
         </Card>
       ) : (
         <>
-          <Card style={s.summary}>
+          <Card padded={false}>
             <View style={s.stats}>
-              <View style={s.sumCell}>
-                <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
-                  {fmtDistance(km)}
-                </Text>
-                <Text variant="caption" color="textSecondary">
-                  Travelled
-                </Text>
-              </View>
+              {dayStat("Travelled", fmtDistance(km))}
               <View style={s.divider} />
-              <View style={s.sumCell}>
-                <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
-                  {fmtDuration(moving)}
-                </Text>
-                <Text variant="caption" color="textSecondary">
-                  On the move
-                </Text>
-              </View>
+              {dayStat("On the move", fmtDuration(moving))}
               <View style={s.divider} />
-              <View style={s.sumCell}>
-                <Text variant="stat" style={{ fontSize: 20, lineHeight: 24 }}>
-                  {visits}
-                </Text>
-                <Text variant="caption" color="textSecondary">
-                  {visits === 1 ? "Stop" : "Stops"}
-                </Text>
-              </View>
+              {dayStat(visits === 1 ? "Stop" : "Stops", String(visits))}
             </View>
             {moves.length > 0 && (summary ? stripModes(summary).length > 0 : !sumErr) ? (
-              <>
-                <View style={s.hairline} />
+              <View style={{ borderTopWidth: 1, borderTopColor: t.c.border, paddingVertical: t.space.md, paddingHorizontal: t.space.lg }}>
                 <DaySummaryStrip summary={summary} />
-              </>
+              </View>
             ) : null}
           </Card>
 
           {err ? (
-            <Text variant="caption" style={{ color: t.c.danger }}>
+            <Text variant="callout" color="danger">
               {err}
             </Text>
           ) : null}
@@ -274,11 +282,7 @@ export default function TimelineScreen() {
           </View>
         </>
       )}
-      <TripFixSheet
-        move={fixing}
-        onClose={() => setFixing(null)}
-        onSaved={refreshDay}
-      />
+      <TripFixSheet move={fixing} onClose={() => setFixing(null)} onSaved={refreshDay} />
       <PhotoViewer set={viewing?.set ?? null} start={viewing?.start ?? 0} linkBase={photos?.linkBase ?? null} onClose={() => setViewing(null)} />
     </Screen>
   );
@@ -294,50 +298,50 @@ export default function TimelineScreen() {
       const num = visitNo.get(key);
       const icon = placeIcon(v.placeKind, v.category, v.osmKey);
       const title = named ? v.placeName! : (cat ?? "Unnamed place");
-      // "Visited X?": the name is a guess among several.
+      // "Were you here?": the name is a guess among several.
       const asking = !!v.candidates?.length;
       const set = photoSets.get(key);
+      const on = selected?.key === key;
       return (
-        <Pressable
-          style={s.row}
-          onPress={hasMap ? () => pick(key) : undefined}
-          disabled={!hasMap}
-          accessibilityRole={hasMap ? "button" : undefined}
-          accessibilityState={hasMap ? { selected: selected?.key === key } : undefined}
-        >
+        <View style={s.row}>
           <View style={s.rail}>
             <View style={[s.line, { top: first ? 26 : 0, bottom: last ? undefined : 0, height: last ? 26 : undefined }]} />
-            <View style={[s.icon, { marginTop: 14 }]} accessible accessibilityLabel={num != null ? `Stop ${num}, ${icon.label}` : icon.label}>
-              <Icon name={icon.mci} size={16} color={t.c.primary} />
+            <View style={[s.tile, { marginTop: 14 }, on && s.tileOn]} accessible accessibilityLabel={num != null ? `Stop ${num}, ${icon.label}` : icon.label}>
+              <Icon name={icon.icon} size={16} color={on ? t.c.primary : t.c.textSecondary} />
               {num != null ? (
                 <View style={s.num}>
-                  <Text variant="caption" tabular style={{ color: t.c.onPrimary, fontSize: 9, lineHeight: 12, fontWeight: "800" }}>
+                  <Text variant="micro" tabular style={{ color: t.c.bg, fontSize: 11, lineHeight: 13 }}>
                     {num}
                   </Text>
                 </View>
               ) : null}
             </View>
           </View>
-          <Card style={[s.visit, selected?.key === key ? s.picked : null]}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
+          <Card style={[s.visit, on && s.visitOn]}>
+            <Pressable
+              onPress={hasMap ? () => pick(key) : undefined}
+              disabled={!hasMap}
+              accessibilityRole={hasMap ? "button" : undefined}
+              accessibilityState={hasMap ? { selected: on } : undefined}
+              style={{ flexDirection: "row", alignItems: "flex-start", gap: t.space.md }}
+            >
               <View style={{ flex: 1, gap: 2 }}>
                 <Text variant="headline" numberOfLines={2}>
                   {title}
-                  {asking ? <Text variant="headline" color="primary">?</Text> : null}
                 </Text>
-                <Text variant="caption" color="textSecondary">
-                  {fmtTime(v.startedAt)} – {fmtTime(v.endedAt)}
+                <Text variant="callout" color="textSecondary" tabular numberOfLines={1}>
+                  {fmtTime(v.startedAt)}–{fmtTime(v.endedAt)}
                   {named && cat ? ` · ${cat}` : ""}
                 </Text>
               </View>
-              <Text variant="callout" color="textSecondary" tabular>
+              <Text variant="headline" tabular>
                 {fmtDuration(v.duration)}
               </Text>
-            </View>
+            </Pressable>
             {asking ? <PlaceQuestion key={v.placeId} visit={v} shownName={title} onAnswered={refreshDay} /> : null}
             {set ? <PhotoStrip set={set} onOpen={(start) => setViewing({ set, start })} /> : null}
           </Card>
-        </Pressable>
+        </View>
       );
     }
     const m = it.track;
@@ -349,62 +353,51 @@ export default function TimelineScreen() {
     const canPick = hasMap && m.mode !== "stationary";
     const picked = selected?.key === key;
     return (
-      <Pressable
-        style={s.row}
-        onPress={canPick ? () => pick(key) : undefined}
-        disabled={!canPick}
-        accessibilityRole={canPick ? "button" : undefined}
-        accessibilityState={canPick ? { selected: picked } : undefined}
-      >
+      <View style={s.row}>
         <View style={s.rail}>
-          <View style={[s.line, { top: 0, bottom: 0, width: picked ? 7 : 5, backgroundColor: color, borderRadius: 4 }]} />
-        </View>
-        <View style={[s.move, picked ? s.pickedMove : null]}>
-          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${color}26`, alignItems: "center", justifyContent: "center" }}>
-            <Icon name={meta.icon} size={19} color={color} />
+          <View style={[s.line, { top: 0, bottom: 0, width: picked ? 6 : 4, backgroundColor: color, borderRadius: 3 }]} />
+          <View style={[s.glyph, { marginTop: 8 }]}>
+            <Icon name={meta.icon} size={20} color={color} />
           </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text variant="callout" style={{ fontWeight: "800" }}>
-                {meta.label}
-              </Text>
-              {m.correctionId != null ? (
-                <View style={{ borderWidth: 1, borderColor: t.c.borderStrong, borderRadius: 999, paddingHorizontal: 6 }}>
-                  <Text variant="caption" color="textMuted" style={{ fontSize: 10, lineHeight: 14 }}>
-                    {m.added ? "added by you" : "edited"}
-                  </Text>
-                </View>
-              ) : null}
+        </View>
+        <View style={[s.move, picked && s.moveOn]}>
+          <Pressable
+            onPress={canPick ? () => pick(key) : undefined}
+            disabled={!canPick}
+            accessibilityRole={canPick ? "button" : undefined}
+            accessibilityState={canPick ? { selected: picked } : undefined}
+            style={{ flex: 1, gap: 2 }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm }}>
+              <Text variant="headline">{meta.label}</Text>
+              {m.correctionId != null ? <Badge label={m.added ? "Added by you" : "Edited"} /> : null}
             </View>
-            <Text variant="caption" color="textSecondary">
+            <Text variant="callout" color="textSecondary" tabular>
               {m.mode === "stationary" ? fmtDuration(m.duration) : `${fmtDistance(m.distance)} · ${fmtDuration(m.duration)}`}
             </Text>
             {subRows(m).map((r, k) =>
               r.kind === "leg" ? <LegBadge key={k} leg={r.leg} /> : <WaitLine key={k} stop={r.stop} secs={r.secs} />,
             )}
             {drift && (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
-                <Icon name="map-marker-alert-outline" size={13} color={t.c.accent} />
-                <Text variant="caption" color="accent">
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: t.space.xs }}>
+                <Icon name="warning" size={16} color={t.c.warning} />
+                <Text variant="callout" color="warning" style={{ flexShrink: 1 }}>
                   GPS jumped around here, not counted
                 </Text>
               </View>
             )}
             {set ? <PhotoStrip set={set} onOpen={(start) => setViewing({ set, start })} /> : null}
-          </View>
+          </Pressable>
           {m.mode !== "stationary" ? (
-            <Pressable
+            <IconButton
+              icon="edit"
+              color={t.c.textSecondary}
+              label={m.added ? "Edit the trip you added" : m.correctionId != null ? "Edit the fix of this trip" : "Fix this trip"}
               onPress={() => setFixing(m)}
-              accessibilityRole="button"
-              accessibilityLabel={m.added ? "Edit the trip you added" : m.correctionId != null ? "Edit the fix of this trip" : "Fix this trip"}
-              hitSlop={8}
-              style={{ alignSelf: "flex-start", marginTop: 4, padding: 4 }}
-            >
-              <Icon name="pencil-outline" size={18} color={t.c.textMuted} />
-            </Pressable>
+            />
           ) : null}
         </View>
-      </Pressable>
+      </View>
     );
   }
 }

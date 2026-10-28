@@ -44,7 +44,7 @@ describe("placeIconGroup (copy of the web's)", () => {
     expect(placeIconGroup(null, "aerodrome")).toBe("airport");
     expect(placeIconGroup(null, "bicycle", "shop")).toBe("shopping");
     expect(placeIconGroup(null, "constructor")).toBe("other");
-    for (const g of PLACE_ICON_GROUPS) expect(PLACE_ICONS[g].mci).toBeTruthy();
+    for (const g of PLACE_ICON_GROUPS) expect(PLACE_ICONS[g].icon).toBeTruthy();
   });
 });
 

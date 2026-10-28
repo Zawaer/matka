@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { FlatList, Pressable, RefreshControl, TextInput, View } from "react-native";
+import { FlatList, RefreshControl, TextInput, View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
 import { fmtDuration, placeLabel } from "../format";
 import { KIND_META, mostVisitedId } from "../insights-logic";
-import { Card, EmptyState, ErrorState, Icon, IconChip, Pill, Skeleton } from "../ui";
+import { Badge, Card, EmptyState, ErrorState, GroupedItem, Icon, IconButton, IconTile, ListRow, Skeleton } from "../ui";
 import { ScreenHeader } from "../ui/Screen";
 import { SearchAreaRow, SearchPlaceRow } from "../ui/SearchRows";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
@@ -97,29 +97,26 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
 
   const s = useStyles((th) => ({
     root: { flex: 1, backgroundColor: th.c.bg },
-    content: { paddingHorizontal: th.layout.gutter, paddingTop: th.space.md, paddingBottom: th.space.xxxl, gap: th.space.md },
+    content: { paddingHorizontal: th.layout.gutter, paddingTop: th.space.sm, paddingBottom: th.space.xxl },
     search: {
       flexDirection: "row",
       alignItems: "center",
       gap: th.space.sm,
-      backgroundColor: th.c.surface,
-      borderColor: th.c.border,
-      borderWidth: 1,
-      borderRadius: th.radius.pill,
-      paddingHorizontal: th.space.lg,
+      backgroundColor: th.c.surfaceAlt,
+      borderRadius: th.radius.sm,
+      paddingLeft: th.space.md,
+      paddingRight: th.space.xs,
       height: 48,
-      marginBottom: th.space.xs,
     },
-    input: { flex: 1, color: th.c.text, fontSize: 15, padding: 0, outlineStyle: "none" as never },
-    row: { flexDirection: "row", alignItems: "center", gap: th.space.md, paddingVertical: th.space.md, paddingHorizontal: th.space.md },
+    input: { flex: 1, color: th.c.text, fontSize: 15, padding: 0, height: 48, outlineStyle: "none" as never },
   }));
 
   const header = (
-    <View style={{ gap: 14, marginBottom: 4 }}>
+    <View style={{ gap: t.space.lg, marginBottom: t.space.lg }}>
       {top ? (
         <>
           {top}
-          <Text variant="callout" color="textSecondary">
+          <Text variant="callout" color="textSecondary" tabular>
             {places ? `${places.length.toLocaleString()} places you come back to` : "Where you spend your time"}
           </Text>
         </>
@@ -128,7 +125,7 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
       )}
       {authLost ? <PairingLost /> : null}
       <View style={s.search}>
-        <Icon name="magnify" size={20} color={t.c.textMuted} />
+        <Icon name="search" size={20} color={t.c.textSecondary} />
         <TextInput
           value={query}
           onChangeText={setQuery}
@@ -137,28 +134,21 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
           style={s.input}
           autoCorrect={false}
           returnKeyType="search"
+          accessibilityLabel="Search places"
         />
-        {query.length > 0 && (
-          <Pressable onPress={() => setQuery("")} hitSlop={10} accessibilityLabel="Clear search">
-            <Icon name="close-circle" size={18} color={t.c.textMuted} />
-          </Pressable>
-        )}
+        {query.length > 0 && <IconButton icon="close" label="Clear search" color={t.c.textSecondary} onPress={() => setQuery("")} />}
       </View>
       {err && !places && !authLost && <ErrorState message={err} onRetry={reload} />}
       {!places && !err && !authLost && (
-        <View style={{ gap: 10 }}>
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} height={72} radius={20} />
-          ))}
-        </View>
+        <Skeleton height={6 * 68} />
       )}
       {places && places.length === 0 && (
         <Card>
-          <EmptyState icon="map-marker-multiple-outline" title="No places yet" body="Places appear once you have spent a few minutes somewhere. Keep Matka recording and check back soon." />
+          <EmptyState icon="place" title="No places yet" body="Places appear once you have spent a few minutes somewhere. Keep Matka recording and check back soon." />
         </Card>
       )}
       {q && search.error && !results && places && shown.length > 0 ? (
-        <Text variant="caption" color="textSecondary">
+        <Text variant="callout" color="textSecondary">
           Showing matches from this list; search on the server isn&apos;t available right now.
         </Text>
       ) : null}
@@ -169,7 +159,7 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
       )}
       {noMatches && (
         <Card>
-          <EmptyState icon="magnify" title="Nothing matches" body={`No place found for “${trimmed}”. Try part of a name, a street, a city or a type like “library”.`} />
+          <EmptyState icon="search" title="Nothing matches" body={`No place found for “${trimmed}”. Try part of a name, a street, a city or a type like “library”.`} />
         </Card>
       )}
     </View>
@@ -197,46 +187,48 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
           }}
         />
       }
-      renderItem={({ item }) => {
-        if (item.type === "hit") return <SearchPlaceRow place={item.hit} onOpenDay={openDay} />;
-        if (item.type === "area") return <SearchAreaRow area={item.area} onPress={() => openInsights("world")} />;
+      renderItem={({ item, index }) => {
         if (item.type === "heading") {
           return (
-            <Text variant="overline" color="textSecondary" style={{ marginTop: 8 }}>
+            <Text variant="overline" color="textSecondary" style={{ marginTop: index === 0 ? 0 : t.space.xl, marginBottom: t.space.sm, paddingHorizontal: t.space.lg }}>
               {item.title}
             </Text>
           );
         }
-        const p = item.place;
-        const meta = categoryMeta(p.category);
-        const locale = [p.city, p.country === "Finland" ? null : p.country].filter(Boolean).join(", ");
+        const prev = rows[index - 1];
+        const nextRow = rows[index + 1];
+        const first = !prev || prev.type === "heading";
+        const last = !nextRow || nextRow.type === "heading";
+        let body: ReactNode;
+        if (item.type === "hit") body = <SearchPlaceRow place={item.hit} onOpenDay={openDay} />;
+        else if (item.type === "area") body = <SearchAreaRow area={item.area} onPress={() => openInsights("world")} />;
+        else {
+          const p = item.place;
+          const meta = categoryMeta(p.category, p.kind);
+          const locale = [p.city, p.country === "Finland" ? null : p.country].filter(Boolean).join(", ");
+          body = (
+            <ListRow
+              leading={<IconTile icon={p.kind ? KIND_META[p.kind].icon : meta.icon} tone={p.kind ? "accent" : "neutral"} />}
+              title={placeName(p)}
+              titleLines={2}
+              subtitle={`${meta.label}${locale ? ` · ${locale}` : ""}`}
+              trailing={`${p.visitCount.toLocaleString()} ${p.visitCount === 1 ? "visit" : "visits"}`}
+              trailingSub={fmtDuration(p.totalTime)}
+              below={
+                p.kind || p.id === mostVisited ? (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: t.space.xs, marginTop: t.space.xs }}>
+                    {p.kind ? <Badge label={p.kind === "other" ? "Saved" : KIND_META[p.kind].label} tone="accent" /> : null}
+                    {p.id === mostVisited ? <Badge label="Most visited" /> : null}
+                  </View>
+                ) : null
+              }
+            />
+          );
+        }
         return (
-          <Card style={s.row}>
-            <IconChip icon={meta.icon} tint={meta.tint} size={44} />
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text variant="headline" numberOfLines={2}>
-                {placeName(p)}
-              </Text>
-              <Text variant="caption" color="textSecondary" numberOfLines={1}>
-                {meta.label}
-                {locale ? ` · ${locale}` : ""}
-              </Text>
-              {(p.kind || p.id === mostVisited) && (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-                  {p.kind ? <Pill label={p.kind === "other" ? "Saved" : KIND_META[p.kind].label} icon={KIND_META[p.kind].icon} tint="violet" /> : null}
-                  {p.id === mostVisited ? <Pill label="Most visited" icon="star-four-points-outline" tint="amber" /> : null}
-                </View>
-              )}
-            </View>
-            <View style={{ alignItems: "flex-end", gap: 2 }}>
-              <Text variant="headline" color="primary">
-                {p.visitCount.toLocaleString()} {p.visitCount === 1 ? "visit" : "visits"}
-              </Text>
-              <Text variant="caption" color="textSecondary" tabular>
-                {fmtDuration(p.totalTime)}
-              </Text>
-            </View>
-          </Card>
+          <GroupedItem first={first} last={last}>
+            {body}
+          </GroupedItem>
         );
       }}
     />

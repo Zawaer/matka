@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { useTheme } from "../../design/theme";
 import { getTrips, type Trip } from "../../insights";
 import { fmtKm, plural, tripDates, tripLength, tripsByYear } from "../../insights-logic";
-import { Card, EmptyState, ErrorState, Skeleton } from "../../ui";
+import { Card, EmptyState, ErrorState, Icon, SectionHeader, Skeleton } from "../../ui";
 import { Screen } from "../../ui/Screen";
 import { useSession, useViewerQuery } from "../../ui/session";
 import { Text } from "../../ui/Text";
@@ -15,7 +15,7 @@ function Footer({ trip: t }: { trip: Trip }) {
     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
       <ModeChips modes={t.modes} />
       {t.countries.length > 0 ? (
-        <Text variant="caption" color="textMuted" numberOfLines={1} style={{ flexShrink: 1 }}>
+        <Text variant="callout" color="textSecondary" numberOfLines={1} style={{ flexShrink: 1 }}>
           {t.countries.join(", ")}
         </Text>
       ) : null}
@@ -23,71 +23,70 @@ function Footer({ trip: t }: { trip: Trip }) {
   );
 }
 
-/** Google Trips style: the cover fills the top, title and dates over its scrim. */
+/** Photo-led card: the cover fills the top (16:9), title and dates on a scrim; no cover → a quiet backdrop with a route glyph. */
 function PhotoCard({ trip: t, onPress }: { trip: Trip; onPress: () => void }) {
   const th = useTheme();
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${t.name}, ${tripDates(t)}`}>
-      {({ pressed }) => (
-        <Card style={{ padding: 0, overflow: "hidden", opacity: pressed ? 0.85 : 1 }}>
-          <View style={{ aspectRatio: 16 / 9 }}>
-            {t.cover ? <Photo id={t.cover} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} /> : <View style={{ flex: 1, backgroundColor: PHOTO_BACKDROP }} />}
-            <Scrim />
-            <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: th.space.lg, flexDirection: "row", alignItems: "flex-end", gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text variant="title3" style={onPhotoText} numberOfLines={2}>
-                  {t.name}
-                </Text>
-                <Text variant="callout" style={[onPhotoText, { opacity: 0.88 }]}>
-                  {tripDates(t)}
-                </Text>
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text variant="headline" style={onPhotoText} tabular>
-                  {fmtKm(t.distance)}
-                </Text>
-                <Text variant="caption" style={[onPhotoText, { opacity: 0.85 }]}>
-                  {tripLength(t)}
-                </Text>
-              </View>
-            </View>
+    <Card padded={false} style={{ overflow: "hidden" }} onPress={onPress} accessibilityLabel={`${t.name}, ${tripDates(t)}`}>
+      <View style={{ aspectRatio: 16 / 9, backgroundColor: PHOTO_BACKDROP }}>
+        {t.cover ? (
+          <Photo id={t.cover} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+        ) : (
+          <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 48, alignItems: "center", justifyContent: "center" }}>
+            <Icon name="route" size={32} color="rgba(255,255,255,0.35)" />
           </View>
-          <View style={{ padding: th.space.md, paddingHorizontal: th.space.lg }}>
-            <Footer trip={t} />
+        )}
+        <Scrim />
+        <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: th.space.lg, flexDirection: "row", alignItems: "flex-end", gap: th.space.md }}>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text variant="title3" style={[onPhotoText, { fontWeight: "800" }]} numberOfLines={2}>
+              {t.name}
+            </Text>
+            <Text variant="callout" style={[onPhotoText, { opacity: 0.9 }]} tabular>
+              {tripDates(t)}
+            </Text>
           </View>
-        </Card>
-      )}
-    </Pressable>
+          <View style={{ alignItems: "flex-end", gap: 2 }}>
+            <Text variant="headline" style={onPhotoText} tabular>
+              {fmtKm(t.distance)}
+            </Text>
+            <Text variant="callout" style={[onPhotoText, { opacity: 0.9 }]} tabular>
+              {tripLength(t)}
+            </Text>
+          </View>
+        </View>
+      </View>
+      <View style={{ paddingVertical: th.space.md, paddingHorizontal: th.space.lg }}>
+        <Footer trip={t} />
+      </View>
+    </Card>
   );
 }
 
 function PlainCard({ trip: t, onPress }: { trip: Trip; onPress: () => void }) {
+  const th = useTheme();
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${t.name}, ${tripDates(t)}`}>
-      {({ pressed }) => (
-        <Card style={{ gap: 12, opacity: pressed ? 0.85 : 1 }}>
-          <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}>
-            <View style={{ flex: 1 }}>
-              <Text variant="headline" numberOfLines={2}>
-                {t.name}
-              </Text>
-              <Text variant="caption" color="textSecondary">
-                {tripDates(t)}
-              </Text>
-            </View>
-            <View style={{ alignItems: "flex-end" }}>
-              <Text variant="headline" tabular>
-                {fmtKm(t.distance)}
-              </Text>
-              <Text variant="caption" color="textSecondary">
-                {tripLength(t)}
-              </Text>
-            </View>
-          </View>
-          <Footer trip={t} />
-        </Card>
-      )}
-    </Pressable>
+    <Card style={{ gap: th.space.md }} onPress={onPress} accessibilityLabel={`${t.name}, ${tripDates(t)}`}>
+      <View style={{ flexDirection: "row", gap: th.space.md, alignItems: "flex-start" }}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text variant="headline" numberOfLines={2}>
+            {t.name}
+          </Text>
+          <Text variant="callout" color="textSecondary" tabular>
+            {tripDates(t)}
+          </Text>
+        </View>
+        <View style={{ alignItems: "flex-end", gap: 2 }}>
+          <Text variant="headline" tabular>
+            {fmtKm(t.distance)}
+          </Text>
+          <Text variant="callout" color="textSecondary" tabular>
+            {tripLength(t)}
+          </Text>
+        </View>
+      </View>
+      <Footer trip={t} />
+    </Card>
   );
 }
 
@@ -114,22 +113,17 @@ export default function TripsView({ header, onOpen }: { header: ReactNode; onOpe
         <ErrorState message={error} onRetry={reload} />
       ) : !data ? (
         <View style={{ gap: 12 }}>
-          <Skeleton height={240} radius={20} />
-          <Skeleton height={240} radius={20} />
+          <Skeleton height={248} />
+          <Skeleton height={248} />
         </View>
       ) : data.trips.length === 0 ? (
         <Card>
-          <EmptyState icon="bag-suitcase-outline" title="No trips yet" body="A trip appears once you have spent a night away from home." />
+          <EmptyState icon="trip" title="No trips yet" body="A trip appears once you have spent a night away from home." />
         </Card>
       ) : (
         tripsByYear(data.trips).map((g) => (
           <View key={g.year} style={{ gap: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
-              <Text variant="title3">{g.year}</Text>
-              <Text variant="caption" color="textMuted">
-                {plural(g.trips.length, "trip")}
-              </Text>
-            </View>
+            <SectionHeader title={String(g.year)} trailing={plural(g.trips.length, "trip")} />
             {g.trips.map((t) =>
               photoCards ? <PhotoCard key={t.id} trip={t} onPress={() => onOpen(t)} /> : <PlainCard key={t.id} trip={t} onPress={() => onOpen(t)} />,
             )}

@@ -5,11 +5,10 @@ import { getCity } from "../../insights";
 import { placeLabel } from "../../format";
 import { fmtLongDuration, fmtShortDate, plural } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
-import { Card, EmptyState, ErrorState, IconChip, Skeleton } from "../../ui";
-import { Screen } from "../../ui/Screen";
+import { Card, EmptyState, ErrorState, IconTile, ListGroup, ListRow, Skeleton, StatGrid } from "../../ui";
+import { BackLink, DetailTitle, Screen } from "../../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../../ui/session";
-import { Text } from "../../ui/Text";
-import { BackRow, ListRow, StatRow, StatTile, useRefresh } from "./parts";
+import { useRefresh } from "./parts";
 
 /** One city's places, most visited first. */
 export default function CityView({
@@ -35,49 +34,50 @@ export default function CityView({
 
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
-      <BackRow label={backLabel} onPress={onBack} />
-      <View style={{ gap: 2 }}>
-        <Text variant="title1">{name}</Text>
-        <Text variant="callout" color="textSecondary">
-          {[country, data && places.length ? `last visited ${fmtShortDate(last)}` : null].filter(Boolean).join(" · ") || " "}
-        </Text>
-      </View>
+      <BackLink label={backLabel} onPress={onBack} />
+      <DetailTitle
+        title={name}
+        subtitle={[country, data && places.length ? `Last visited ${fmtShortDate(last)}` : null].filter(Boolean).join(" · ") || " "}
+      />
       {authLost ? <PairingLost /> : null}
 
       {authLost && !data ? null : error && !data ? (
         <ErrorState message={error} onRetry={reload} />
       ) : !data ? (
-        <View style={{ gap: 12 }}>
-          <Skeleton height={76} radius={20} />
-          <Skeleton height={300} radius={20} />
+        <View style={{ gap: 16 }}>
+          <Skeleton height={70} />
+          <Skeleton height={300} />
         </View>
       ) : places.length === 0 ? (
         <Card>
-          <EmptyState icon="city-variant-outline" title="No places here" body="No visited places are in this city any more." />
+          <EmptyState icon="city" title="No places here" body="No visited places are in this city any more." />
         </Card>
       ) : (
         <>
-          <StatRow>
-            <StatTile label="Places" value={String(places.length)} />
-            <StatTile label="Visits" value={visits.toLocaleString()} accent />
-            <StatTile label="Time spent" value={fmtLongDuration(time)} style={{ flexBasis: "100%" }} />
-          </StatRow>
-          <Card style={{ padding: 0, overflow: "hidden" }}>
-            {places.map((p, i) => {
-              const meta = categoryMeta(p.category);
+          <StatGrid
+            size="sm"
+            columns={3}
+            items={[
+              { label: "Places", value: String(places.length) },
+              { label: "Visits", value: visits.toLocaleString() },
+              { label: "Time spent", value: fmtLongDuration(time) },
+            ]}
+          />
+          <ListGroup>
+            {places.map((p) => {
+              const meta = categoryMeta(p.category, p.kind);
               return (
                 <ListRow
                   key={p.id}
-                  leading={<IconChip icon={meta.icon} tint={meta.tint} size={40} />}
+                  leading={<IconTile icon={meta.icon} tone={p.kind ? "accent" : "neutral"} />}
                   title={placeLabel(p.name)}
                   subtitle={meta.label}
                   trailing={plural(p.visitCount, "visit")}
                   trailingSub={fmtLongDuration(p.totalTime)}
-                  last={i === places.length - 1}
                 />
               );
             })}
-          </Card>
+          </ListGroup>
         </>
       )}
     </Screen>

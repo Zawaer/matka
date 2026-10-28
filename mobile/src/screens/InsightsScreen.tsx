@@ -6,11 +6,11 @@
 import { useEffect, useState } from "react";
 import { BackHandler, View } from "react-native";
 import { useTheme } from "../design/theme";
+import { Segmented } from "../ui";
 import { ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, type InsightsSegment } from "../ui/session";
 import PlacesScreen from "./PlacesScreen";
 import CityView from "./insights/CityView";
-import { SegmentBar } from "./insights/parts";
 import TravelView from "./insights/TravelView";
 import TripDetailView from "./insights/TripDetailView";
 import TripsView from "./insights/TripsView";
@@ -67,9 +67,9 @@ export default function InsightsScreen({
   }, [active, depth]);
 
   const header = (
-    <View style={{ gap: 14 }}>
+    <View style={{ gap: t.space.lg }}>
       <ScreenHeader title="Insights" />
-      <SegmentBar label="Insights" options={SEGMENTS} value={segment} onChange={onSegment} />
+      <Segmented label="Insights" options={SEGMENTS} value={segment} onChange={onSegment} />
       {authLost ? <PairingLost /> : null}
     </View>
   );

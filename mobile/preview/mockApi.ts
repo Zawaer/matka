@@ -41,6 +41,15 @@ const P = (id: number, name: string | null, category: string | null, city: strin
 /** Saved on the web Places page (home, family, school, work, other). */
 const SAVED: Record<number, string> = { 1: "family", 9: "school", 13: "work", 2: "home" };
 
+/** Roughly where each place is (Helsinki region unless abroad), so "Missing travel" can be worked out. */
+const COORDS: Record<number, [number, number]> = {
+  1: [60.2410, 24.7105], 2: [60.2930, 24.6650], 3: [60.1846, 24.8270], 4: [60.1758, 24.8289], 5: [60.1591, 24.8706],
+  6: [60.1856, 24.8113], 7: [60.1597, 24.8788], 8: [60.1716, 24.9246], 9: [60.1867, 24.8286], 10: [60.1789, 24.9364],
+  11: [60.1677, 24.9446], 12: [61.4978, 23.7610], 13: [60.1691, 24.9325], 14: [61.5034, 23.7724], 15: [61.4960, 23.7735],
+  16: [38.6976, -9.2033], 17: [38.7139, -9.1334], 18: [38.7131, -9.1446], 19: [38.7876, -9.3906], 20: [66.5436, 25.8473],
+  21: [69.0447, 20.8005], 22: [59.4400, 24.7281], 23: [59.3178, 18.0859], 24: [60.1868, 24.8352], 25: [65.0101, 25.4836],
+  26: [60.2350, 24.6020],
+};
 const places: PlaceRow[] = [
   P(2, "00990 Esimerkkitie 2", "house", "Espoo", "Finland", 164, 2_052_080, "2026-10-18"),
   P(1, "00990 Koivukuja 8", "apartments", "Espoo", "Finland", 66, 143_740, "2026-10-12"),
@@ -69,6 +78,7 @@ const places: PlaceRow[] = [
   P(25, "Oulu railway station", "station", "Oulu", "Finland", 2, 1_400, "2025-12-27"),
   P(26, "Unknown Location", null, null, null, 3, 2_100, "2026-09-02"),
 ];
+for (const p of places) [p.lat, p.lon] = COORDS[p.id] ?? [p.lat, p.lon];
 // The server's order: saved places first, then most visited.
 places.sort((a, b) => Number(!!b.kind) - Number(!!a.kind) || b.visitCount - a.visitCount || (b.lastVisit ?? "").localeCompare(a.lastVisit ?? ""));
 const placeById = new Map(places.map((p) => [p.id, p]));
@@ -80,15 +90,21 @@ type Leg = { kind: string; lines: string[]; fromStop: string | null; toStop: str
 type Wait = { startedAt: string; endedAt: string; stop: string | null };
 type Item = { kind: "visit"; visit: Obj } | { kind: "move"; track: Obj };
 
+// Ids restart per day (dayItems), so the same day always has the same ids (photos are keyed by them).
 let seq = 1000;
-function visit(placeId: number, from: string, to: string): Item {
+/** OSM key per category, for the place icon (amenity, shop…). */
+const OSM_KEY: Record<string, string> = { library: "amenity", cafe: "amenity", mall: "shop", supermarket: "shop", station: "railway", park: "leisure", pub: "amenity", restaurant: "amenity", university: "amenity", house: "building", apartments: "building", theatre: "amenity", hotel: "tourism", castle: "historic", museum: "tourism", parking: "amenity" };
+function visit(placeId: number, from: string, to: string, extra: Obj = {}): Item {
   const p = placeById.get(placeId)!;
   return {
     kind: "visit",
-    visit: { id: seq++, startedAt: from, endedAt: to, duration: secs(from, to), placeId, placeName: p.name ?? "Unknown Location", category: p.category, placeKind: null, lat: p.lat, lon: p.lon },
+    visit: {
+      id: seq++, startedAt: from, endedAt: to, duration: secs(from, to), placeId, placeName: p.name ?? "Unknown Location", category: p.category,
+      placeKind: p.kind, osmKey: p.category ? (OSM_KEY[p.category] ?? null) : null, lat: p.lat, lon: p.lon, ...extra,
+    },
   };
 }
-function move(mode: string, from: string, to: string, distance: number, extra: { legs?: Leg[]; waits?: Wait[] } = {}): Item {
+function move(mode: string, from: string, to: string, distance: number, extra: { legs?: Leg[]; waits?: Wait[] } & Obj = {}): Item {
   return { kind: "move", track: { id: seq++, startedAt: from, endedAt: to, distance, duration: secs(from, to), mode, ...extra } };
 }
 const leg = (kind: string, lines: string[], fromStop: string | null, toStop: string | null, from: string, to: string, distance: number): Leg =>
@@ -103,6 +119,7 @@ for (let d = FIRST_DATE; d <= LAST_DATE; d = addDays(d, 1)) if (d === LAST_DATE 
 if (dates.includes("2026-10-16")) dates.splice(dates.indexOf("2026-10-16"), 1); // a hole right next to "today"
 
 function dayItems(d: string): Item[] {
+  seq = 1000 + Math.max(0, dates.indexOf(d)) * 40;
   const a = (hm: string) => at(d, hm);
   if (d === "2026-10-18") {
     return [
@@ -116,12 +133,19 @@ function dayItems(d: string): Item[] {
         waits: [{ startedAt: a("08:48"), endedAt: a("08:54"), stop: "Kamppi" }],
       }),
       visit(13, a("09:05"), a("11:40")),
-      visit(8, a("13:30"), a("14:15")),
+      // Kamppi → Cafe Regatta with nothing recorded between: "Missing travel".
+      visit(8, a("13:30"), a("14:15"), {
+        candidates: [
+          { name: "Cafe Regatta", category: "cafe", address: false },
+          { name: "Sibelius Monument", category: "artwork", address: false },
+          { name: "Merikannontie 8", category: null, address: true },
+        ],
+      }),
       move("cycling", a("14:15"), a("14:52"), 9_800),
       visit(3, a("14:55"), a("17:20")),
       move("walking", a("17:20"), a("17:24"), 6_400), // GPS drift: 96 km/h on foot
       visit(24, a("17:30"), a("17:52")),
-      move("tram", a("17:55"), a("18:20"), 5_300, { legs: [leg("tram", ["4", "4T", "10"], "Lasipalatsi", "Munkkiniemi", a("17:57"), a("18:18"), 4_900)] }),
+      move("tram", a("17:55"), a("18:20"), 5_300, { correctionId: 41, legs: [leg("tram", ["4", "4T", "10"], "Lasipalatsi", "Munkkiniemi", a("17:57"), a("18:18"), 4_900)] }),
       move("stationary", a("18:20"), a("18:30"), 30),
       visit(2, a("18:35"), at(addDays(d, 1), "07:10")),
     ];
@@ -135,6 +159,7 @@ function dayItems(d: string): Item[] {
       visit(4, a("13:00"), a("13:05")),
       move("metro", a("13:05"), a("13:20"), 8_400, { legs: [leg("metro", ["M1"], null, null, a("13:06"), a("13:19"), 8_300)], waits: [] }),
       visit(6, a("16:55"), a("17:18")),
+      move("walking", a("17:18"), a("17:38"), 1_200, { correctionId: 42, added: true, from: { lat: 60.1856, lon: 24.8113 }, to: { lat: 60.2930, lon: 24.6650 } }),
       move("running", a("17:40"), a("18:28"), 9_100),
       visit(2, a("18:35"), a("22:05")),
     ];
@@ -393,12 +418,77 @@ function emptyReply(path: string, q: URLSearchParams): Reply | null {
     return { body: { month: m, distance: 0, duration: 0, modes: [], historyMonths: Array.from({ length: 6 }, (_, i) => addMonths(m, i - 5)), firstMonth: null, lastMonth: null } };
   }
   if (path === "/api/insights/saved") return { body: { month: q.get("month") ?? LAST_MONTH, saved: 0, rows: [] } };
+  if (path === "/api/timeline/photos") return { body: { configured: false, pending: false, linkBase: null, items: [] } };
+  if (path === "/api/search") return { body: { query: q.get("q") ?? "", places: [], areas: [] } };
   if (path === "/api/insights/trips") return { body: { home: null, trips: [] } };
   if (path === "/api/insights/world") return q.get("city") ? { body: { city: q.get("city"), country: q.get("country"), places: [] } } : { body: { countries: [], cities: [], unplaced: 0 } };
   return null;
 }
 
+/** Photos taken during the day's visits and trips (GET /api/timeline/photos). */
+function dayPhotos(date: string) {
+  const items = dates.includes(date) ? dayItems(date) : [];
+  const out: { key: string; ids: string[]; total: number }[] = [];
+  items.forEach((it, i) => {
+    const r = rand(`photo${date}${i}`);
+    if (it.kind === "visit" ? r < 0.45 : r < 0.15) {
+      const id = it.kind === "visit" ? (it.visit.id as number) : (it.track.id as number);
+      const total = 1 + Math.floor(rand(`n${date}${i}`) * 10);
+      out.push({ key: `${it.kind === "visit" ? "v" : "m"}-${id}`, ids: Array.from({ length: Math.min(6, total) }, (_, k) => uuid(500 + i * 10 + k)), total });
+    }
+  });
+  return { configured: true, pending: false, linkBase: "https://photos.example.com", items: out };
+}
+
+const fold = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/** GET /api/search: places by name, street, city or category, and matching cities and countries. */
+function search(query: string) {
+  const q = fold(query.trim());
+  const hits = places.filter((p) => p.visitCount > 0 && [p.name ?? "", p.city ?? "", p.country ?? "", p.category ?? ""].some((x) => fold(x).includes(q)));
+  const w = world("visits");
+  const areas = [
+    ...w.cities.filter((c) => fold(c.name).includes(q)).map((c) => ({ type: "city", ...c })),
+    ...w.countries.filter((c) => fold(c.name).includes(q)).map((c) => ({ type: "country", ...c, country: null })),
+  ];
+  return {
+    query,
+    places: hits.slice(0, 20).map((p) => {
+      const last = (p.lastVisit ?? "").slice(0, 10) || null;
+      return {
+        ...placeJson(p),
+        firstVisit: at("2025-11-02", "10:00"),
+        lastVisitDate: last,
+        recentDates: last ? [last, addDays(last, -3), addDays(last, -9)].filter((d) => dates.includes(d)) : [],
+        match: p.name && fold(p.name).includes(q) ? "name" : p.category && fold(p.category).includes(q) ? "category" : "area",
+      };
+    }),
+    areas,
+  };
+}
+
+const ROUTES = [
+  { line: "550", kind: "bus", name: "Itäkeskus–Westendinasema" }, { line: "551", kind: "bus", name: "Otaniemi–Pasila" },
+  { line: "102", kind: "bus", name: "Kamppi–Otaniemi" }, { line: "102N", kind: "bus", name: "Kamppi–Otaniemi (night)" },
+  { line: "M1", kind: "metro", name: "Kivenlahti–Vuosaari" }, { line: "M2", kind: "metro", name: "Tapiola–Mellunmäki" },
+  { line: "4", kind: "tram", name: "Munkkiniemi–Katajanokka" }, { line: "10", kind: "tram", name: "Kirurgi–Pikku Huopalahti" },
+  { line: "15", kind: "tram", name: "Keilaniemi–Itäkeskus" }, { line: "A", kind: "train", name: "Helsinki–Leppävaara" },
+  { line: "19", kind: "boat", name: "Kauppatori–Suomenlinna" },
+];
+const STOPS = ["Kamppi", "Kaisaniemi", "Kalasatama", "Keilaniemi", "Koivusaari", "Lasipalatsi", "Rautatientori", "Ruskeasuo", "Tapiola", "Esimerkkitie"];
+
 function reply(method: string, path: string, q: URLSearchParams, body: string | null): Reply {
+  if (path === "/api/corrections" && method === "POST") return { body: { correction: { id: 99 } } };
+  if (/^\/api\/corrections\/\d+$/.test(path) && method === "DELETE") return { body: { ok: true } };
+  if (/^\/api\/places\/\d+\/confirm$/.test(path) && method === "POST") return { body: { ok: true } };
+  if (path === "/api/transit/routes") {
+    const t = (q.get("q") ?? "").toUpperCase();
+    return { body: { routes: ROUTES.filter((r) => r.line.toUpperCase().startsWith(t)) } };
+  }
+  if (path === "/api/transit/stops") {
+    const t = fold(q.get("q") ?? "");
+    return { body: { stops: STOPS.filter((x) => fold(x).startsWith(t)) } };
+  }
   if (path === "/api/ingest") {
     if (method === "POST") {
       const n = (JSON.parse(body ?? "{}") as { points?: unknown[] }).points?.length ?? 0;
@@ -418,6 +508,10 @@ function reply(method: string, path: string, q: URLSearchParams, body: string | 
       return { body: { places: places.map(placeJson) } };
     case "/api/timeline":
       return { body: timeline(q.get("date")) };
+    case "/api/timeline/photos":
+      return { body: dayPhotos(q.get("date") ?? LAST_DATE) };
+    case "/api/search":
+      return { body: search(q.get("q") ?? "") };
     case "/api/day-summary":
       return { body: daySummary(q.get("date") ?? LAST_DATE) };
     case "/api/insights/modes":

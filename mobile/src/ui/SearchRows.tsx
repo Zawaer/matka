@@ -1,100 +1,61 @@
 // Rows for place search results (PlacesScreen): a place with its last visit
-// and recent days, and a matching city or country.
+// and recent days, and a matching city or country. Rendered inside GroupedItem.
 
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { categoryMeta } from "../design/categories";
-import { useStyles, useTheme } from "../design/theme";
+import { useTheme } from "../design/theme";
 import { placeLabel } from "../format";
 import { KIND_META } from "../insights-logic";
 import { fmtDate, visitLine, type SearchArea, type SearchPlace } from "../search";
-import { Card, IconChip, Pill } from "./primitives";
+import { ListRow } from "./lists";
+import { Badge, Chip, IconTile } from "./primitives";
 import { Text } from "./Text";
 
 export function SearchPlaceRow({ place: p, onOpenDay }: { place: SearchPlace; onOpenDay: (date: string) => void }) {
   const t = useTheme();
-  const s = useStyles((th) => ({
-    row: { flexDirection: "row", alignItems: "center", gap: th.space.md },
-    chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: th.space.sm, marginLeft: 44 + th.space.md },
-    chip: {
-      paddingVertical: 5,
-      paddingHorizontal: 10,
-      borderRadius: th.radius.pill,
-      borderWidth: 1,
-      borderColor: th.c.border,
-      backgroundColor: th.c.surface,
-    },
-  }));
-  const meta = categoryMeta(p.category);
+  const meta = categoryMeta(p.category, p.kind);
   const locale = [p.city, p.country === "Finland" ? null : p.country].filter(Boolean).join(", ");
   const name = placeLabel(p.name, p.kind ? KIND_META[p.kind].label : meta.label);
-  const open = p.lastVisitDate ? () => onOpenDay(p.lastVisitDate!) : undefined;
+  // With recent days the chips open the timeline (the newest is the last visit); otherwise the row does.
+  const open = p.lastVisitDate && p.recentDates.length === 0 ? () => onOpenDay(p.lastVisitDate!) : undefined;
+  const kindLabel = p.kind ? (p.kind === "other" ? "Saved" : KIND_META[p.kind].label) : meta.label;
 
   return (
-    <Card style={{ paddingVertical: t.space.md, paddingHorizontal: t.space.md }}>
-      <Pressable
-        onPress={open}
-        disabled={!open}
-        accessibilityRole="button"
-        accessibilityHint={open ? "Opens the timeline on the last visit" : undefined}
-        style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}
-      >
-        {p.kind ? (
-          <IconChip icon={KIND_META[p.kind].icon} tint="violet" size={44} />
-        ) : (
-          <IconChip icon={meta.icon} tint={meta.tint} size={44} />
-        )}
-        <View style={{ flex: 1, gap: 3 }}>
-          <Text variant="headline" numberOfLines={2}>
-            {name}
-          </Text>
-          <Text variant="caption" color="textSecondary" numberOfLines={1}>
-            {p.kind ? (p.kind === "other" ? "Saved" : KIND_META[p.kind].label) : meta.label}
-            {locale ? ` · ${locale}` : ""}
-          </Text>
-          <Text variant="callout" color={p.lastVisitDate ? "text" : "textSecondary"} numberOfLines={2}>
+    <ListRow
+      leading={<IconTile icon={p.kind ? KIND_META[p.kind].icon : meta.icon} tone={p.kind ? "accent" : "neutral"} />}
+      title={name}
+      titleLines={2}
+      subtitle={`${kindLabel}${locale ? ` · ${locale}` : ""}`}
+      onPress={open}
+      accessibilityLabel={`${name}, ${visitLine(p)}${open ? ". Opens the timeline on the last visit" : ""}`}
+      below={
+        <View style={{ gap: t.space.sm, marginTop: 2 }}>
+          <Text variant="callout" color="textSecondary" tabular numberOfLines={2}>
             {visitLine(p)}
           </Text>
+          {p.recentDates.length > 0 ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: t.space.sm, marginTop: t.space.xs }}>
+              {p.recentDates.map((d) => (
+                <Chip key={d} label={fmtDate(d)} onPress={() => onOpenDay(d)} accessibilityLabel={`Open ${fmtDate(d, true)} on the timeline`} />
+              ))}
+            </View>
+          ) : null}
         </View>
-      </Pressable>
-      {p.recentDates.length > 0 && (
-        <View style={s.chips}>
-          {p.recentDates.map((d) => (
-            <Pressable
-              key={d}
-              onPress={() => onOpenDay(d)}
-              hitSlop={4}
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${fmtDate(d, true)} on the timeline`}
-              style={({ pressed }) => [s.chip, pressed && { backgroundColor: t.c.primarySoft }]}
-            >
-              <Text variant="caption" color="textSecondary" tabular>
-                {fmtDate(d)}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </Card>
+      }
+    />
   );
 }
 
 export function SearchAreaRow({ area: a, onPress }: { area: SearchArea; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => pressed && { opacity: 0.7 }}>
-      <Card style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 12 }}>
-        <IconChip icon={a.type === "city" ? "city-variant-outline" : "earth"} tint="sky" size={44} />
-        <View style={{ flex: 1, gap: 3 }}>
-          <Text variant="headline" numberOfLines={1}>
-            {a.name}
-            {a.country ? <Text variant="callout" color="textSecondary">{` · ${a.country}`}</Text> : null}
-          </Text>
-          <Text variant="caption" color="textSecondary" numberOfLines={1}>
-            {a.places} {a.places === 1 ? "place" : "places"} · {a.visits} {a.visits === 1 ? "visit" : "visits"}
-            {a.lastVisit ? ` · last ${fmtDate(a.lastVisit.slice(0, 10))}` : ""}
-          </Text>
-        </View>
-        <Pill label={a.type === "city" ? "City" : "Country"} tint="sky" />
-      </Card>
-    </Pressable>
+    <ListRow
+      leading={<IconTile icon={a.type === "city" ? "city" : "world"} />}
+      title={a.country ? `${a.name}, ${a.country}` : a.name}
+      subtitle={`${a.places} ${a.places === 1 ? "place" : "places"} · ${a.visits} ${a.visits === 1 ? "visit" : "visits"}${
+        a.lastVisit ? ` · last ${fmtDate(a.lastVisit.slice(0, 10))}` : ""
+      }`}
+      below={<View style={{ marginTop: 4 }}><Badge label={a.type === "city" ? "City" : "Country"} /></View>}
+      onPress={onPress}
+    />
   );
 }

@@ -245,13 +245,12 @@ export function DayMapCard({
   const s = useStyles((th) => ({
     card: {
       backgroundColor: th.c.surface,
-      borderRadius: th.radius.lg,
+      borderRadius: th.radius.md,
       borderWidth: 1,
       borderColor: th.c.border,
       overflow: "hidden",
-      boxShadow: th.elev.e1,
     },
-    bar: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: th.space.md, height: 40 },
+    bar: { flexDirection: "row", alignItems: "center", gap: th.space.sm, paddingHorizontal: th.space.lg, height: 48 },
     frame: { height: MAP_HEIGHT, borderTopWidth: 1, borderTopColor: th.c.border, backgroundColor: th.c.surface },
     cover: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: th.c.surfaceAlt, alignItems: "center", justifyContent: "center" },
   }));
@@ -267,14 +266,14 @@ export function DayMapCard({
         accessibilityLabel={failed ? "Map unavailable. Try again" : collapsed ? "Show the day's map" : "Hide the day's map"}
         style={({ pressed }) => [s.bar, pressed ? { backgroundColor: t.c.surfaceAlt } : null]}
       >
-        <Icon name={failed ? "map-marker-off-outline" : "map-outline"} size={17} color={t.c.textSecondary} />
-        <Text variant="callout" color="textSecondary" style={{ flex: 1 }}>
-          {failed ? "Map unavailable" : "Map"}
+        <Icon name={failed ? "noLocation" : "tabMap"} size={16} color={t.c.textSecondary} />
+        <Text variant="label" color="textSecondary" style={{ flex: 1 }}>
+          {failed ? "Map unavailable" : "Day map"}
         </Text>
-        <Text variant="caption" color="primary" style={{ fontWeight: "700" }}>
+        <Text variant="label" color="primary">
           {failed ? "Try again" : collapsed ? "Show" : "Hide"}
         </Text>
-        {failed ? null : <Icon name={collapsed ? "chevron-down" : "chevron-up"} size={18} color={t.c.primary} />}
+        {failed ? null : <Icon name={collapsed ? "expand" : "collapse"} size={16} color={t.c.primary} />}
       </Pressable>
       {collapsed || failed ? null : (
         <View style={s.frame}>
@@ -307,7 +306,7 @@ export function DayMapCard({
           ) : null}
           {shown ? null : (
             <View style={s.cover} pointerEvents="none">
-              <Icon name="map-marker-path" size={28} color={t.c.textMuted} />
+              <Icon name="route" size={24} color={t.c.textMuted} />
             </View>
           )}
         </View>

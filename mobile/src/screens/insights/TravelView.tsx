@@ -18,11 +18,11 @@ import {
   scaled,
 } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
-import { Card, EmptyState, ErrorState, IconChip, RoundButton, Skeleton } from "../../ui";
-import { Screen } from "../../ui/Screen";
+import { Card, Divider, EmptyState, ErrorState, IconTile, ListGroup, ListRow, ModeIcon, SectionHeader, Skeleton, StatGrid } from "../../ui";
+import { Pager, Screen } from "../../ui/Screen";
 import { useSession, useViewerQuery } from "../../ui/session";
 import { Text } from "../../ui/Text";
-import { ModeIcon, StatRow, StatTile, useRefresh } from "./parts";
+import { useRefresh } from "./parts";
 
 /** Six months of one mode: the shown month in the mode's colour, tap a bar to open that month. */
 function MiniBars({ mode, history, selected, onPick }: { mode: string; history: MonthPoint[]; selected: string; onPick: (m: string) => void }) {
@@ -30,7 +30,7 @@ function MiniBars({ mode, history, selected, onPick }: { mode: string; history: 
   const color = t.mode(mode);
   const h = scaled(history.map((p) => p.distance));
   return (
-    <View style={{ flexDirection: "row", gap: 6, marginTop: 12 }}>
+    <View style={{ flexDirection: "row", gap: 6, marginTop: t.space.md }}>
       {history.map((p, i) => {
         const on = p.month === selected;
         return (
@@ -39,22 +39,23 @@ function MiniBars({ mode, history, selected, onPick }: { mode: string; history: 
             onPress={() => onPick(p.month)}
             accessibilityRole="button"
             accessibilityLabel={`${fmtMonth(p.month)}: ${fmtKm(p.distance)}`}
+            accessibilityState={{ selected: on }}
             style={{ flex: 1, alignItems: "center", gap: 4 }}
           >
-            <View style={{ height: 40, width: "100%", justifyContent: "flex-end", alignItems: "center" }}>
+            <View style={{ height: 36, width: "100%", justifyContent: "flex-end", alignItems: "center" }}>
               <View
                 style={{
                   width: "70%",
-                  maxWidth: 22,
-                  height: p.distance > 0 ? Math.max(3, Math.round(h[i] * 40)) : 2,
+                  maxWidth: 20,
+                  height: p.distance > 0 ? Math.max(3, Math.round(h[i] * 36)) : 2,
                   borderTopLeftRadius: 3,
                   borderTopRightRadius: 3,
-                  backgroundColor: p.distance > 0 ? color : t.c.grid,
-                  opacity: on || p.distance === 0 ? 1 : 0.38,
+                  // The shown month in the mode's colour, the others neutral.
+                  backgroundColor: p.distance === 0 ? t.c.grid : on ? color : t.c.barMuted,
                 }}
               />
             </View>
-            <Text variant="caption" color={on ? "text" : "textMuted"} style={[{ fontSize: 11 }, on && { fontWeight: "800" }]}>
+            <Text variant="micro" color={on ? "text" : "textMuted"} style={{ fontWeight: on ? "500" : "400" }}>
               {fmtMonth(p.month, true)}
             </Text>
           </Pressable>
@@ -65,66 +66,53 @@ function MiniBars({ mode, history, selected, onPick }: { mode: string; history: 
 }
 
 function SavedPlacesCard({ month, version }: { month: string; version: number }) {
-  const t = useTheme();
   // `version` changes on pull-to-refresh, which makes a new fetcher and reloads.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetcher = useCallback((p: Pairing) => getSavedMonth(p, month), [month, version]);
   const { data, error } = useViewerQuery(fetcher);
   return (
-    <Card style={{ gap: 12 }}>
-      <Text variant="title3">Saved places</Text>
+    <>
+      <SectionHeader title="Saved places" />
       {!data ? (
         error ? (
-          <Text variant="callout" color="textSecondary">
-            Couldn&apos;t load your saved places.
-          </Text>
+          <Card>
+            <Text variant="callout" color="textSecondary">
+              Couldn&apos;t load your saved places.
+            </Text>
+          </Card>
         ) : (
-          <Skeleton height={56} radius={14} />
+          <Skeleton height={136} />
         )
       ) : data.saved === 0 ? (
-        <Text variant="callout" color="textSecondary">
-          Save your homes, school or work on the Places page of the web app to see how much time you spend at each.
-        </Text>
+        <Card>
+          <Text variant="callout" color="textSecondary">
+            Save your home, school or work on the Places page of the web app to see how much time you spend at each.
+          </Text>
+        </Card>
       ) : data.rows.length === 0 ? (
-        <Text variant="callout" color="textSecondary">
-          No time at your saved places this month.
-        </Text>
+        <Card>
+          <Text variant="callout" color="textSecondary">
+            No time at your saved places this month.
+          </Text>
+        </Card>
       ) : (
-        <View style={{ gap: 8 }}>
+        <ListGroup>
           {data.rows.map((r) => {
             const x = savedRowText(r);
             return (
-              <View
+              <ListRow
                 key={r.placeId}
-                style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: t.c.surfaceAlt, borderRadius: t.radius.md, padding: 10 }}
-              >
-                <IconChip icon={KIND_META[r.kind].icon} tint={r.kind === "home" || r.kind === "family" ? "coral" : "violet"} size={36} />
-                <View style={{ flex: 1 }}>
-                  <Text variant="headline" numberOfLines={1}>
-                    {x.title}
-                  </Text>
-                  {x.subtitle ? (
-                    <Text variant="caption" color="textSecondary">
-                      {x.subtitle}
-                    </Text>
-                  ) : null}
-                </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text variant="callout" tabular style={{ fontWeight: "800" }}>
-                    {x.primary}
-                  </Text>
-                  {x.secondary ? (
-                    <Text variant="caption" color="textMuted" tabular>
-                      {x.secondary}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
+                leading={<IconTile icon={KIND_META[r.kind].icon} tone="accent" />}
+                title={x.title}
+                subtitle={x.subtitle}
+                trailing={x.primary}
+                trailingSub={x.secondary}
+              />
             );
           })}
-        </View>
+        </ListGroup>
       )}
-    </Card>
+    </>
   );
 }
 
@@ -144,9 +132,8 @@ export default function TravelView({ header }: { header: ReactNode }) {
   );
 
   const s = useStyles((th) => ({
-    nav: { flexDirection: "row", alignItems: "center", gap: th.space.md },
-    shareBar: { flexDirection: "row", height: 12, borderRadius: 6, overflow: "hidden", backgroundColor: th.c.surfaceAlt, gap: 2 },
-    legend: { flexDirection: "row", flexWrap: "wrap", columnGap: 14, rowGap: 6 },
+    shareBar: { flexDirection: "row", height: 10, borderRadius: 5, overflow: "hidden", backgroundColor: th.c.surfaceAlt, gap: 2 },
+    legend: { flexDirection: "row", flexWrap: "wrap", columnGap: th.space.lg, rowGap: th.space.sm },
   }));
 
   // The picked month shows at once; its numbers follow when they arrive.
@@ -167,100 +154,104 @@ export default function TravelView({ header }: { header: ReactNode }) {
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
       {header}
-      <View style={s.nav}>
-        <RoundButton icon="chevron-left" label="Previous month" onPress={() => go(-1)} disabled={idx <= 0} />
-        <View style={{ flex: 1, alignItems: "center" }}>
-          <Text variant="overline" color="primary">
-            {month ? month.slice(0, 4) : " "}
-          </Text>
-          <Text variant="title2">{month ? fmtMonth(month).split(" ")[0] : "…"}</Text>
-        </View>
-        <RoundButton icon="chevron-right" label="Next month" onPress={() => go(1)} disabled={idx < 0 || idx >= months.length - 1} />
-      </View>
+      <Pager
+        kicker={month ? month.slice(0, 4) : " "}
+        title={month ? fmtMonth(month).split(" ")[0] : "…"}
+        onPrev={idx > 0 ? () => go(-1) : undefined}
+        onNext={idx >= 0 && idx < months.length - 1 ? () => go(1) : undefined}
+        prevLabel="Previous month"
+        nextLabel="Next month"
+      />
 
       {authLost && !data ? null : error && !data ? (
         <ErrorState message={error} onRetry={reload} />
       ) : !data ? (
-        <View style={{ gap: 12 }}>
-          <View style={{ flexDirection: "row", gap: 12 }}>
-            <Skeleton height={76} radius={20} style={{ flex: 1, width: undefined }} />
-            <Skeleton height={76} radius={20} style={{ flex: 1, width: undefined }} />
-          </View>
-          <Skeleton height={110} radius={20} />
-          <Skeleton height={120} radius={20} />
-          <Skeleton height={120} radius={20} />
+        <View style={{ gap: t.space.lg }}>
+          <Skeleton height={70} />
+          <Skeleton height={120} />
+          <Skeleton height={200} />
         </View>
       ) : data.modes.length === 0 ? (
         <Card>
           {data.firstMonth ? (
-            <EmptyState icon="sleep" title="A quiet stretch" body="No journeys in this month or the five before it. Use the arrows to browse other months." />
+            <EmptyState icon="quiet" title="A quiet stretch" body="No journeys in this month or the five before it. Use the arrows to browse other months." />
           ) : (
-            <EmptyState icon="chart-box-outline" title="No travel yet" body="Your travel shows up here once your phone has logged a few journeys." />
+            <EmptyState icon="tabInsights" title="No travel yet" body="Your travel shows up here once your phone has logged a few journeys." />
           )}
         </Card>
       ) : (
         <View style={{ gap: t.space.lg, opacity: loading ? 0.5 : 1 }}>
           {error ? (
-            <Text variant="caption" style={{ color: t.c.danger }}>
+            <Text variant="callout" color="danger">
               {error}
             </Text>
           ) : null}
-          <StatRow>
-            <StatTile label="Distance" value={fmtKm(data.distance)} accent />
-            <StatTile label="Time on the move" value={fmtDuration(data.duration)} />
-            <StatTile label="Journeys" value={journeys.toLocaleString()} style={{ flexBasis: "100%" }} />
-          </StatRow>
+          <StatGrid
+            size="sm"
+            columns={3}
+            items={[
+              { label: "Distance", value: fmtKm(data.distance) },
+              { label: "On the move", value: fmtDuration(data.duration) },
+              { label: "Journeys", value: journeys.toLocaleString() },
+            ]}
+          />
 
           {shares.length > 0 && (
-            <Card style={{ gap: 12 }}>
-              <Text variant="title3">Distance by mode</Text>
-              <View style={s.shareBar}>
-                {shares.map((m) =>
-                  m.share > 0 ? <View key={m.mode} style={{ flex: m.share, backgroundColor: t.mode(m.mode) }} /> : null,
-                )}
-              </View>
-              <View style={s.legend}>
-                {shares.map((m, i) => (
-                  <View key={m.mode} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: t.mode(m.mode) }} />
-                    <Text variant="caption">{modeMeta(m.mode).label}</Text>
-                    <Text variant="caption" color="textMuted" tabular>
-                      {pct[i]}%
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </Card>
+            <>
+              <SectionHeader title="Distance by mode" />
+              <Card style={{ gap: t.space.lg }}>
+                <View style={s.shareBar}>
+                  {shares.map((m) => (m.share > 0 ? <View key={m.mode} style={{ flex: m.share, backgroundColor: t.mode(m.mode) }} /> : null))}
+                </View>
+                <View style={s.legend}>
+                  {shares.map((m, i) => (
+                    <View key={m.mode} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.mode(m.mode) }} />
+                      <Text variant="callout">{modeMeta(m.mode).label}</Text>
+                      <Text variant="callout" color="textSecondary" tabular>
+                        {pct[i]} %
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </Card>
+            </>
           )}
 
           <SavedPlacesCard month={data.month} version={version} />
 
-          {cards.map(({ mode: m, quiet }) => (
-            <Card key={m.mode} style={{ opacity: quiet ? 0.7 : 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <ModeIcon mode={m.mode} />
-                <View style={{ flex: 1 }}>
-                  <Text variant="headline">{modeMeta(m.mode).label}</Text>
-                  <Text variant="caption" color="textSecondary">
-                    {m.count === 0 ? "None this month" : plural(m.count, "journey")}
-                  </Text>
-                </View>
-                {m.count > 0 || m.distance > 0 ? (
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text variant="callout" tabular style={{ fontWeight: "800" }}>
-                      {fmtKm(m.distance)}
-                    </Text>
-                    <Text variant="caption" color="textSecondary" tabular>
-                      {fmtDuration(m.duration)}
-                    </Text>
+          <SectionHeader title="By mode" trailing="Last 6 months" />
+          <Card padded={false}>
+            {cards.map(({ mode: m, quiet }, i) => (
+              <View key={m.mode}>
+                {i > 0 ? <Divider /> : null}
+                <View style={{ padding: t.space.lg, opacity: quiet ? 0.6 : 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
+                    <ModeIcon mode={m.mode} size={40} />
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text variant="headline">{modeMeta(m.mode).label}</Text>
+                      <Text variant="callout" color="textSecondary" tabular>
+                        {m.count === 0 ? "None this month" : plural(m.count, "journey")}
+                      </Text>
+                    </View>
+                    {m.count > 0 || m.distance > 0 ? (
+                      <View style={{ alignItems: "flex-end", gap: 2 }}>
+                        <Text variant="headline" tabular>
+                          {fmtKm(m.distance)}
+                        </Text>
+                        <Text variant="callout" color="textSecondary" tabular>
+                          {fmtDuration(m.duration)}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
-                ) : null}
+                  <MiniBars mode={m.mode} history={m.history} selected={data.month} onPick={(mm) => months.includes(mm) && setWant(mm)} />
+                </View>
               </View>
-              <MiniBars mode={m.mode} history={m.history} selected={data.month} onPick={(mm) => months.includes(mm) && setWant(mm)} />
-            </Card>
-          ))}
+            ))}
+          </Card>
 
-          <Text variant="caption" color="textMuted">
+          <Text variant="caption" color="textMuted" style={{ paddingHorizontal: t.space.lg }}>
             Months follow your account&apos;s time zone; a journey across a month boundary is split by time. Tap a bar to open that
             month.
           </Text>

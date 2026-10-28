@@ -15,7 +15,12 @@ Page switches:
 
 - `?scenario=empty|error|slow`: no data yet, every request 502, or requests that never finish.
 - `?paired=0`: not paired (Pair screen).
-- `?tracking=1&queued=37&preset=custom&smart=0&authLost=1&failing=1&standby=1&perm=denied|foreground`:
-  recorder state.
+- `?tracking=1&queued=37&preset=custom&smart=0&authLost=1&failing=1&standby=1&recovered=1&batteryOpt=1&perm=denied|foreground`:
+  recorder state (`recovered`: watchdog restarts; `batteryOpt`: battery optimisation on).
 - `?map=http://localhost:3126`: the Map tab embeds a local `next dev -p 3126` of web/
   (otherwise a placeholder).
+
+Screenshots of every tab, sub-view, sheet and state, light and dark:
+`node preview/screens.mjs /tmp/shots/app` (needs `npm i --no-save playwright-core`;
+see docs/REDESIGN.md, "How to screenshot (app)"). Don't start the server with
+`CI=1`: it turns off Metro's file watching, so edits don't show up.

@@ -165,12 +165,13 @@ export function mostVisitedId(places: readonly Pick<Place, "id" | "visitCount">[
   return best?.id ?? null;
 }
 
-export const KIND_META: Record<SavedKind, { label: string; icon: "home-outline" | "account-group-outline" | "school-outline" | "briefcase-outline" | "star-outline" }> = {
-  home: { label: "Home", icon: "home-outline" },
-  family: { label: "Family", icon: "account-group-outline" },
-  school: { label: "School", icon: "school-outline" },
-  work: { label: "Work", icon: "briefcase-outline" },
-  other: { label: "Other", icon: "star-outline" },
+/** Saved kinds; `icon` is a semantic name from design/icons.ts. */
+export const KIND_META: Record<SavedKind, { label: string; icon: "home" | "family" | "school" | "work" | "saved" }> = {
+  home: { label: "Home", icon: "home" },
+  family: { label: "Family", icon: "family" },
+  school: { label: "School", icon: "school" },
+  work: { label: "Work", icon: "work" },
+  other: { label: "Other", icon: "saved" },
 };
 
 /**

@@ -1,21 +1,29 @@
 /**
  * Matka design tokens: the single source of truth for colour, type, spacing,
  * radii and elevation. Screens never hard-code a value; they read the theme
- * (see theme.tsx). The web app mirrors the colour values in web/src/app/globals.css.
+ * (see theme.tsx). Rules behind the values: docs/DESIGN_REFERENCES.md and
+ * docs/REDESIGN.md ("Round 1 (app)").
  *
- * Personality: "birch & aurora". A warm paper-white (light) or midnight ink (dark)
- * canvas, one confident violet, and a lingonberry-coral for anything live.
+ * Neutral first: one cool grey scale for every surface, border and text, and
+ * one indigo accent used only for the primary action, selection and links.
+ * Travel-mode colours are data and appear only on marks and mode glyphs;
+ * status colours (danger, warning, success) only where they say something.
  */
 
 export type Scheme = "light" | "dark";
 
-type Tint = { fg: string; bg: string };
-
 export type Colors = {
+  /** Page. */
   bg: string;
+  /** Cards, sheets, the tab bar (level 2). */
   surface: string;
+  /** Inputs, tiles, segmented tracks, pressed rows (level 3, tonal). */
   surfaceAlt: string;
+  /** The selected thumb of a segmented control (sits on surfaceAlt). */
+  raised: string;
+  /** Hairlines: card borders and dividers. */
   border: string;
+  /** Meaningful borders: inputs, outlined buttons, the timeline rail. */
   borderStrong: string;
   text: string;
   textSecondary: string;
@@ -23,97 +31,70 @@ export type Colors = {
   primary: string;
   primaryPressed: string;
   onPrimary: string;
+  /** Selected pill, accent tile background. */
   primarySoft: string;
-  accent: string;
-  accentSoft: string;
   danger: string;
   dangerSoft: string;
+  warning: string;
+  warningSoft: string;
   success: string;
   successSoft: string;
-  hero: string;
-  onHero: string;
-  onHeroMuted: string;
-  heroRing: string;
   barMuted: string;
   grid: string;
   skeleton: string;
-  tabBar: string;
-  /** Decorative per-stat hues; never used as chart series colours. */
-  tint: { violet: Tint; coral: Tint; amber: Tint; mint: Tint; sky: Tint; slate: Tint };
+  scrim: string;
 };
 
 export const palette: Record<Scheme, Colors> = {
   light: {
-    bg: "#F7F5F0",
+    bg: "#F4F4F6",
     surface: "#FFFFFF",
-    surfaceAlt: "#F0EDE6",
-    border: "#E8E3D9",
-    borderStrong: "#D6D0C3",
-    text: "#16161F",
-    textSecondary: "#505065",
-    textMuted: "#6E6E80",
-    primary: "#5144E8",
-    primaryPressed: "#4034C9",
+    surfaceAlt: "#EEEEF2",
+    raised: "#FFFFFF",
+    border: "#E4E4EA",
+    borderStrong: "#85858F",
+    text: "#18181D",
+    textSecondary: "#52525C",
+    textMuted: "#686873",
+    primary: "#4F46E5",
+    primaryPressed: "#4338CA",
     onPrimary: "#FFFFFF",
-    primarySoft: "#ECEAFE",
-    accent: "#E5483A",
-    accentSoft: "#FDE9E6",
-    danger: "#D2382B",
-    dangerSoft: "#FDE9E6",
-    success: "#12805C",
-    successSoft: "#DDF4EA",
-    hero: "#4B3FE0",
-    onHero: "#FFFFFF",
-    onHeroMuted: "rgba(255,255,255,0.74)",
-    heroRing: "rgba(255,255,255,0.20)",
-    barMuted: "#D9D5F9",
-    grid: "#ECE8DF",
-    skeleton: "#ECE8DF",
-    tabBar: "#FFFFFF",
-    tint: {
-      violet: { fg: "#5144E8", bg: "#ECEAFE" },
-      coral: { fg: "#D2432F", bg: "#FDEAE5" },
-      amber: { fg: "#A86500", bg: "#FFF1D3" },
-      mint: { fg: "#0E7F5E", bg: "#DDF4EA" },
-      sky: { fg: "#1B6BC4", bg: "#E1EEFC" },
-      slate: { fg: "#5B5D72", bg: "#EEEBE4" },
-    },
+    primarySoft: "#ECECFD",
+    danger: "#C4362B",
+    dangerSoft: "#FCECEA",
+    warning: "#8F5600",
+    warningSoft: "#FDF2DE",
+    success: "#14775A",
+    successSoft: "#E2F3EB",
+    barMuted: "#D5D3F6",
+    grid: "#EAEAEF",
+    skeleton: "#E9E9EE",
+    scrim: "rgba(10,10,14,0.45)",
   },
   dark: {
-    bg: "#0E0F1C",
-    surface: "#171A2B",
-    surfaceAlt: "#1F2338",
-    border: "#2A2F4A",
-    borderStrong: "#3A4163",
-    text: "#F2F1FA",
-    textSecondary: "#B6B8CF",
-    textMuted: "#8A8DAA",
-    primary: "#9C8FFF",
-    primaryPressed: "#B3A9FF",
-    onPrimary: "#14112E",
-    primarySoft: "#272355",
-    accent: "#FF8A75",
-    accentSoft: "#3B2330",
-    danger: "#FF8A75",
-    dangerSoft: "#3B2330",
-    success: "#4FD1A1",
-    successSoft: "#15332B",
-    hero: "#3A32A6",
-    onHero: "#FFFFFF",
-    onHeroMuted: "rgba(255,255,255,0.72)",
-    heroRing: "rgba(255,255,255,0.16)",
-    barMuted: "#2F2B5E",
-    grid: "#232842",
-    skeleton: "#212640",
-    tabBar: "#12142A",
-    tint: {
-      violet: { fg: "#B1A7FF", bg: "#272355" },
-      coral: { fg: "#FF9D8B", bg: "#3B2330" },
-      amber: { fg: "#F2B84B", bg: "#38301A" },
-      mint: { fg: "#58D6A8", bg: "#15332B" },
-      sky: { fg: "#7DB6F5", bg: "#172C47" },
-      slate: { fg: "#A3A6C0", bg: "#262A41" },
-    },
+    bg: "#0E0E11",
+    surface: "#18181C",
+    surfaceAlt: "#232328",
+    raised: "#34343C",
+    border: "#2A2A30",
+    borderStrong: "#6E6E78",
+    text: "#EDEDF0",
+    textSecondary: "#B3B3BD",
+    textMuted: "#91919C",
+    primary: "#A09BFF",
+    primaryPressed: "#B6B2FF",
+    onPrimary: "#15132E",
+    primarySoft: "#282650",
+    danger: "#FF8A80",
+    dangerSoft: "#3A1F1F",
+    warning: "#F2B652",
+    warningSoft: "#33291A",
+    success: "#5BCFA3",
+    successSoft: "#16302A",
+    barMuted: "#35335E",
+    grid: "#26262C",
+    skeleton: "#24242A",
+    scrim: "rgba(0,0,0,0.6)",
   },
 };
 
@@ -144,9 +125,23 @@ export function modeColor(mode: string, scheme: Scheme, mutedFallback: string): 
   return i >= 0 ? MODE_SLOTS[scheme][i] : mutedFallback;
 }
 
-export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, huge: 40 } as const;
-export const radius = { sm: 10, md: 14, lg: 20, xl: 28, pill: 999 } as const;
-export const layout = { gutter: 20, tabBarHeight: 68, maxBar: 24 } as const;
+/** The 4 px grid. Inside a card 12 or 16; between groups 24 or 32. */
+export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 } as const;
+
+/** One radius per component type: badges 6, controls 10, cards 14, sheets 28, pills. */
+export const radius = { xs: 6, sm: 10, md: 14, xl: 28, pill: 999 } as const;
+
+export const layout = {
+  /** Page inset. */
+  gutter: 16,
+  /** Minimum touch target (Android 48 dp). */
+  touch: 48,
+  /** List rows: one line, two lines. */
+  row: 56,
+  row2: 68,
+  /** Leading icon tile in lists. */
+  tile: 40,
+} as const;
 
 export type TypeStyle = {
   fontSize: number;
@@ -157,37 +152,53 @@ export type TypeStyle = {
 };
 
 /**
- * Type scale. System font: weight, size and tracking carry the personality.
- * Only 400, 500 and 800 are used: measured on the phone (OnePlus), 600 and 700 are
- * drawn as regular, and only 800+ is a real bold. Use "800" for anything strong.
+ * Type scale: the iOS sizes (11 / 12 / 13 / 15 / 17 / 22 / 28 / 34), nothing in
+ * between. Weight carries hierarchy before size: 400 for reading, 500 for row
+ * titles and labels, 800 only for screen titles and big numbers. (Measured on the
+ * phone, Android draws 600 and 700 as regular; 500 is Roboto Medium, 800 a real bold.)
  */
 export const type = {
-  display: { fontSize: 56, lineHeight: 60, fontWeight: "800", letterSpacing: -1 },
-  title1: { fontSize: 30, lineHeight: 36, fontWeight: "800", letterSpacing: -0.7 },
-  title2: { fontSize: 22, lineHeight: 28, fontWeight: "800", letterSpacing: -0.4 },
-  title3: { fontSize: 18, lineHeight: 24, fontWeight: "800", letterSpacing: -0.2 },
-  stat: { fontSize: 26, lineHeight: 30, fontWeight: "800", letterSpacing: -0.6 },
-  headline: { fontSize: 16, lineHeight: 22, fontWeight: "800" },
+  /** One hero number per screen (Overview total). */
+  display: { fontSize: 34, lineHeight: 40, fontWeight: "800", letterSpacing: -0.8 },
+  /** Screen titles. */
+  title1: { fontSize: 28, lineHeight: 34, fontWeight: "800", letterSpacing: -0.5 },
+  /** Detail titles, the day / month in a pager. */
+  title2: { fontSize: 22, lineHeight: 28, fontWeight: "800", letterSpacing: -0.3 },
+  /** Section headers and card titles. */
+  title3: { fontSize: 17, lineHeight: 22, fontWeight: "500", letterSpacing: -0.1 },
+  /** Stat tiles (tabular). */
+  stat: { fontSize: 28, lineHeight: 32, fontWeight: "800", letterSpacing: -0.5 },
+  /** Small stats: the timeline's day totals, row values. */
+  statSm: { fontSize: 17, lineHeight: 22, fontWeight: "800", letterSpacing: -0.2 },
+  /** Row titles. */
+  headline: { fontSize: 15, lineHeight: 20, fontWeight: "500" },
+  /** Paragraphs. */
   body: { fontSize: 15, lineHeight: 22, fontWeight: "400" },
-  callout: { fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  caption: { fontSize: 12, lineHeight: 16, fontWeight: "500" },
-  overline: { fontSize: 11, lineHeight: 14, fontWeight: "800", letterSpacing: 0.9, textTransform: "uppercase" },
+  /** Row metadata, secondary lines. */
+  callout: { fontSize: 13, lineHeight: 18, fontWeight: "400" },
+  /** Button and chip labels. */
+  label: { fontSize: 13, lineHeight: 18, fontWeight: "500" },
+  /** Captions, axis labels, footnotes. */
+  caption: { fontSize: 12, lineHeight: 16, fontWeight: "400" },
+  /** Group labels above lists (Settings, Recorder). */
+  overline: { fontSize: 12, lineHeight: 16, fontWeight: "500", letterSpacing: 0.6, textTransform: "uppercase" },
+  /** The smallest text: badges in tight spots, axis ticks. */
+  micro: { fontSize: 11, lineHeight: 13, fontWeight: "500" },
 } satisfies Record<string, TypeStyle>;
 
 export type TypeVariant = keyof typeof type;
 
-/** Elevation as CSS-style box shadows (React Native 0.76+, and react-native-web). */
-export const elevation: Record<Scheme, { e0: string; e1: string; e2: string; glow: string }> = {
+/**
+ * Elevation. Cards are flat (tone and a hairline separate them); only things that
+ * float over the page cast a shadow. Dark mode uses lighter surfaces, no shadow.
+ */
+export const elevation: Record<Scheme, { none: string; overlay: string }> = {
   light: {
-    e0: "0 0 0 rgba(0,0,0,0)",
-    e1: "0 1px 2px rgba(40,34,20,0.06), 0 1px 1px rgba(40,34,20,0.03)",
-    e2: "0 2px 6px rgba(40,34,20,0.05), 0 10px 28px -8px rgba(40,34,20,0.14)",
-    glow: "0 14px 32px -10px rgba(81,68,232,0.55)",
+    none: "0 0 0 rgba(0,0,0,0)",
+    overlay: "0 -1px 2px rgba(16,16,24,0.06), 0 -8px 28px rgba(16,16,24,0.12)",
   },
   dark: {
-    e0: "0 0 0 rgba(0,0,0,0)",
-    e1: "0 1px 2px rgba(0,0,0,0.35)",
-    e2: "0 10px 28px -8px rgba(0,0,0,0.65)",
-    glow: "0 14px 34px -12px rgba(120,100,255,0.55)",
+    none: "0 0 0 rgba(0,0,0,0)",
+    overlay: "0 0 0 rgba(0,0,0,0)",
   },
 };

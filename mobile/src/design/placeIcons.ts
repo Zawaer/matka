@@ -1,8 +1,8 @@
-// Category icons for visits and day-map stops: a copy of the web's
-// web/src/lib/placeIcons.ts (keep the two in step; same groups, same rules).
-// The app shows `mci`, a MaterialCommunityIcons name; `emoji` is the web's.
+// Category icons for visits, places and day-map stops: the same groups and
+// rules as the web's web/src/lib/placeIcons.ts (keep the two in step). `icon`
+// is a semantic name from design/icons.ts (Lucide, like the web).
 
-import type { IconName } from "../ui/Icon";
+import type { IconName } from "./icons";
 
 export const PLACE_ICON_GROUPS = [
   "home",
@@ -21,20 +21,20 @@ export const PLACE_ICON_GROUPS = [
 ] as const;
 export type PlaceIconGroup = (typeof PLACE_ICON_GROUPS)[number];
 
-export const PLACE_ICONS: Record<PlaceIconGroup, { label: string; emoji: string; mci: IconName }> = {
-  home: { label: "Home", emoji: "🏠", mci: "home-outline" },
-  work: { label: "Work", emoji: "💼", mci: "briefcase-outline" },
-  school: { label: "School", emoji: "🎓", mci: "school-outline" },
-  food: { label: "Food & café", emoji: "🍴", mci: "silverware-fork-knife" },
-  shopping: { label: "Shopping", emoji: "🛍️", mci: "shopping-outline" },
-  transit: { label: "Transit", emoji: "🚉", mci: "train-variant" },
-  culture: { label: "Culture", emoji: "🏛️", mci: "bank-outline" },
-  sports: { label: "Sports", emoji: "🏋️", mci: "dumbbell" },
-  health: { label: "Health", emoji: "🏥", mci: "hospital-box-outline" },
-  nature: { label: "Nature", emoji: "🌳", mci: "tree-outline" },
-  hotel: { label: "Hotel", emoji: "🏨", mci: "bed-outline" },
-  airport: { label: "Airport", emoji: "✈️", mci: "airplane" },
-  other: { label: "Place", emoji: "📍", mci: "map-marker-outline" },
+export const PLACE_ICONS: Record<PlaceIconGroup, { label: string; icon: IconName }> = {
+  home: { label: "Home", icon: "home" },
+  work: { label: "Work", icon: "work" },
+  school: { label: "School", icon: "school" },
+  food: { label: "Food & café", icon: "food" },
+  shopping: { label: "Shopping", icon: "shopping" },
+  transit: { label: "Transit", icon: "transit" },
+  culture: { label: "Culture", icon: "culture" },
+  sports: { label: "Sports", icon: "sports" },
+  health: { label: "Health", icon: "health" },
+  nature: { label: "Nature", icon: "nature" },
+  hotel: { label: "Hotel", icon: "hotel" },
+  airport: { label: "Airport", icon: "airport" },
+  other: { label: "Place", icon: "place" },
 };
 
 /** Saved kinds (the web's lib/savedPlaces.ts) that decide the icon by themselves. */
@@ -112,6 +112,6 @@ export function placeIconGroup(
   return "other";
 }
 
-/** The icon itself (label, emoji, MaterialCommunityIcons name). */
+/** The icon itself (label and semantic icon name). */
 export const placeIcon = (kind: string | null | undefined, category: string | null | undefined, osmKey?: string | null) =>
   PLACE_ICONS[placeIconGroup(kind, category, osmKey)];
