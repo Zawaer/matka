@@ -159,7 +159,7 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
       )}
       {q && search.error && !results && places && shown.length > 0 ? (
         <Text variant="caption" color="textSecondary">
-          Showing matches from this list: search on the server failed. {search.error}
+          Showing matches from this list; search on the server isn't available right now.
         </Text>
       ) : null}
       {searching && rows.length === 0 && (

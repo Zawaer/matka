@@ -1,3 +1,4 @@
+import { describeError } from "../error-copy";
 import { useEffect, useState, type ReactNode } from "react";
 import { Animated, Easing, Pressable, View, type StyleProp, type ViewStyle } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
@@ -220,18 +221,15 @@ export function EmptyState({ icon, title, body, action }: { icon: IconName; titl
 }
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  const t = useTheme();
+  const copy = describeError(message);
   return (
     <Card style={{ alignItems: "center", gap: 8, paddingVertical: 28 }}>
       <IconChip icon="cloud-off-outline" tint="coral" size={52} />
       <Text variant="title3" style={{ marginTop: 6 }}>
-        Can&apos;t reach Matka
+        {copy.title}
       </Text>
-      <Text variant="callout" color="textSecondary" style={{ textAlign: "center", maxWidth: 280 }}>
-        Check your connection and try again. Nothing is lost; your phone keeps what it recorded.
-      </Text>
-      <Text variant="caption" color="textMuted" numberOfLines={2} style={{ maxWidth: 280, textAlign: "center", color: t.c.textMuted }}>
-        {message}
+      <Text variant="callout" color="textSecondary" style={{ textAlign: "center", maxWidth: 300 }}>
+        {copy.body}
       </Text>
       {onRetry ? (
         <View style={{ marginTop: 10 }}>

@@ -7,6 +7,7 @@
 // the system theme fetches a fresh ticket.
 
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
+import { describeError } from "../error-copy";
 import { AppState, Linking, View } from "react-native";
 import { WebView } from "react-native-webview";
 import type {
@@ -178,7 +179,7 @@ export default function MapScreen() {
             <Icon name="map-search-outline" size={40} color={t.c.textMuted} />
             <Text variant="title3">The map didn&apos;t load</Text>
             <Text variant="callout" color="textSecondary" style={{ textAlign: "center", marginBottom: 8 }}>
-              {phase.error}
+              {describeError(phase.error).body}
             </Text>
             <Button label="Try again" icon="refresh" onPress={() => renew(false)} />
           </View>

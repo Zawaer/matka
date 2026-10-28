@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { errorLine } from "../error-copy";
 import { Platform, Switch, View } from "react-native";
 import { useTheme } from "../design/theme";
 import { ago, count, inFuture } from "../format";
@@ -208,7 +209,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
               Last error · {ago(state.lastErrorAt)}
             </Text>
             <Text variant="callout" style={{ color: errorIsStale ? t.c.textMuted : t.c.tint.amber.fg }}>
-              {state.lastError}
+              {errorLine(state.lastError)}
             </Text>
           </View>
         ) : null}
