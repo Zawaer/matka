@@ -92,3 +92,31 @@ adb shell cmd package list packages -U fi.otamaps.matka
 # minute-by-minute history: +gps/-gps, +screen/-screen, battery level
 adb shell dumpsys batterystats --history
 ```
+
+## Whole-phone drain from uploaded points (19–28 Oct)
+
+The app sends the battery level with every point, so the server can rebuild
+how fast the phone drained while unplugged (Insights → Travel → Phone
+battery; one `[stats] battery` log line per user at server start). For the
+first ten days:
+
+| Day | %/h unplugged (hours covered) | Overnight %/h |
+|---|---|---|
+| 19 Oct | 6.1 (7.5 h) | |
+| 20 | 5.4 (14.0 h) | |
+| 21 | 8.8 (11.2 h) | 10.1 |
+| 22 | 5.3 (11.5 h) | |
+| 23 | 5.7 (19.1 h) | 6.9 |
+| 24 | 5.8 (15.7 h) | 7.8 |
+| 25 | 6.5 (16.3 h) | |
+| 26 | 6.0 (16.3 h) | 3.6 |
+| 27 | 6.9 (13.8 h) | |
+| 28 | 3.9 (7.0 h) | 4.0 |
+
+What this does **not** show: a before/after. Smart Tracking reached the
+phone on 19 Oct at 20:03, the same day the Matka app's own uploads (and so
+its battery readings) begin; earlier history came from Dawarich and Google
+without battery levels. And once Matka's share fell under 1 % of the phone's
+drain, the whole-phone rate is set by the screen and other apps: 5–7 %/h
+by day, with high "overnight" values on nights the phone was in use. The
+per-app numbers above remain the direct measure of what Matka costs.
