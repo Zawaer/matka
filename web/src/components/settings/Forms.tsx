@@ -60,7 +60,7 @@ export function ImmichForm({ url, connected }: { url: string | null; connected: 
         />
       </label>
       <p className="text-xs text-muted">
-        Create a key in Immich under Account settings → API keys (asset read access is enough). It
+        Create a key in Immich under Account settings → API keys with the permissions asset.read and asset.view. It
         is stored encrypted and only used by the server.
       </p>
       <div className="flex items-center gap-3">

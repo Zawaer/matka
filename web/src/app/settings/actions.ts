@@ -93,21 +93,40 @@ export async function saveImmich(_prev: FormResult, form: FormData): Promise<For
   const key = String(form.get("key") ?? "").trim();
   if (!key) return { ok: false, message: "Enter an Immich API key." };
 
-  // Check the pair works before storing it.
+  // Check the pair works before storing it, with exactly the permissions
+  // Matka uses: asset.read (search by time) and asset.view (thumbnails).
   try {
-    const res = await fetch(`${base}/api/users/me`, {
-      headers: { "x-api-key": key, accept: "application/json" },
-      signal: AbortSignal.timeout(8000),
-      cache: "no-store",
-      redirect: "manual",
-    });
-    if (res.status === 401 || res.status === 403) {
-      return { ok: false, message: "Immich rejected that API key." };
-    }
-    if (!res.ok) return { ok: false, message: `Immich answered HTTP ${res.status}.` };
-    const me = (await res.json().catch(() => null)) as { id?: unknown } | null;
-    if (typeof me?.id !== "string") {
+    const opts = { signal: AbortSignal.timeout(8000), cache: "no-store" as const, redirect: "manual" as const };
+    const ping = await fetch(`${base}/api/server/ping`, { ...opts, headers: { accept: "application/json" } });
+    const pong = (await ping.json().catch(() => null)) as { res?: unknown } | null;
+    if (!ping.ok || pong?.res !== "pong") {
       return { ok: false, message: "That URL doesn't look like an Immich server." };
+    }
+    const headers = { "x-api-key": key, accept: "application/json" };
+    const search = await fetch(`${base}/api/search/metadata`, {
+      ...opts,
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ size: 1 }),
+    });
+    if (search.status === 401) return { ok: false, message: "Immich rejected that API key." };
+    if (search.status === 403) {
+      return { ok: false, message: "That key is missing the asset.read permission (needed to find your photos)." };
+    }
+    if (!search.ok) return { ok: false, message: `Immich answered HTTP ${search.status}.` };
+    const found = (await search.json().catch(() => null)) as { assets?: { items?: { id?: string }[] } } | null;
+    const sample = found?.assets?.items?.[0]?.id;
+    if (sample) {
+      const thumb = await fetch(`${base}/api/assets/${encodeURIComponent(sample)}/thumbnail?size=thumbnail`, {
+        ...opts,
+        headers: { "x-api-key": key },
+      });
+      if (thumb.status === 401 || thumb.status === 403) {
+        return {
+          ok: false,
+          message: "That key can find photos but not show them: add the asset.view permission in Immich.",
+        };
+      }
     }
   } catch {
     // *.internal / *.local / *.ts.net names resolve on your devices (DNS,
