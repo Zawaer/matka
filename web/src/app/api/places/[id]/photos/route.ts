@@ -47,7 +47,7 @@ type ImmichAsset = {
   type?: string;
   fileCreatedAt?: string;
   localDateTime?: string;
-  exifInfo?: { latitude?: number | null; longitude?: number | null } | null;
+  exifInfo?: { latitude?: number | null; longitude?: number | null; make?: string | null } | null;
 };
 
 async function searchWindow(
@@ -164,6 +164,10 @@ export async function GET(
     for (const items of perWindow) {
       for (const a of items) {
         if (!a?.id || seen.has(a.id)) continue;
+        // Camera photos only: screenshots, screen recordings and saved
+        // images have no camera make and say nothing about the visit.
+        if (a.type && a.type !== "IMAGE") continue;
+        if (!a.exifInfo?.make) continue;
 
         // GPS filter: if both the place and the photo have coordinates and
         // they're far apart, skip it. Photos without GPS pass on time alone.
