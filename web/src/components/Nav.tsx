@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTrackInAppNavigation } from "./EscapeBack";
 import { usePathname } from "next/navigation";
 import { Wordmark, Logo } from "./Brand";
 
@@ -63,6 +64,7 @@ function GlyphIcon({ children }: { children: React.ReactNode }) {
 
 export function Nav() {
   const pathname = usePathname();
+  useTrackInAppNavigation();
   // Sign-in pages and the public /pair landing page (opened on a phone with no
   // session) stand alone: no app navigation, no "Sign out".
   if (pathname.startsWith("/auth/") || pathname === "/pair") return null;

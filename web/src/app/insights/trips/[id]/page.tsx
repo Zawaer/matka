@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EscapeBack } from "@/components/EscapeBack";
 import { notFound } from "next/navigation";
 import { ModeBars, ModeChips, Stat } from "@/components/insights/charts";
 import { CoverHeader, PhotoStrip } from "@/components/insights/Cover";
@@ -34,6 +35,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
+      <EscapeBack fallback="/insights/trips" />
       <Link
         href="/insights/trips"
         className="mb-6 inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-text"

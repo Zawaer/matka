@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EscapeBack } from "@/components/EscapeBack";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
@@ -70,6 +71,7 @@ export default async function PlaceDetailPage({
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
+      <EscapeBack fallback="/places" />
       <Link
         href="/places"
         className="mb-6 inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-text"

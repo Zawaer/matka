@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EscapeBack } from "@/components/EscapeBack";
 import { notFound } from "next/navigation";
 import { Stat } from "@/components/insights/charts";
 import { PlaceCard } from "@/components/places/PlaceCard";
@@ -34,6 +35,7 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
+      <EscapeBack fallback={backHref} />
       <Link href={backHref} className="mb-6 inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-text">
         ← {country ? `Cities in ${country}` : "Cities"}
       </Link>
