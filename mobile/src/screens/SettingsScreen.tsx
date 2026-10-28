@@ -1,5 +1,5 @@
 import * as Application from "expo-application";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Platform, Pressable, Switch, View } from "react-native";
 import { clearPairing } from "../credentials";
 import * as db from "../db";
@@ -12,11 +12,13 @@ import {
   CUSTOM_DISTANCES,
   CUSTOM_TIMES,
   DEFAULT_CUSTOM,
-  describeCustom,
   formatInterval,
+  presetSpecLines,
   type CustomSettings,
 } from "../preset-logic";
-import { PRESETS, setCustom, setPreset, setSmartTracking, type PresetKey } from "../tracking";
+import { getPresetQuality } from "../quality";
+import { qualityLine, type QualityByPreset } from "../quality-logic";
+import { PRESETS, presetSettings, setCustom, setPreset, setSmartTracking, smartApplies, type PresetKey } from "../tracking";
 import { presetChanged } from "../watchdog";
 import { Group, GroupBlock, Icon, InfoRow, Segmented, Sheet, type IconName } from "../ui";
 import { AppBar, Screen } from "../ui/Screen";
@@ -64,6 +66,22 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
   };
 
   const custom = state?.custom ?? DEFAULT_CUSTOM;
+  const smartOn = state?.smartTracking ?? true;
+
+  // What each preset did on this phone (server stats): loaded in the background, cached, silent on failure.
+  const [quality, setQuality] = useState<QualityByPreset | null>(null);
+  const pairing = state?.pairing ?? null;
+  useEffect(() => {
+    if (!pairing) return;
+    let live = true;
+    getPresetQuality(pairing, custom).then((q) => {
+      if (live) setQuality(q);
+    });
+    return () => {
+      live = false;
+    };
+  }, [pairing, custom]);
+
   const changeCustom = (patch: Partial<CustomSettings>) => run("custom settings", () => setCustom({ ...custom, ...patch }));
 
   const unpair = () =>
@@ -119,10 +137,16 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
 
   return (
     <Screen appBar={<AppBar title="Settings" backLabel="Recorder" onBack={onBack} />}>
-      <Group title="Recording preset" footer="Changing the preset restarts recording.">
+      <Group
+        title="Recording preset"
+        footer="Accuracy is typical outdoors; worse indoors and between tall buildings. Changing the preset restarts recording."
+      >
         {(Object.keys(PRESETS) as PresetKey[]).map((k) => {
           const p = PRESETS[k];
           const on = state?.preset === k;
+          const spec = presetSpecLines(presetSettings(k, custom), smartOn && smartApplies(k));
+          const q = pairing ? quality?.[k] : undefined;
+          const measured = q ? qualityLine(q) : null;
           return (
             <Pressable
               key={k}
@@ -130,7 +154,7 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               onPress={() => choose(k)}
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
-              accessibilityLabel={`${p.label}, ${k === "custom" && on ? describeCustom(custom) : p.description}`}
+              accessibilityLabel={[p.label, p.description, ...spec, measured].filter(Boolean).join(". ")}
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "flex-start",
@@ -147,8 +171,18 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               <View style={{ flex: 1, gap: 2 }}>
                 <Text variant="headline">{p.label}</Text>
                 <Text variant="callout" color="textSecondary">
-                  {k === "custom" && on ? describeCustom(custom) : p.description}
+                  {p.description}
                 </Text>
+                {spec.map((line) => (
+                  <Text key={line} variant="callout" color="textMuted" tabular>
+                    {line}
+                  </Text>
+                ))}
+                {measured ? (
+                  <Text variant="callout" color="textSecondary" tabular style={{ marginTop: t.space.xs }}>
+                    {measured}
+                  </Text>
+                ) : null}
               </View>
             </Pressable>
           );

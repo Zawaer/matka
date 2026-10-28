@@ -130,6 +130,25 @@ const CUSTOM_ACCURACY: Record<CustomSettings["accuracy"], Location.Accuracy> = {
   highest: Location.Accuracy.Highest,
 };
 
+/**
+ * A preset's settings in the Custom preset's terms (position source, metres,
+ * ms), read from its task options so Settings describes what actually runs.
+ * Highest and BestForNavigation are both "highest" (Android: high accuracy).
+ */
+export function presetSettings(key: PresetKey, custom: CustomSettings): CustomSettings {
+  if (key === "custom") return custom;
+  const o = PRESETS[key].options;
+  const a = o.accuracy ?? Location.Accuracy.Balanced;
+  return {
+    accuracy: a >= Location.Accuracy.Highest ? "highest" : a >= Location.Accuracy.High ? "high" : "balanced",
+    distance: o.distanceInterval ?? 0,
+    time: o.timeInterval ?? 0,
+  };
+}
+
+/** "Low power" is already about as frugal as standby, so smart tracking leaves it alone. */
+export const smartApplies = (preset: PresetKey) => preset !== "low";
+
 export function customOptions(c: CustomSettings): Location.LocationTaskOptions {
   const deferral = customDeferral(c);
   return {
@@ -162,8 +181,6 @@ const STANDBY_OPTIONS: Location.LocationTaskOptions = {
   foregroundService: FOREGROUND_SERVICE,
 };
 
-/** "Low power" is already about as frugal as standby, so smart tracking leaves it alone. */
-const smartApplies = (preset: PresetKey) => preset !== "low";
 
 export const DEFAULT_PRESET: PresetKey = "balanced";
 

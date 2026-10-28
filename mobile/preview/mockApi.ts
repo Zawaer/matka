@@ -404,6 +404,33 @@ function overview() {
   };
 }
 
+/** GET /api/insights/quality: per preset period, moving stats, and Matka's battery estimate per preset. */
+function quality() {
+  const moving = (minutes: number, secondsPerFix: number, accuracyMedian: number) => ({
+    minutes, fixes: Math.round((minutes * 60) / secondsPerFix), fixesPerMinute: Math.round((600 / secondsPerFix)) / 10, secondsPerFix,
+    intervalMedianS: secondsPerFix - 1, intervalP90S: secondsPerFix * 2, accuracyMedian, accuracyP90: accuracyMedian * 2.5,
+    within10: 0.6, within20: 0.85, over50: 0.03, pathNoise: 3.1,
+  });
+  const period = (preset: string, start: string | null, end: string | null, minutes: number, spf: number, acc: number) => ({
+    label: preset, preset: { preset, custom: null, smartTracking: true }, start, end,
+    total: { fixes: 4000, hours: 200, fixesPerHour: 20, standbyShare: 0.35, moving: minutes ? moving(minutes, spf, acc) : null }, days: [],
+  });
+  const usage = (preset: string, percent: number) => ({ preset, label: preset, days: [], perDay: { days: 7, mAh: percent * 46, percent, activeS: 5000, standbyS: 70000, fixes: 900 } });
+  return {
+    fromDate: addDays(LAST_DATE, -29),
+    toDate: LAST_DATE,
+    periods: [
+      period("low", null, at(addDays(LAST_DATE, -25), "09:00"), 20, 140, 60),
+      period("balanced", at(addDays(LAST_DATE, -25), "09:00"), at(addDays(LAST_DATE, -6), "11:40"), 412, 31.2, 7.6),
+      period("precise", at(addDays(LAST_DATE, -6), "11:40"), at(addDays(LAST_DATE, -2), "08:00"), 96, 11.4, 4.2),
+      { ...period("custom", at(addDays(LAST_DATE, -2), "08:00"), null, 64, 12.8, 4.6), preset: { preset: "custom", custom: { accuracy: "highest", distance: 10, time: 10_000 }, smartTracking: true } },
+    ],
+    comparison: null,
+    usage: [usage("balanced", 0.42), usage("precise", 0.9), usage("custom", 0.8)],
+    model: { calibrated: "2026-10-20", device: "Pixel 8", batteryMah: 4575 },
+  };
+}
+
 // ---- routing ---------------------------------------------------------------
 
 type Reply = { status?: number; body: unknown };
@@ -421,6 +448,7 @@ function emptyReply(path: string, q: URLSearchParams): Reply | null {
   if (path === "/api/timeline/photos") return { body: { configured: false, pending: false, linkBase: null, items: [] } };
   if (path === "/api/search") return { body: { query: q.get("q") ?? "", places: [], areas: [] } };
   if (path === "/api/insights/trips") return { body: { home: null, trips: [] } };
+  if (path === "/api/insights/quality") return { body: { fromDate: LAST_DATE, toDate: LAST_DATE, periods: [], comparison: null, usage: [], model: null } };
   if (path === "/api/insights/world") return q.get("city") ? { body: { city: q.get("city"), country: q.get("country"), places: [] } } : { body: { countries: [], cities: [], unplaced: 0 } };
   return null;
 }
@@ -518,6 +546,8 @@ function reply(method: string, path: string, q: URLSearchParams, body: string | 
       return { body: monthModes(q.get("month")) };
     case "/api/insights/saved":
       return { body: savedMonth(q.get("month")) };
+    case "/api/insights/quality":
+      return { body: quality() };
     case "/api/insights/trips":
       return { body: { home: { lat: 60.293, lon: 24.665, nights: 290, city: "Espoo", country: "Finland", saved: ["Home"] }, trips: trips.map(tripJson) } };
     case "/api/insights/world": {
