@@ -8,6 +8,9 @@ import { matchPendingTrips } from "../transit/run";
 import { pickPlaceNamesWithAi } from "./aiPlaces";
 import { geocodePending } from "./geocode";
 import { processUser } from "./run";
+import { batteryLogLine, dailyBattery, dischargeSegments } from "../insights/battery";
+import { loadBatteryReadings } from "../insights/load";
+import { addDays, dayBounds, localDate } from "../insights/time";
 
 // Background loop started from instrumentation.ts. Only one instance across
 // all replicas does work at a time (session advisory lock on a dedicated
@@ -88,10 +91,34 @@ export async function tick(): Promise<void> {
   }
 }
 
+/**
+ * Diagnostics, once per process: each user's phone battery drain over the last
+ * 21 days, one line per user, aggregate numbers only. Fire-and-forget: it never
+ * throws into or delays the worker.
+ */
+async function logBatteryStats(): Promise<void> {
+  const users = (await pool().query<{ id: string; timezone: string }>(`SELECT id::text, timezone FROM users ORDER BY id`))
+    .rows;
+  for (const u of users) {
+    const toDate = localDate(Date.now(), u.timezone);
+    const fromDate = addDays(toDate, -20);
+    const [from] = dayBounds(fromDate, u.timezone);
+    const series = await loadBatteryReadings(u.id, from - 24 * 3_600_000, Date.now());
+    if (!series.length) continue;
+    const segments = series.flatMap((s) => dischargeSegments(s));
+    console.log(batteryLogLine(u.id, dailyBattery(segments, fromDate, toDate, u.timezone)));
+  }
+}
+
 export function startWorker(): void {
   const g = globalThis as unknown as { _matkaWorker?: NodeJS.Timeout };
   if (g._matkaWorker || process.env.MATKA_WORKER === "off") return;
   console.log(`[worker] started, every ${TICK_MS} ms`);
   g._matkaWorker = setInterval(() => void tick(), TICK_MS);
   setTimeout(() => void tick(), 2000);
+  setTimeout(() => {
+    try {
+      logBatteryStats().catch((err) => console.error("[stats] battery failed:", err instanceof Error ? err.message : err));
+    } catch {}
+  }, 5000);
 }

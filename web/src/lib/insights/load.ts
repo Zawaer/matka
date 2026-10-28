@@ -14,9 +14,17 @@ import {
   DEFAULT_AWAY,
   detectAwayTrips,
 } from "./awayTrips";
+import {
+  BATTERY_ANNOTATIONS,
+  BATTERY_RULES,
+  type Reading,
+  compareAround,
+  dailyBattery,
+  dischargeSegments,
+} from "./battery";
 import { type SavedPlaceInfo, savedPlaceMonth } from "./savedTime";
 import { type Move, daySummary, monthModes } from "./summary";
-import { addMonths, dayBounds, localMonth, monthBounds } from "./time";
+import { addDays, addMonths, dayBounds, localDate, localMonth, monthBounds } from "./time";
 import { type WorldSort, cityPlaces, groupWorld } from "./world";
 
 /**
@@ -211,4 +219,54 @@ export function tripJson(t: AwayTrip, withDays = false) {
     cities: cities.map((c) => ({ ...c, firstSeen: new Date(c.firstSeen).toISOString() })),
     ...(withDays ? { dayList } : {}),
   };
+}
+
+/**
+ * The phone's battery readings in [from, to), per device, ordered by time.
+ * Only points the phone app uploaded (source 'device'). The interior of a run
+ * at one level is dropped in SQL: it adds nothing to the segments (its first
+ * and last reading, and any reading beside a gap, are kept).
+ */
+export async function loadBatteryReadings(userId: string | number, from: number, to: number): Promise<Reading[][]> {
+  const gapS = BATTERY_RULES.maxGapMs / 1000;
+  const rows = await q<{ dev: string | null; ts: number; battery: number }>(
+    `SELECT dev, ts, battery FROM (
+       SELECT device_id::text AS dev, extract(epoch FROM ts)::float8 * 1000 AS ts, battery::int AS battery,
+              battery IS DISTINCT FROM lag(battery) OVER w
+                OR battery IS DISTINCT FROM lead(battery) OVER w
+                OR extract(epoch FROM ts - lag(ts) OVER w) > $4
+                OR extract(epoch FROM lead(ts) OVER w - ts) > $4 AS keep
+       FROM points
+       WHERE user_id = $1 AND source = 'device' AND battery IS NOT NULL AND ts >= $2 AND ts < $3
+       WINDOW w AS (PARTITION BY device_id ORDER BY ts)
+     ) r
+     WHERE keep
+     ORDER BY dev, ts`,
+    [userId, new Date(from), new Date(to), gapS],
+  );
+  const byDevice = new Map<string | null, Reading[]>();
+  for (const r of rows) {
+    let list = byDevice.get(r.dev);
+    if (!list) byDevice.set(r.dev, (list = []));
+    list.push({ ts: r.ts, battery: r.battery });
+  }
+  return [...byDevice.values()];
+}
+
+/** Daily unplugged drain for the last `days` local days, with the recorder annotations. */
+export async function getBatteryInsight(user: Pick<User, "id" | "timezone">, days: number) {
+  const tz = user.timezone;
+  const toDate = localDate(Date.now(), tz);
+  const fromDate = addDays(toDate, -(days - 1));
+  const [from] = dayBounds(fromDate, tz);
+  const [, to] = dayBounds(toDate, tz);
+  // A segment may start before the window.
+  const series = await loadBatteryReadings(user.id, from - 24 * 3_600_000, to);
+  const segments = series.flatMap((s) => dischargeSegments(s));
+  const annotations = BATTERY_ANNOTATIONS.filter((a) => a.at >= from && a.at < to).map((a) => ({
+    ...a,
+    date: localDate(a.at, tz),
+    ...compareAround(segments, a.at),
+  }));
+  return { days: dailyBattery(segments, fromDate, toDate, tz), annotations };
 }

@@ -1,10 +1,11 @@
+import { BatteryCard } from "@/components/insights/BatteryCard";
 import { InsightsHeader } from "@/components/insights/InsightsHeader";
 import { MonthPicker } from "@/components/insights/MonthPicker";
 import { ModeHistory, ModeIcon, ShareBar, Stat, modeMeta } from "@/components/insights/charts";
 import { requireUser } from "@/lib/auth";
 import { formatDuration, formatKm, formatMonth } from "@/lib/format";
 import Link from "next/link";
-import { getMonthModes, getSavedPlacesMonth } from "@/lib/insights/load";
+import { getBatteryInsight, getMonthModes, getSavedPlacesMonth } from "@/lib/insights/load";
 import type { SavedPlaceMonth } from "@/lib/insights/savedTime";
 import { KIND_META, isHomeKind } from "@/lib/savedPlaces";
 import { addMonths, isMonth } from "@/lib/insights/time";
@@ -17,7 +18,13 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const user = await requireUser();
   const { month: raw } = await searchParams;
   const data = await getMonthModes(user, raw && isMonth(raw) ? raw : undefined);
-  const saved = await getSavedPlacesMonth(user, data.month);
+  const [saved, battery] = await Promise.all([
+    getSavedPlacesMonth(user, data.month),
+    getBatteryInsight(user, 60).catch((err) => {
+      console.error("[insights] battery failed:", err);
+      return null;
+    }),
+  ]);
 
   // Every month from the first with travel to now (or the picked month).
   const months: string[] = [];
@@ -101,6 +108,8 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
           </p>
         </>
       )}
+
+      {battery && <BatteryCard days={battery.days} annotations={battery.annotations} tz={user.timezone} />}
     </div>
   );
 }
