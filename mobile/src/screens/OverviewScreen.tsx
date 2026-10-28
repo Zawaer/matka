@@ -126,7 +126,7 @@ export default function OverviewScreen({
           <Text variant="headline">{running ? "Recording" : tracking ? "Recording isn't running" : "Recording is off"}</Text>
           <Text variant="callout" color="textSecondary" tabular>
             {queued > 0
-              ? `${count(queued)} points waiting to upload`
+              ? `${count(queued)} ${queued === 1 ? "point" : "points"} waiting to upload`
               : running
                 ? "Collecting in the background"
                 : tracking

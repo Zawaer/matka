@@ -82,7 +82,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
       if (r == null) {
         setMessage(state.authLost ? "Re-pair the device first." : "Nothing to do (not paired).");
       } else if (r.result === "done") {
-        setMessage(r.sent > 0 ? `Uploaded ${count(r.sent)} points.` : "Queue is empty.");
+        setMessage(r.sent > 0 ? `Uploaded ${count(r.sent)} ${r.sent === 1 ? "point" : "points"}.` : "Queue is empty.");
         await refreshServerStatus();
       } else {
         setMessage(r.error ?? "Upload failed.");
