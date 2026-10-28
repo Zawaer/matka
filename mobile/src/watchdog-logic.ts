@@ -177,16 +177,19 @@ export function recoveriesSince(list: Recovery[], since: number): number {
   return list.filter((r) => r.at >= since).length;
 }
 
-/** One line for the Recorder screen: "Restarted recording at 14:02 — updates had stopped". */
+/**
+ * One plain line for the Recorder screen:
+ * "No location for 25 min while moving — restarted at 14:02".
+ */
 export function describeRecovery(r: Recovery, time: (ms: number) => string): string {
-  const verb = r.ok ? (r.action === "start" ? "Restarted recording" : "Re-registered location updates") : "Couldn't restart recording";
-  const why =
+  const what =
     r.reason === "not_running"
-      ? "updates had stopped"
+      ? "The phone stopped recording"
       : r.lastFixAt == null
-        ? "no location had arrived"
-        : `no location for ${duration(r.at - r.lastFixAt)}${r.reason === "stale_moving" ? " while moving" : r.reason === "stale_standby" ? " in standby" : ""}`;
-  return `${verb} at ${time(r.at)} — ${why}${!r.ok && r.error ? ` (${r.error})` : ""}`;
+        ? "No location arrived"
+        : `No location for ${duration(r.at - r.lastFixAt)}${r.reason === "stale_moving" ? " while moving" : r.reason === "stale_standby" ? " in standby" : ""}`;
+  if (r.ok) return `${what} — restarted at ${time(r.at)}`;
+  return `${what} — couldn't restart at ${time(r.at)}${r.error ? ` (${r.error})` : ""}`;
 }
 
 // ---- Heartbeat ---------------------------------------------------------------

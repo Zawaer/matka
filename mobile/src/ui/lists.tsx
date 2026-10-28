@@ -1,7 +1,7 @@
 // Lists: rows in a card with inset hairlines (places, cities, days), and
 // grouped key-value lists with a label above (Recorder, Settings).
 
-import { Children, Fragment, isValidElement, type ReactNode } from "react";
+import { Children, Fragment, isValidElement, type ReactElement, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { useTheme } from "../design/theme";
 import { Icon } from "./Icon";
@@ -10,10 +10,22 @@ import { Text } from "./Text";
 
 const LEAD_GAP = 12;
 
+/** Children as rows: fragments opened up, so rows passed in a <>…</> still get dividers. */
+function rowsOf(children: ReactNode): ReactElement[] {
+  const out: ReactElement[] = [];
+  for (const c of Children.toArray(children)) {
+    if (!isValidElement(c)) continue;
+    if (c.type === Fragment) out.push(...rowsOf((c.props as { children?: ReactNode }).children));
+    else out.push(c);
+  }
+  return out;
+}
+
 /**
- * A list row: leading tile, title and one muted line, trailing value (tabular)
- * with an optional second line, chevron when it navigates. 56 tall with one
- * line, 68 with two. Put rows in a <ListGroup>.
+ * A list row: leading tile (pinned to the first line), title (15/500) and one
+ * muted line, a trailing value (13, tabular, secondary) with an optional
+ * second line, chevron when it navigates. 56 tall with one line, 68 with two.
+ * Put rows in a <ListGroup>.
  */
 export function ListRow({
   leading,
@@ -38,6 +50,8 @@ export function ListRow({
   accessibilityLabel?: string;
 }) {
   const t = useTheme();
+  // Several lines: the tile and the trailing value line up with the first one.
+  const multi = !!subtitle || titleLines > 1 || !!below;
   return (
     <Pressable
       onPress={onPress}
@@ -54,7 +68,7 @@ export function ListRow({
         backgroundColor: pressed ? t.c.surfaceAlt : "transparent",
       })}
     >
-      {leading}
+      {leading ? <View style={{ alignSelf: multi ? "flex-start" : "center" }}>{leading}</View> : null}
       <View style={{ flex: 1, gap: 2 }}>
         <Text variant="headline" numberOfLines={titleLines}>
           {title}
@@ -67,12 +81,12 @@ export function ListRow({
         {below}
       </View>
       {trailing != null ? (
-        <View style={{ alignItems: "flex-end", gap: 2, maxWidth: "40%" }}>
-          <Text variant="headline" tabular numberOfLines={1}>
+        <View style={{ alignItems: "flex-end", gap: 2, maxWidth: "40%", alignSelf: multi ? "flex-start" : "center" }}>
+          <Text variant="callout" color="textSecondary" tabular numberOfLines={1} style={{ lineHeight: 20 }}>
             {trailing}
           </Text>
           {trailingSub ? (
-            <Text variant="callout" color="textSecondary" tabular numberOfLines={1}>
+            <Text variant="caption" color="textMuted" tabular numberOfLines={1}>
               {trailingSub}
             </Text>
           ) : null}
@@ -86,7 +100,7 @@ export function ListRow({
 /** Rows in one card, with hairlines inset to the text (`inset`: the leading tile's width, 0 without). */
 export function ListGroup({ children, inset = 40, dim }: { children: ReactNode; inset?: number; dim?: boolean }) {
   const t = useTheme();
-  const rows = Children.toArray(children).filter(isValidElement);
+  const rows = rowsOf(children);
   return (
     <Card padded={false} style={{ overflow: "hidden", opacity: dim ? 0.5 : 1 }}>
       {rows.map((r, i) => (
@@ -103,15 +117,19 @@ export function ListGroup({ children, inset = 40, dim }: { children: ReactNode; 
  * A grouped list (settings style): a label above, rows in a card, a footnote
  * under it. Children are rows (InfoRow, ToggleRow…) or any content block.
  */
-export function Group({ title, footer, children }: { title?: string; footer?: ReactNode; children: ReactNode }) {
+export function Group({ title, footer, children, right }: { title?: string; footer?: ReactNode; children: ReactNode; right?: ReactNode }) {
   const t = useTheme();
-  const rows = Children.toArray(children).filter(isValidElement);
+  const rows = rowsOf(children);
   return (
     <View style={{ gap: t.space.sm }}>
       {title ? (
-        <Text variant="overline" color="textSecondary" style={{ paddingHorizontal: t.space.lg }}>
-          {title}
-        </Text>
+        // The one section-header style (same as SectionHeader): sentence case, 17/600.
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 28, marginTop: t.space.sm }}>
+          <Text variant="title3" accessibilityRole="header">
+            {title}
+          </Text>
+          {right}
+        </View>
       ) : null}
       <Card padded={false} style={{ overflow: "hidden" }}>
         {rows.map((r, i) => (
@@ -136,20 +154,30 @@ export function Group({ title, footer, children }: { title?: string; footer?: Re
 
 export type ValueTone = "ok" | "warn" | "bad" | "dim";
 
-/** Label on the left, value on the right (tabular), in a Group. 48 tall. */
+/**
+ * Label on the left, value on the right (tabular), in a Group. 48 tall. A
+ * status shows as a 16 px icon before the value; the value itself stays in
+ * text colour (status colour is for icons and banners only).
+ */
 export function InfoRow({ label, value, tone, note }: { label: string; value: string; tone?: ValueTone; note?: string | null }) {
   const t = useTheme();
-  const color =
-    tone === "ok" ? t.c.success : tone === "warn" ? t.c.warning : tone === "bad" ? t.c.danger : tone === "dim" ? t.c.textMuted : t.c.text;
+  const glyph = tone === "ok" ? { name: "ok" as const, color: t.c.success } : tone === "warn" ? { name: "warning" as const, color: t.c.warning } : tone === "bad" ? { name: "error" as const, color: t.c.danger } : null;
   return (
     <View style={{ minHeight: 48, paddingHorizontal: t.space.lg, paddingVertical: t.space.md, justifyContent: "center", gap: 2 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: t.space.lg }}>
-        <Text variant="body" color="textSecondary" style={{ lineHeight: 20 }}>
+        <Text variant="body" color="textSecondary" style={{ lineHeight: 20, flexShrink: 1 }}>
           {label}
         </Text>
-        <Text variant="body" tabular numberOfLines={2} style={{ flexShrink: 1, textAlign: "right", color, lineHeight: 20, fontWeight: "500" }}>
-          {value}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6, flexShrink: 1 }}>
+          {glyph ? (
+            <View style={{ height: 20, justifyContent: "center" }}>
+              <Icon name={glyph.name} size={16} color={glyph.color} />
+            </View>
+          ) : null}
+          <Text variant="body" tabular numberOfLines={2} color={tone === "dim" ? "textMuted" : "text"} style={{ flexShrink: 1, textAlign: "right", lineHeight: 20, fontWeight: "500" }}>
+            {value}
+          </Text>
+        </View>
       </View>
       {note ? (
         <Text variant="caption" color="textMuted">

@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FlatList, RefreshControl, TextInput, View } from "react-native";
 import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
-import { fmtDuration, placeLabel } from "../format";
-import { KIND_META, mostVisitedId } from "../insights-logic";
-import { Badge, Card, EmptyState, ErrorState, GroupedItem, Icon, IconButton, IconTile, ListRow, Skeleton } from "../ui";
+import { group, placeLabel } from "../format";
+import { FONT_FAMILY } from "../design/tokens";
+import { KIND_META, fmtLongDuration, plural } from "../insights-logic";
+import { Card, EmptyState, ErrorState, GroupedItem, Icon, IconButton, IconTile, ListRow, Skeleton } from "../ui";
 import { ScreenHeader } from "../ui/Screen";
 import { SearchAreaRow, SearchPlaceRow } from "../ui/SearchRows";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
@@ -54,8 +55,8 @@ function usePlaceSearch(query: string) {
 
 const placeName = (p: Place) => placeLabel(p.name);
 
-/** `top`: shown as a segment of Insights, under that header instead of its own title. */
-export default function PlacesScreen({ top }: { top?: ReactNode }) {
+/** `embedded`: shown as a segment of Insights, under its app bar instead of its own. */
+export default function PlacesScreen({ embedded }: { embedded?: boolean }) {
   const t = useTheme();
   const { authLost, openDay, openInsights } = useSession();
   const { data, error: err, reload } = useViewerQuery(getPlaces);
@@ -64,7 +65,6 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
 
-  const mostVisited = useMemo(() => mostVisitedId(places ?? []), [places]);
   const trimmed = query.trim();
   const q = trimmed.toLowerCase();
   const search = usePlaceSearch(trimmed);
@@ -79,7 +79,19 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
   // they arrive (or if the server can't search), the list filtered here.
   const results = q ? search.results : null;
   const rows = useMemo<Row[]>(() => {
-    if (!results) return shown.map((p) => ({ type: "place", key: `p${p.id}`, place: p }));
+    if (!results) {
+      // Saved places first under their own header, then the rest (the server's order within each).
+      const saved = shown.filter((p) => p.kind);
+      const other = shown.filter((p) => !p.kind);
+      const rowsOf = (list: Place[]): Row[] => list.map((p) => ({ type: "place", key: `p${p.id}`, place: p }));
+      if (saved.length === 0) return rowsOf(other);
+      return [
+        { type: "heading", key: "saved", title: "Saved" },
+        ...rowsOf(saved),
+        ...(other.length ? [{ type: "heading", key: "other", title: "Other places" } as Row] : []),
+        ...rowsOf(other),
+      ];
+    }
     const hits: Row[] = results.places.map((h) => ({ type: "hit", key: `h${h.id}`, hit: h }));
     if (results.areas.length === 0) return hits;
     const areas: Row[] = [
@@ -93,7 +105,7 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
     return [...hits, ...areas];
   }, [results, shown]);
   const searching = !!q && !results && !search.error;
-  const noMatches = !!q && !!places && places.length > 0 && rows.length === 0 && !searching;
+  const noMatches = !!q && !!places && places.length > 0 && !rows.some((r) => r.type !== "heading") && !searching;
 
   const s = useStyles((th) => ({
     root: { flex: 1, backgroundColor: th.c.bg },
@@ -108,20 +120,17 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
       paddingRight: th.space.xs,
       height: 48,
     },
-    input: { flex: 1, color: th.c.text, fontSize: 15, padding: 0, height: 48, outlineStyle: "none" as never },
+    input: { flex: 1, color: th.c.text, fontSize: 15, fontFamily: FONT_FAMILY, padding: 0, height: 48, outlineStyle: "none" as never },
   }));
 
   const header = (
     <View style={{ gap: t.space.lg, marginBottom: t.space.lg }}>
-      {top ? (
-        <>
-          {top}
-          <Text variant="callout" color="textSecondary" tabular>
-            {places ? `${places.length.toLocaleString()} places you come back to` : "Where you spend your time"}
-          </Text>
-        </>
+      {embedded ? (
+        <Text variant="callout" color="textSecondary" tabular>
+          {places ? `${group(places.length)} places you come back to` : "Where you spend your time"}
+        </Text>
       ) : (
-        <ScreenHeader title="Places" subtitle={places ? `${places.length.toLocaleString()} places you come back to` : "Where you spend your time"} />
+        <ScreenHeader title="Places" subtitle={places ? `${group(places.length)} places you come back to` : "Where you spend your time"} />
       )}
       {authLost ? <PairingLost /> : null}
       <View style={s.search}>
@@ -190,7 +199,7 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
       renderItem={({ item, index }) => {
         if (item.type === "heading") {
           return (
-            <Text variant="overline" color="textSecondary" style={{ marginTop: index === 0 ? 0 : t.space.xl, marginBottom: t.space.sm, paddingHorizontal: t.space.lg }}>
+            <Text variant="title3" accessibilityRole="header" style={{ marginTop: index === 0 ? 0 : t.space.xl, marginBottom: t.space.sm }}>
               {item.title}
             </Text>
           );
@@ -206,22 +215,15 @@ export default function PlacesScreen({ top }: { top?: ReactNode }) {
           const p = item.place;
           const meta = categoryMeta(p.category, p.kind);
           const locale = [p.city, p.country === "Finland" ? null : p.country].filter(Boolean).join(", ");
+          const kind = p.kind ? (p.kind === "other" ? "Saved" : KIND_META[p.kind].label) : meta.label;
           body = (
             <ListRow
-              leading={<IconTile icon={p.kind ? KIND_META[p.kind].icon : meta.icon} tone={p.kind ? "accent" : "neutral"} />}
+              leading={<IconTile icon={p.kind ? KIND_META[p.kind].icon : meta.icon} />}
               title={placeName(p)}
               titleLines={2}
-              subtitle={`${meta.label}${locale ? ` · ${locale}` : ""}`}
-              trailing={`${p.visitCount.toLocaleString()} ${p.visitCount === 1 ? "visit" : "visits"}`}
-              trailingSub={fmtDuration(p.totalTime)}
-              below={
-                p.kind || p.id === mostVisited ? (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: t.space.xs, marginTop: t.space.xs }}>
-                    {p.kind ? <Badge label={p.kind === "other" ? "Saved" : KIND_META[p.kind].label} tone="accent" /> : null}
-                    {p.id === mostVisited ? <Badge label="Most visited" /> : null}
-                  </View>
-                ) : null
-              }
+              subtitle={`${kind}${locale ? ` · ${locale}` : ""}`}
+              trailing={plural(p.visitCount, "visit")}
+              trailingSub={fmtLongDuration(p.totalTime)}
             />
           );
         }

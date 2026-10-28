@@ -37,7 +37,8 @@ import { useSession } from "./session";
 import { Text } from "./Text";
 
 export const DAY_MAP_COLLAPSED_KEY = "timeline_map_collapsed";
-const MAP_HEIGHT = 240;
+/** About 40% of a phone screen under the app bar. */
+const MAP_HEIGHT = 300;
 /** The page must say hello within this long, or we give up on it. */
 const READY_TIMEOUT_MS = 20_000;
 
@@ -243,74 +244,83 @@ export function DayMapCard({
   };
 
   const s = useStyles((th) => ({
-    card: {
-      backgroundColor: th.c.surface,
-      borderRadius: th.radius.md,
-      borderWidth: 1,
-      borderColor: th.c.border,
-      overflow: "hidden",
-    },
-    bar: { flexDirection: "row", alignItems: "center", gap: th.space.sm, paddingHorizontal: th.space.lg, height: 48 },
-    frame: { height: MAP_HEIGHT, borderTopWidth: 1, borderTopColor: th.c.border, backgroundColor: th.c.surface },
+    // Full-bleed: edge to edge under the app bar, no card, no header row.
+    bleed: { marginHorizontal: -th.layout.gutter, marginTop: -th.space.sm },
+    bar: { flexDirection: "row", alignItems: "center", gap: th.space.sm, height: 48, paddingHorizontal: th.space.xs },
+    frame: { height: MAP_HEIGHT, backgroundColor: th.c.surfaceAlt },
     cover: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: th.c.surfaceAlt, alignItems: "center", justifyContent: "center" },
+    hide: {
+      position: "absolute",
+      top: th.space.sm,
+      right: th.space.sm,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: th.c.surface,
+      boxShadow: th.elev.overlay === "0 0 0 rgba(0,0,0,0)" ? undefined : "0 1px 3px rgba(16,16,24,0.18)",
+    },
   }));
 
   if (collapsed == null || authLost || !date) return null;
 
   const failed = phase.kind === "failed";
-  return (
-    <View style={[s.card, visible ? null : { display: "none" }]}>
+  if (collapsed || failed) {
+    // A one-line row: show the map again, or say it can't be shown.
+    return (
       <Pressable
         onPress={failed ? () => renew(false) : toggle}
         accessibilityRole="button"
-        accessibilityLabel={failed ? "Map unavailable. Try again" : collapsed ? "Show the day's map" : "Hide the day's map"}
-        style={({ pressed }) => [s.bar, pressed ? { backgroundColor: t.c.surfaceAlt } : null]}
+        accessibilityLabel={failed ? "Map unavailable. Try again" : "Show the day's map"}
+        style={({ pressed }) => [s.bar, visible ? null : { display: "none" }, pressed ? { opacity: 0.7 } : null]}
       >
-        <Icon name={failed ? "noLocation" : "tabMap"} size={16} color={t.c.textSecondary} />
-        <Text variant="label" color="textSecondary" style={{ flex: 1 }}>
-          {failed ? "Map unavailable" : "Day map"}
+        <Icon name={failed ? "noLocation" : "tabMap"} size={16} color={failed ? t.c.textMuted : t.c.primary} />
+        <Text variant="label" color={failed ? "textSecondary" : "primary"}>
+          {failed ? "Map unavailable · Try again" : "Show the day's map"}
         </Text>
-        <Text variant="label" color="primary">
-          {failed ? "Try again" : collapsed ? "Show" : "Hide"}
-        </Text>
-        {failed ? null : <Icon name={collapsed ? "expand" : "collapse"} size={16} color={t.c.primary} />}
       </Pressable>
-      {collapsed || failed ? null : (
-        <View style={s.frame}>
-          {phase.kind === "web" ? (
-            <WebView
-              ref={web}
-              key={phase.n}
-              source={{ uri: phase.url }}
-              style={{ flex: 1, backgroundColor: t.c.surface }}
-              originWhitelist={["*"]}
-              onShouldStartLoadWithRequest={onShouldStart}
-              onMessage={onMessage}
-              onLoadEnd={onLoadEnd}
-              onHttpError={onHttpError}
-              onError={fail}
-              injectedJavaScript={INJECTED_JS}
-              javaScriptEnabled
-              domStorageEnabled
-              allowFileAccess={false}
-              allowsLinkPreview={false}
-              mixedContentMode="never"
-              overScrollMode="never"
-              // The map takes its own pans and pinches instead of the list scrolling.
-              nestedScrollEnabled
-              scrollEnabled={false}
-              bounces={false}
-              setSupportMultipleWindows={false}
-              webviewDebuggingEnabled={__DEV__}
-            />
-          ) : null}
-          {shown ? null : (
-            <View style={s.cover} pointerEvents="none">
-              <Icon name="route" size={24} color={t.c.textMuted} />
-            </View>
-          )}
-        </View>
-      )}
+    );
+  }
+  return (
+    <View style={[s.bleed, visible ? null : { display: "none" }]}>
+      <View style={s.frame}>
+        {phase.kind === "web" ? (
+          <WebView
+            ref={web}
+            key={phase.n}
+            source={{ uri: phase.url }}
+            style={{ flex: 1, backgroundColor: t.c.surfaceAlt }}
+            originWhitelist={["*"]}
+            onShouldStartLoadWithRequest={onShouldStart}
+            onMessage={onMessage}
+            onLoadEnd={onLoadEnd}
+            onHttpError={onHttpError}
+            onError={fail}
+            injectedJavaScript={INJECTED_JS}
+            javaScriptEnabled
+            domStorageEnabled
+            allowFileAccess={false}
+            allowsLinkPreview={false}
+            mixedContentMode="never"
+            overScrollMode="never"
+            // The map takes its own pans and pinches instead of the list scrolling.
+            nestedScrollEnabled
+            scrollEnabled={false}
+            bounces={false}
+            setSupportMultipleWindows={false}
+            webviewDebuggingEnabled={__DEV__}
+          />
+        ) : null}
+        {shown ? null : (
+          <View style={s.cover} pointerEvents="none">
+            <Icon name="tabMap" size={24} color={t.c.textMuted} />
+          </View>
+        )}
+        <Pressable onPress={toggle} accessibilityRole="button" accessibilityLabel="Hide the day's map" hitSlop={4} style={({ pressed }) => [s.hide, pressed ? { opacity: 0.7 } : null]}>
+          <Icon name="collapse" size={20} color={t.c.text} />
+        </Pressable>
+      </View>
     </View>
   );
 }

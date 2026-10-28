@@ -2,25 +2,33 @@ import type { ReactNode } from "react";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
 import { Icon } from "./Icon";
-import { IconButton } from "./primitives";
+import { IconButton, Skeleton } from "./primitives";
 import { Text } from "./Text";
 
-/** A scrolling screen: 16 inset, 16 between blocks (sections add their own 8 on top). */
+/** App bar height: the same on every tab and pushed view. */
+export const APP_BAR = 56;
+
+/**
+ * A scrolling screen: 16 inset, 16 between blocks (sections add their own on top).
+ * `appBar` stays put above the scrolling content (ScreenHeader or AppBar).
+ */
 export function Screen({
   children,
   refreshing,
   onRefresh,
+  appBar,
 }: {
   children: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
+  appBar?: ReactNode;
 }) {
   const t = useTheme();
   const s = useStyles((th) => ({
     root: { flex: 1, backgroundColor: th.c.bg },
     content: { paddingHorizontal: th.layout.gutter, paddingTop: th.space.sm, paddingBottom: th.space.xxl, gap: th.space.lg },
   }));
-  return (
+  const body = (
     <ScrollView
       style={s.root}
       contentContainerStyle={s.content}
@@ -34,84 +42,121 @@ export function Screen({
       {children}
     </ScrollView>
   );
+  if (!appBar) return body;
+  return (
+    <View style={s.root}>
+      {appBar}
+      {body}
+    </View>
+  );
 }
 
-/** Screen title (28), optional one-line subtitle, actions on the right. */
-export function ScreenHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
+/**
+ * The top app bar of a tab: the title (22/600) on the 16 inset, 56 tall, up to
+ * a few trailing icon buttons. Every tab uses this one, so the anatomy is the
+ * same wherever you are.
+ */
+export function ScreenHeader({ title, subtitle, right }: { title: ReactNode; subtitle?: string; right?: ReactNode }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: t.space.md, minHeight: 48, paddingTop: t.space.xs }}>
-      <View style={{ flex: 1, gap: 2 }}>
-        <Text variant="title1" accessibilityRole="header">
-          {title}
-        </Text>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: t.space.xs,
+        minHeight: APP_BAR,
+        paddingLeft: t.layout.gutter,
+        paddingRight: t.space.xs,
+        backgroundColor: t.c.bg,
+      }}
+    >
+      <View style={{ flex: 1, gap: 0 }}>
+        {typeof title === "string" ? (
+          <Text variant="title1" accessibilityRole="header" numberOfLines={1}>
+            {title}
+          </Text>
+        ) : (
+          title
+        )}
         {subtitle ? (
-          <Text variant="callout" color="textSecondary">
+          <Text variant="callout" color="textSecondary" numberOfLines={1}>
             {subtitle}
           </Text>
         ) : null}
       </View>
-      {right}
+      {right ? <View style={{ flexDirection: "row", alignItems: "center" }}>{right}</View> : null}
     </View>
   );
 }
 
-/** "‹ Trips": back to the view underneath (48 to touch). */
-export function BackLink({ label, onPress }: { label: string; onPress: () => void }) {
+/**
+ * The top app bar of a pushed view (M3 small app bar): a back arrow in a 48
+ * target, then the title inline. Replaces a "‹ Trips" link row plus a big title.
+ */
+export function AppBar({
+  title,
+  subtitle,
+  onBack,
+  backLabel,
+  right,
+}: {
+  title: string | null;
+  subtitle?: string | null;
+  onBack: () => void;
+  /** Where back goes, for screen readers ("Back to Trips"). */
+  backLabel: string;
+  right?: ReactNode;
+}) {
   const t = useTheme();
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Back to ${label}`}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 2,
-        alignSelf: "flex-start",
-        height: 48,
-        marginLeft: -t.space.sm,
-        paddingRight: t.space.md,
-        paddingLeft: t.space.xs,
-        marginBottom: -t.space.sm,
-        opacity: pressed ? 0.6 : 1,
-      })}
-    >
-      <Icon name="back" size={24} color={t.c.primary} />
-      <Text variant="headline" color="primary">
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-/** Title of a pushed view with its context line. */
-export function DetailTitle({ title, subtitle }: { title: string; subtitle?: string | null }) {
-  return (
-    <View style={{ gap: 4 }}>
-      <Text variant="title1" accessibilityRole="header">
-        {title}
-      </Text>
-      {subtitle ? (
-        <Text variant="callout" color="textSecondary">
-          {subtitle}
-        </Text>
-      ) : null}
+    <View style={{ flexDirection: "row", alignItems: "center", minHeight: APP_BAR, paddingHorizontal: t.space.xs, gap: t.space.xs, backgroundColor: t.c.bg }}>
+      <Pressable
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel={`Back to ${backLabel}`}
+        hitSlop={4}
+        style={({ pressed }) => ({
+          width: 48,
+          height: 48,
+          borderRadius: 24,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: pressed ? t.c.surfaceAlt : "transparent",
+        })}
+      >
+        <Icon name="arrowBack" size={24} color={t.c.text} />
+      </Pressable>
+      <View style={{ flex: 1, paddingRight: right ? 0 : t.space.md }}>
+        {title == null ? (
+          <Skeleton height={20} width={160} radius={6} />
+        ) : (
+          <Text variant="title1" accessibilityRole="header" numberOfLines={1}>
+            {title}
+          </Text>
+        )}
+        {subtitle ? (
+          <Text variant="callout" color="textSecondary" numberOfLines={1} tabular>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {right ? <View style={{ flexDirection: "row", alignItems: "center" }}>{right}</View> : null}
     </View>
   );
 }
 
-/** ‹ Saturday · 18 October › : steps through days or months. */
+/**
+ * ‹ October 2026 › on one line: steps through months (or days). The label is
+ * 17/600; while it loads a skeleton bar holds its place (never a literal "…").
+ */
 export function Pager({
-  kicker,
   title,
   onPrev,
   onNext,
   prevLabel,
   nextLabel,
 }: {
-  kicker: string;
-  title: string;
+  title: string | null;
   onPrev?: () => void;
   onNext?: () => void;
   prevLabel: string;
@@ -119,17 +164,18 @@ export function Pager({
 }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm }}>
-      <IconButton icon="back" label={prevLabel} onPress={() => onPrev?.()} disabled={!onPrev} variant="tonal" />
+    <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.sm, marginHorizontal: -t.space.sm }}>
+      <IconButton icon="back" label={prevLabel} onPress={() => onPrev?.()} disabled={!onPrev} />
       <View style={{ flex: 1, alignItems: "center" }}>
-        <Text variant="caption" color="textSecondary" style={{ fontWeight: "500" }}>
-          {kicker}
-        </Text>
-        <Text variant="title2" tabular numberOfLines={1}>
-          {title}
-        </Text>
+        {title ? (
+          <Text variant="title3" tabular numberOfLines={1}>
+            {title}
+          </Text>
+        ) : (
+          <Skeleton height={20} width={120} radius={6} />
+        )}
       </View>
-      <IconButton icon="forward" label={nextLabel} onPress={() => onNext?.()} disabled={!onNext} variant="tonal" />
+      <IconButton icon="forward" label={nextLabel} onPress={() => onNext?.()} disabled={!onNext} />
     </View>
   );
 }

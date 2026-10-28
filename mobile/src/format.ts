@@ -21,48 +21,105 @@ export function inFuture(ms: number | null | undefined, now = Date.now()): strin
   return `in ${Math.ceil(d / 3_600_000)} h`;
 }
 
-export function count(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+// ---- numbers, distances and durations: the one set of rules -------------------
+// Shared with the web (docs/redesign/palette.md → "Formatting rules"): en-GB
+// grouping with a comma, three-letter months, 24-hour times, "52%".
+
+export const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+/** Always three letters ("Sep", never "Sept"). */
+export const monthShort = (m0: number) => (MONTHS[m0] ?? "?").slice(0, 3);
+export const weekdayShort = (d0: number) => (WEEKDAYS[d0] ?? "?").slice(0, 3);
+
+/** A whole number grouped en-GB style: "1,137". */
+export function group(n: number): string {
+  const r = Math.round(n);
+  const s = String(Math.abs(r)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return r < 0 ? `-${s}` : s;
 }
 
-// ---- viewer ------------------------------------------------------------------
+export function count(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return group(n);
+}
 
+/** "52%"; "<1%" for a small non-zero share. */
+export function fmtPercent(fraction: number): string {
+  const p = fraction * 100;
+  if (p > 0 && p < 0.5) return "<1%";
+  return `${Math.round(p)}%`;
+}
+
+/** One visit or trip: "30 s", "45 min", "6 h 34 min" (hours grouped: "1,110 h 51 min"). */
 export function fmtDuration(s: number | null | undefined): string {
   if (!s || s < 0) return "—";
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  if (h > 0) return m > 0 ? `${group(h)} h ${m} min` : `${group(h)} h`;
   if (m > 0) return `${m} min`;
   return `${Math.round(s)} s`;
 }
 
-export function fmtDistance(m: number | null | undefined): string {
-  if (m == null) return "—";
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
+/** A total of time (places, cities, months, trips): "6 h 34 min", "12 d 3 h", then whole days from 30: "46 d". */
+export function fmtLongDuration(s: number | null | undefined): string {
+  if (!s || s < 0) return "—";
+  if (s < 86_400) return fmtDuration(s);
+  const d = Math.floor(s / 86_400);
+  if (d >= 30) return `${group(Math.round(s / 86_400))} d`;
+  const h = Math.floor((s % 86_400) / 3600);
+  return h > 0 ? `${d} d ${h} h` : `${d} d`;
 }
 
+/** Metres → "340 m", "8.4 km", "1,137 km" (whole from 100 km). */
+export function fmtDistance(m: number | null | undefined): string {
+  if (m == null || !Number.isFinite(m)) return "—";
+  if (m < 1000) return `${Math.round(m)} m`;
+  const km = m / 1000;
+  return km < 100 ? `${km.toFixed(1)} km` : `${group(km)} km`;
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** 24-hour "16:58" in the phone's time zone. */
 export function fmtTime(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** Full number below 10,000, otherwise compact: 1,440 / 12.9K / 1.2M. */
 export function fmtCompact(n: number): string {
-  if (Math.abs(n) < 10_000) return n.toLocaleString();
+  if (Math.abs(n) < 10_000) return group(n);
   const [div, suffix] = Math.abs(n) >= 1_000_000 ? [1_000_000, "M"] : [1_000, "K"];
   const v = n / div;
   return `${v >= 100 ? Math.round(v) : Math.round(v * 10) / 10}${suffix}`;
 }
 
+const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+const daysAgo = (d: Date, now: Date) => Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
+
+/** "Wed 28 Oct", with the year when it isn't this year. */
+export function fmtDateShort(d: Date, now = new Date()): string {
+  const base = `${weekdayShort(d.getDay())} ${d.getDate()} ${monthShort(d.getMonth())}`;
+  return d.getFullYear() === now.getFullYear() ? base : `${base} ${d.getFullYear()}`;
+}
+
+/** Day headings: "Today", "Yesterday", "Mon 26 Oct". */
+export function fmtDayHeading(d: Date, now = new Date()): string {
+  const n = daysAgo(d, now);
+  if (n === 0) return "Today";
+  if (n === 1) return "Yesterday";
+  return fmtDateShort(d, now);
+}
+
 /** "Today, 09:12", "Yesterday, 17:40", "Fri 16 Oct". */
 export function fmtWhen(iso: string, now = new Date()): string {
   const d = new Date(iso);
-  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((startOf(now) - startOf(d)) / 86_400_000);
-  if (days === 0) return `Today, ${fmtTime(iso)}`;
-  if (days === 1) return `Yesterday, ${fmtTime(iso)}`;
-  return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  const n = daysAgo(d, now);
+  if (n === 0) return `Today, ${fmtTime(iso)}`;
+  if (n === 1) return `Yesterday, ${fmtTime(iso)}`;
+  return fmtDateShort(d, now);
 }
 
 /** "2 Nov – 18 Oct" within this year; with years once the span reaches into another ("2 Nov 2025 – 18 Oct 2026"). */
@@ -70,16 +127,8 @@ export function fmtSpan(firstIso: string, lastIso: string, now = new Date()): st
   const a = new Date(firstIso);
   const b = new Date(lastIso);
   const years = a.getFullYear() !== now.getFullYear() || b.getFullYear() !== now.getFullYear();
-  const f = (d: Date) => d.toLocaleDateString([], { day: "numeric", month: "short", ...(years ? { year: "numeric" } : {}) });
+  const f = (d: Date) => `${d.getDate()} ${monthShort(d.getMonth())}${years ? ` ${d.getFullYear()}` : ""}`;
   return `${f(a)} – ${f(b)}`;
-}
-
-export function greeting(now = new Date()): string {
-  const h = now.getHours();
-  if (h < 5) return "Up late";
-  if (h < 12) return "Good morning";
-  if (h < 18) return "Good afternoon";
-  return "Good evening";
 }
 
 /** Axis ceiling that lands on clean tick values. */
@@ -113,7 +162,7 @@ export function isNamed(name: string | null | undefined): name is string {
 
 /** A place's name for display; the server's "Unknown Location" placeholder counts as no name. */
 export function placeLabel(name: string | null | undefined, fallback = "Unnamed place"): string {
-  return isNamed(name) ? name : fallback;
+  return isNamed(name) ? displayName(name) : fallback;
 }
 
 /** Fastest believable average speed (km/h) per travel mode. */
@@ -129,3 +178,17 @@ export function isLikelyDrift(mode: string, distanceM: number | null, durationS:
   if (!max || !distanceM || !durationS || durationS < 60) return false;
   return distanceM / 1000 / (durationS / 3600) > max;
 }
+
+/**
+ * A place name as people say it: without the postcode the geocoder puts first
+ * ("00990 Esimerkkitie 2" → "Esimerkkitie 2").
+ */
+export function displayName(name: string): string {
+  const stripped = name.replace(/^\s*(?:[A-Z]{1,2}-)?\d{5}\s+(?=\S*\D)/, "").trim();
+  return stripped || name;
+}
+
+/** "artwork" → "Artwork", "bus stop" → "Bus stop": a lowercase tag as a label. */
+export const sentenceCase = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+// TEMP (insights fork, for screenshots while Overview is mid-rewrite): remove.

@@ -51,7 +51,7 @@ export const PRESETS: Record<PresetKey, Preset> = {
   low: {
     key: "low",
     label: "Low power",
-    description: "Wi-Fi/cell positioning, a point every ≥2 min / 100 m. Coarse trips, lowest drain.",
+    description: "Lowest battery · rough routes",
     options: {
       accuracy: Location.Accuracy.Balanced,
       timeInterval: 120_000,
@@ -69,7 +69,7 @@ export const PRESETS: Record<PresetKey, Preset> = {
   balanced: {
     key: "balanced",
     label: "Balanced",
-    description: "GPS, a point every ≥30 s / 25 m while moving. Recommended for all-day use.",
+    description: "All-day use · recommended",
     options: {
       accuracy: Location.Accuracy.High,
       timeInterval: 30_000,
@@ -85,7 +85,7 @@ export const PRESETS: Record<PresetKey, Preset> = {
   precise: {
     key: "precise",
     label: "Precise",
-    description: "Best GPS, a point every ≥10 s / 10 m. Detailed routes, noticeably more battery.",
+    description: "Detailed routes · more battery",
     options: {
       accuracy: Location.Accuracy.Highest,
       timeInterval: 10_000,
@@ -101,7 +101,7 @@ export const PRESETS: Record<PresetKey, Preset> = {
   max: {
     key: "max",
     label: "Max detail",
-    description: "Best GPS, a point every ~2 s / 5 m. For hikes, runs, or a perfect route. Drains the battery fast.",
+    description: "Hikes and runs · drains fast",
     options: {
       // iOS: navigation-grade accuracy. Android maps this to high accuracy, same as High.
       accuracy: Location.Accuracy.BestForNavigation,
@@ -118,7 +118,7 @@ export const PRESETS: Record<PresetKey, Preset> = {
   custom: {
     key: "custom",
     label: "Custom",
-    description: "Pick accuracy, distance and time yourself.",
+    description: "Choose accuracy, distance and time",
     // Placeholder: the real options come from customOptions() with the stored choices.
     options: { accuracy: Location.Accuracy.High, foregroundService: FOREGROUND_SERVICE },
   },

@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { BackHandler, View } from "react-native";
 import { useTheme } from "../design/theme";
-import { Segmented } from "../ui";
+import { Tabs } from "../ui";
 import { ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, type InsightsSegment } from "../ui/session";
 import PlacesScreen from "./PlacesScreen";
@@ -66,11 +66,17 @@ export default function InsightsScreen({
     return () => sub.remove();
   }, [active, depth]);
 
+  // One app bar for every segment: the title, then M3 tabs. Pushed views
+  // (a trip, a country, a city) cover it with their own back-arrow app bar.
   const header = (
-    <View style={{ gap: t.space.lg }}>
+    <View style={{ backgroundColor: t.c.bg }}>
       <ScreenHeader title="Insights" />
-      <Segmented label="Insights" options={SEGMENTS} value={segment} onChange={onSegment} />
-      {authLost ? <PairingLost /> : null}
+      <Tabs label="Insights" options={SEGMENTS} value={segment} onChange={onSegment} />
+      {authLost ? (
+        <View style={{ paddingHorizontal: t.layout.gutter, paddingTop: t.space.md }}>
+          <PairingLost />
+        </View>
+      ) : null}
     </View>
   );
 
@@ -78,13 +84,13 @@ export default function InsightsScreen({
   const segmentView = (s: InsightsSegment) => {
     switch (s) {
       case "travel":
-        return <TravelView header={header} />;
+        return <TravelView />;
       case "trips":
-        return <TripsView header={header} onOpen={(trip) => push({ kind: "trip", id: trip.id, name: trip.name })} />;
+        return <TripsView onOpen={(trip) => push({ kind: "trip", id: trip.id, name: trip.name })} />;
       case "world":
-        return <WorldView header={header} onOpenCountry={(name) => push({ kind: "country", name })} onOpenCity={openCity} />;
+        return <WorldView onOpenCountry={(name) => push({ kind: "country", name })} onOpenCity={openCity} />;
       case "places":
-        return <PlacesScreen top={header} />;
+        return <PlacesScreen embedded />;
     }
   };
 
@@ -96,6 +102,7 @@ export default function InsightsScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: t.c.bg }}>
+      {top ? null : header}
       {SEGMENTS.filter((x) => seen.has(x.value)).map((x) => (
         <View key={x.value} style={{ flex: 1, display: !top && segment === x.value ? "flex" : "none" }}>
           {segmentView(x.value)}
@@ -105,9 +112,9 @@ export default function InsightsScreen({
       {stack.map((r, i) => (
         <View key={`${i}:${r.kind}:${r.name}`} style={{ flex: 1, display: i === stack.length - 1 ? "flex" : "none" }}>
           {r.kind === "trip" ? (
-            <TripDetailView id={r.id} name={r.name} onBack={pop} onOpenCity={openCity} />
+            <TripDetailView id={r.id} name={r.name} backLabel={backLabel(i)} onBack={pop} onOpenCity={openCity} />
           ) : r.kind === "country" ? (
-            <WorldView country={r.name} onBack={pop} onOpenCountry={() => {}} onOpenCity={openCity} />
+            <WorldView country={r.name} backLabel={backLabel(i)} onBack={pop} onOpenCountry={() => {}} onOpenCity={openCity} />
           ) : (
             <CityView name={r.name} country={r.country} backLabel={backLabel(i)} onBack={pop} />
           )}

@@ -6,7 +6,13 @@
 
 import type { LucideIcon } from "lucide-react-native";
 import Activity from "lucide-react-native/icons/activity";
+import ArrowLeft from "lucide-react-native/icons/arrow-left";
 import ArrowUp from "lucide-react-native/icons/arrow-up";
+import ArrowUpDown from "lucide-react-native/icons/arrow-up-down";
+import CalendarDays from "lucide-react-native/icons/calendar-days";
+import CalendarX from "lucide-react-native/icons/calendar-x";
+import CircleCheck from "lucide-react-native/icons/circle-check";
+import MapPinned from "lucide-react-native/icons/map-pinned";
 import BatteryWarning from "lucide-react-native/icons/battery-warning";
 import BedDouble from "lucide-react-native/icons/bed-double";
 import Bike from "lucide-react-native/icons/bike";
@@ -128,6 +134,9 @@ export const ICONS = {
   trip: Luggage,
   route: Route,
   calendar: Calendar,
+  calendarDays: CalendarDays,
+  noDays: CalendarX,
+  mapOn: MapPinned,
   gps: LocateFixed,
   photo: ImageIcon,
   camera: Camera,
@@ -143,6 +152,8 @@ export const ICONS = {
 
   // ---- actions ----
   back: ChevronLeft,
+  arrowBack: ArrowLeft,
+  sort: ArrowUpDown,
   forward: ChevronRight,
   chevronRight: ChevronRight,
   expand: ChevronDown,
@@ -167,6 +178,7 @@ export const ICONS = {
 
   // ---- status ----
   error: CircleAlert,
+  ok: CircleCheck,
   warning: TriangleAlert,
   info: Info,
 } satisfies Record<string, LucideIcon>;

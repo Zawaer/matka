@@ -408,3 +408,77 @@ by the phone app, are in [redesign/palette.md](redesign/palette.md).
   turns the field red and reselects it, and the copy has no env var names. The
   pair page has its logo inside the card, and the 404 eyebrow is no longer
   spaced caps.
+
+## Round 2 (app)
+
+Driven by [the round 2 critique](redesign/critique-app-r2.md) (its top 15 and
+its per-screen notes). Screenshots: before `/tmp/shots/redesign/r2/app/review/`,
+after `/tmp/shots/redesign/r2/app/after/{light,dark}/` (all 33 shots pass in
+both themes).
+
+**Type.** Inter is bundled at 400 / 500 / 600 (`@expo-google-fonts/inter`,
+added with `npx expo install`; a JS/asset package, no native module). The
+`expo-font` config plugin in `app.json` embeds the three files at build time:
+on Android as one XML font family `Inter`, so `fontFamily: "Inter"` plus
+`fontWeight` picks the face, and the font is there from the first frame in
+dev and release builds. The web preview loads the same faces with `useFonts`
+(`src/design/fonts.web.ts`) and holds the first render until they are in.
+`Text` and the text inputs set the family. Nothing is 800 any more: app bar
+titles 22/600, the one hero number 28/600, stats 22 or 17/600, section headers
+17/600, row titles 15/500. The APK needs a native rebuild for the font.
+
+**Colour.** Mode colours are the shared round 2 palette
+(`docs/redesign/palette.md`): Train/Metro a slate away from the accent, Flight
+a plum, Ferry teal, darker Bus/Walk/Run on light so every mark is 3:1. Unselected
+chart bars, place-time bars and sparkline bars are a neutral grey at 3:1
+(`barMuted`); the accent marks only the selection. Saved-place tiles and badges
+are neutral. Line badges keep HSL's signage colours as the shared rules say, in
+the shared badge shape (12/16 at 500, 4 radius). Banners are tone containers
+with tonal buttons of the same tone; status colour is only on icons and banners
+(`InfoRow` shows a 16 px status icon, values stay in text colour).
+
+**Formatting.** One module, `src/format.ts`, with the shared rules: comma
+grouping, distances "340 m / 8.4 km / 1,137 km", single durations "6 h 34 min",
+totals "12 d 3 h" then "46 d", "52%", 24-hour times, three-letter months,
+"Today / Yesterday / Sun 18 Oct" headings, postcodes stripped from place names
+(`displayName`), OSM tags sentence-cased. `insights-logic` and `search` use it.
+
+**Headers.** `ScreenHeader` is the one tab app bar (22/600, 56 tall, trailing
+icon buttons, fixed above the scroll), `AppBar` the pushed-view bar (back arrow
+in a 48 target, title inline), `Pager` a single "‹ October 2026 ›" line with a
+skeleton instead of "…". Insights has the title plus M3 primary `Tabs`;
+`Segmented` is now M3 segmented buttons. One section-header style everywhere
+(sentence case, 17/600), including grouped lists and sheets; no uppercase.
+
+**Timeline.** Date in the app bar ("Sun 18 Oct", with ‹ › and a calendar that
+opens a month picker of days with data, `ui/DayPicker.tsx`). The day map is
+full-bleed under the app bar with a floating hide button and no header row.
+Day stats are one line plus the shared stacked mode bar (`ui/ModeShare.tsx`)
+and a glyph/value legend, no chips. Visits are plain rows (no cards) on one
+text start, duration in the meta line, tonal background when selected; one
+continuous 2 dp rail, mode-coloured between stops; travel rows one line, the
+whole row opens "Fix this trip", a muted chevron, no pencils, no number badges.
+Stationary is a muted rail note; "Noisy GPS — distance not counted";
+"Missing travel" in text colour with amber only on the rail and icon and the
+button under the text; gap rows in the same order. "Were you here?" has a
+tonal Yes and a text Pick another; candidates are left-aligned rows with a
+glyph and a sentence-case type. Skeleton with a rail. Photo viewer is opaque
+black with a caption. Fix sheet: neutral glyphs except the chosen mode, tint
+plus a check, no border, Save without an icon.
+
+**Other screens.** Overview: "Overview" app bar, hero and the four stats in
+one card, y labels centred on gridlines, three-letter months with the year
+under January, no "Tap a month", place-time and recent-visit lists on one row
+anatomy, recent visits under day headings, a skeleton in the final shape.
+Insights (Travel, Trips, Trip detail, World, City, Places) and Recorder,
+Settings, Pair: see the Response in the critique for each item.
+
+**Data.** The trip "Lisbon 4 d 6 h" vs City "4 d 1 h" mismatch was mock data
+(trip city hours larger than the places' totals) plus two different metrics.
+The mock is fixed, and both sides are labelled: trip rows "Time on this trip",
+the City stat "Time, all visits". No server change.
+
+**Still open.** Settings distance/time use a sheet of options rather than a
+slider. Transit badges keep operator colours (shared decision). The Map tab
+still has no floating search/date pill. Fonts, shadows and the Switch thumb in
+the shots are the browser's.

@@ -791,3 +791,25 @@ on empty Timeline / Trips), St3 (Insights pager active on error).
     "Details". One-line preset descriptions without ≥/~ symbols. Plus
     "(Home)", "GPS jumped around here", and lowercase OSM tags ("artwork",
     "address") in the candidate list.
+
+---
+
+## Response (round 2, app)
+
+1. **Timeline top: done.** The date is in the app bar with ‹ › and a calendar (a month picker). The map is full-bleed with no header row. The stats are one line, the shared stacked bar and a glyph legend.
+2. **Type weights: done.** Inter at 400/500/600 is embedded by the expo-font plugin (it loads before first render, release too). Nothing is 800.
+3. **Timeline row anatomy: done.** Visits are plain rows on one text start. One 2 dp rail. Travel rows are one line and the row opens the Fix sheet. No pencils, no number badges, durations in the meta line.
+4. **Colour means data: done.** Unselected bars are neutral at 3:1. Saved tiles and badges are neutral. Train/Metro are slate and the Bus/Walk/Run glyphs are darker, per the shared palette.
+5. **Mode and transit collisions: partly.** Tram/Metro still share the Bus/Train slots: the shared palette keeps eight validated colours, and rows and legends name them. Line badges keep HSL signage colours (a shared web/app decision), in the shared badge shape.
+6. **One format module: done.** `format.ts` holds the shared rules (comma, "12 d 3 h"/"46 d", "52%", "Sep", 24 h), and postcodes are stripped.
+7. **One header system: done.** Every tab and Pair use `ScreenHeader`, pushed views use the `AppBar` back arrow, and the greeting is gone.
+8. **One section-header style: done.** Sentence case 17/600 everywhere, including grouped lists and sheets.
+9. **Trip covers: done.** An SVG `LinearGradient` scrim, title and meta on one left column, a neutral fallback in light mode, no chip footer. There's no map thumbnail; no static-map source exists in the app.
+10. **Chips that aren't filters: done.** Trip cards, Day by day, search dates, city chips and Timeline stats became meta text or rows. Chips remain only for real choices.
+11. **By mode: done.** A shared scale, neutral bars, compact rows, quiet modes collapsed into one "Also: …" line, and a two-column legend.
+12. **World: done.** A "Sort: Visits" sheet, a trailing value that matches the sort, Countries/Cities in the list header, ISO-code tiles, and no city tiles.
+13. **Overview hierarchy: done.** The hero and stats are one card, labels sit on gridlines, months are three letters with the year, durations are muted, both lists share one row anatomy, and recent visits are grouped by day.
+14. **Loading and states: done.** Skeletons are in the final shape (Overview grid and chart, Timeline rail, app bar title). There's no "…", the Insights pager hides on error, empty Timeline and Trips have an action, and the photo viewer is opaque with a caption.
+15. **Copy pass: done.** Recorder has a health line, and diagnostics sit behind Details. Presets have one-line descriptions. Also fixed: "(Home)", "Noisy GPS — distance not counted", and sentence-case candidate types.
+
+**Data mismatch:** the mismatch came from preview mock data plus two different metrics (time on this trip vs all visits to the city), not a server bug. The mock is fixed and both values are labelled.

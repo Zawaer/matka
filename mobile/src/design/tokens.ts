@@ -39,6 +39,7 @@ export type Colors = {
   warningSoft: string;
   success: string;
   successSoft: string;
+  /** Unselected chart bars: neutral, 3:1 on surface (the accent marks only the selection). */
   barMuted: string;
   grid: string;
   skeleton: string;
@@ -66,7 +67,7 @@ export const palette: Record<Scheme, Colors> = {
     warningSoft: "#FDF2DE",
     success: "#14775A",
     successSoft: "#E2F3EB",
-    barMuted: "#D5D3F6",
+    barMuted: "#8E8E99",
     grid: "#EAEAEF",
     skeleton: "#E9E9EE",
     scrim: "rgba(10,10,14,0.45)",
@@ -91,7 +92,7 @@ export const palette: Record<Scheme, Colors> = {
     warningSoft: "#33291A",
     success: "#5BCFA3",
     successSoft: "#16302A",
-    barMuted: "#35335E",
+    barMuted: "#66666F",
     grid: "#26262C",
     skeleton: "#24242A",
     scrim: "rgba(0,0,0,0.6)",
@@ -99,30 +100,40 @@ export const palette: Record<Scheme, Colors> = {
 };
 
 /**
- * Travel-mode colours: the data-viz categorical palette, fixed slot order, validated
- * with the dataviz skill's validator in both modes (adjacent CVD dE >= 8.4, normal
- * vision dE >= 19). The most common modes take slots 1-3 so they also pass the
- * strict all-pairs check. Walking, bus and running fall under 3:1 on white, so
- * every leg is always shown with an icon and a text label (the relief rule).
+ * Travel-mode colours: the shared round-2 palette (docs/redesign/palette.md, the
+ * same values as the web's --mk-*). Eight slots, every one at least 3:1 on every
+ * surface in its theme, Train/Metro a slate well away from the indigo accent and
+ * Flight a plum away from danger. Tram shares Bus, Metro shares Train and
+ * Motorbike shares Drive: the row, legend and line badge carry the name.
  */
-const MODE_SLOTS: Record<Scheme, string[]> = {
-  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"],
-  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
+const MODE_COLORS: Record<Scheme, Record<string, string>> = {
+  light: {
+    driving: "#2a6fdb",
+    cycling: "#c4620f",
+    walking: "#1d8a5a",
+    bus: "#9c7a00",
+    running: "#cc4a86",
+    boat: "#0b5e7a",
+    train: "#686b8f",
+    flying: "#8c3aa3",
+  },
+  dark: {
+    driving: "#3d86e0",
+    cycling: "#e0782f",
+    walking: "#36b27a",
+    bus: "#d6a52a",
+    running: "#e8679f",
+    boat: "#4cb8d0",
+    train: "#8f93b3",
+    flying: "#b45fd0",
+  },
 };
-const MODE_ORDER = ["driving", "cycling", "walking", "bus", "running", "boat", "train", "flying"] as const;
 
-export type ModeKey =
-  | (typeof MODE_ORDER)[number]
-  | "motorcycle"
-  | "stationary"
-  | "unknown";
+export type ModeKey = "driving" | "cycling" | "walking" | "bus" | "running" | "boat" | "train" | "flying" | "motorcycle" | "stationary" | "unknown";
 
 export function modeColor(mode: string, scheme: Scheme, mutedFallback: string): string {
-  // 11 modes, 8 validated slots: these share a slot with their closest mode; the
-  // timeline row's icon, label and line badge tell them apart.
   const key = mode === "motorcycle" ? "driving" : mode === "tram" ? "bus" : mode === "metro" ? "train" : mode;
-  const i = (MODE_ORDER as readonly string[]).indexOf(key);
-  return i >= 0 ? MODE_SLOTS[scheme][i] : mutedFallback;
+  return MODE_COLORS[scheme][key] ?? mutedFallback;
 }
 
 /** The 4 px grid. Inside a card 12 or 16; between groups 24 or 32. */
@@ -146,42 +157,44 @@ export const layout = {
 export type TypeStyle = {
   fontSize: number;
   lineHeight: number;
-  fontWeight: "400" | "500" | "800";
+  fontWeight: "400" | "500" | "600";
   letterSpacing?: number;
-  textTransform?: "uppercase";
 };
 
+/** The app's one typeface, bundled at 400 / 500 / 600 (app.json expo-font plugin; design/fonts). */
+export const FONT_FAMILY = "Inter";
+
 /**
- * Type scale: the iOS sizes (11 / 12 / 13 / 15 / 17 / 22 / 28 / 34), nothing in
- * between. Weight carries hierarchy before size: 400 for reading, 500 for row
- * titles and labels, 800 only for screen titles and big numbers. (Measured on the
- * phone, Android draws 600 and 700 as regular; 500 is Roboto Medium, 800 a real bold.)
+ * Type scale: the iOS sizes (11 / 12 / 13 / 15 / 17 / 22 / 28), nothing in
+ * between. Inter at three weights: 400 for reading, 500 for row titles and
+ * labels, 600 for titles and numbers. Nothing heavier: hierarchy comes from
+ * weight and tone, not from shouting.
  */
 export const type = {
   /** One hero number per screen (Overview total). */
-  display: { fontSize: 34, lineHeight: 40, fontWeight: "800", letterSpacing: -0.8 },
-  /** Screen titles. */
-  title1: { fontSize: 28, lineHeight: 34, fontWeight: "800", letterSpacing: -0.5 },
-  /** Detail titles, the day / month in a pager. */
-  title2: { fontSize: 22, lineHeight: 28, fontWeight: "800", letterSpacing: -0.3 },
-  /** Section headers and card titles. */
-  title3: { fontSize: 17, lineHeight: 22, fontWeight: "500", letterSpacing: -0.1 },
-  /** Stat tiles (tabular). */
-  stat: { fontSize: 28, lineHeight: 32, fontWeight: "800", letterSpacing: -0.5 },
-  /** Small stats: the timeline's day totals, row values. */
-  statSm: { fontSize: 17, lineHeight: 22, fontWeight: "800", letterSpacing: -0.2 },
+  display: { fontSize: 28, lineHeight: 34, fontWeight: "600", letterSpacing: -0.5 },
+  /** App bar titles (tabs and pushed views). */
+  title1: { fontSize: 22, lineHeight: 28, fontWeight: "600", letterSpacing: -0.3 },
+  /** Sheet titles, cover titles over photos. */
+  title2: { fontSize: 22, lineHeight: 28, fontWeight: "600", letterSpacing: -0.3 },
+  /** Section headers (one style everywhere, sentence case). */
+  title3: { fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.2 },
+  /** Big numbers in a stat card (tabular). */
+  stat: { fontSize: 22, lineHeight: 28, fontWeight: "600", letterSpacing: -0.3 },
+  /** Small stats: row values, the day's totals. */
+  statSm: { fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.2 },
   /** Row titles. */
   headline: { fontSize: 15, lineHeight: 20, fontWeight: "500" },
   /** Paragraphs. */
   body: { fontSize: 15, lineHeight: 22, fontWeight: "400" },
-  /** Row metadata, secondary lines. */
+  /** Row metadata, secondary lines, trailing values. */
   callout: { fontSize: 13, lineHeight: 18, fontWeight: "400" },
   /** Button and chip labels. */
   label: { fontSize: 13, lineHeight: 18, fontWeight: "500" },
   /** Captions, axis labels, footnotes. */
   caption: { fontSize: 12, lineHeight: 16, fontWeight: "400" },
-  /** Group labels above lists (Settings, Recorder). */
-  overline: { fontSize: 12, lineHeight: 16, fontWeight: "500", letterSpacing: 0.6, textTransform: "uppercase" },
+  /** Small group labels (sentence case, never uppercase). */
+  overline: { fontSize: 13, lineHeight: 18, fontWeight: "500" },
   /** The smallest text: badges in tight spots, axis ticks. */
   micro: { fontSize: 11, lineHeight: 13, fontWeight: "500" },
 } satisfies Record<string, TypeStyle>;

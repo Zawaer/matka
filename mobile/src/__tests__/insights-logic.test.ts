@@ -16,9 +16,13 @@ import {
   savedRowText,
   scaled,
   tripDates,
+  countryCode,
   tripLength,
+  tripMeta,
   tripsByYear,
   worldCounts,
+  worldMeta,
+  worldTrailing,
 } from "../insights-logic";
 
 const mt = (mode: ModeTotal["mode"], distance: number, duration = distance, count = 1): ModeTotal => ({ mode, distance, duration, count });
@@ -27,22 +31,33 @@ describe("formatting", () => {
   test("fmtKm", () => {
     expect(fmtKm(340)).toBe("340 m");
     expect(fmtKm(8_400)).toBe("8.4 km");
-    expect(fmtKm(1_234_567)).toBe("1 235 km");
+    expect(fmtKm(1_234_567)).toBe("1,235 km");
+    expect(fmtKm(136_500)).toBe("137 km");
     expect(fmtKm(null)).toBe("—");
   });
 
-  test("fmtLongDuration switches to days from 48 h", () => {
+  test("fmtLongDuration: h min under a day, d h under 30 days, whole days after", () => {
     expect(fmtLongDuration(0)).toBe("—");
     expect(fmtLongDuration(45)).toBe("45 s");
     expect(fmtLongDuration(3 * 3600 + 20 * 60)).toBe("3 h 20 min");
-    expect(fmtLongDuration(47 * 3600)).toBe("47 h");
-    expect(fmtLongDuration(4 * 86_400 + 6 * 3600)).toBe("4 d 6 h");
+    expect(fmtLongDuration(25 * 3600)).toBe("1 d 1 h");
+    expect(fmtLongDuration(12 * 86_400 + 3 * 3600)).toBe("12 d 3 h");
     expect(fmtLongDuration(3 * 86_400)).toBe("3 d");
+    expect(fmtLongDuration((1110 * 60 + 51) * 60)).toBe("46 d");
   });
 
-  test("fmtHours", () => {
-    expect(fmtHours(3.5 * 3600)).toBe("3.5 h");
-    expect(fmtHours(62.4 * 3600)).toBe("62 h");
+  test("fmtHours is a total of time", () => {
+    expect(fmtHours(3.5 * 3600)).toBe("3 h 30 min");
+    expect(fmtHours(62 * 3600)).toBe("2 d 14 h");
+  });
+
+  test("tripMeta: one line, year left to the heading", () => {
+    expect(tripMeta({ startDate: "2026-10-02", endDate: "2026-10-04", arrival: "x", days: 3, distance: 381_000, countries: ["Estonia"] })).toBe(
+      "2–4 Oct · 3 days · 381 km · Estonia",
+    );
+    expect(tripMeta({ startDate: "2026-12-30", endDate: "2027-01-02", arrival: null, days: 4, distance: 0, countries: [] })).toBe(
+      "30 Dec 2026 – 2 Jan 2027 · ongoing · 4 days",
+    );
   });
 
   test("months", () => {
@@ -120,15 +135,30 @@ describe("modes", () => {
 describe("saved places and world", () => {
   const row = (r: Partial<SavedRow>): SavedRow => ({ placeId: 1, name: null, kind: "other", seconds: 0, nights: 0, ...r });
 
-  test("homes lead with nights, others with hours", () => {
+  test("one trailing value (time); kind and nights in the meta line", () => {
     expect(savedRowText(row({ kind: "family", name: "Mom's", seconds: 210 * 3600, nights: 9 }))).toEqual({
       title: "Mom's",
-      subtitle: "Family",
-      primary: "9 nights",
-      secondary: "210 h",
+      subtitle: "Family · 9 nights",
+      primary: "8 d 18 h",
     });
-    expect(savedRowText(row({ kind: "school", seconds: 62 * 3600 }))).toEqual({ title: "School", subtitle: null, primary: "62 h", secondary: null });
-    expect(savedRowText(row({ kind: "home", name: "Home", seconds: 3600 }))).toMatchObject({ subtitle: null, primary: "1 h" });
+    expect(savedRowText(row({ kind: "school", seconds: 6 * 3600 }))).toEqual({ title: "School", subtitle: null, primary: "6 h" });
+    expect(savedRowText(row({ kind: "home", name: "Home", seconds: 3600, nights: 1 }))).toMatchObject({ subtitle: "1 night", primary: "1 h" });
+  });
+
+  test("world rows: trailing value follows the sort", () => {
+    const e = { name: "Finland", country: null, places: 1200, visits: 4, duration: 3 * 86_400 + 4 * 3600, lastVisit: null, cities: 3 };
+    expect(worldTrailing(e, "visits")).toBe("4 visits");
+    expect(worldTrailing(e, "places")).toBe("1,200 places");
+    expect(worldTrailing(e, "time")).toBe("3 d 4 h");
+    expect(worldMeta(e, "visits")).toBe("3 cities · 1,200 places");
+    expect(worldMeta(e, "places")).toBe("3 cities · 4 visits");
+  });
+
+  test("countryCode", () => {
+    expect(countryCode("Finland")).toBe("FI");
+    expect(countryCode("United Kingdom")).toBe("GB");
+    expect(countryCode("Atlantis")).toBeNull();
+    expect(countryCode(null)).toBeNull();
   });
 
   test("worldCounts", () => {

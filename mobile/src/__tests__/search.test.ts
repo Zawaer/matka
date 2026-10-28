@@ -95,13 +95,12 @@ describe("formatting", () => {
   });
   it("rounds time spent", () => {
     expect(fmtTimeSpent(45 * 60)).toBe("45 min");
-    expect(fmtTimeSpent(9 * 3600 + 600)).toBe("9 h");
+    expect(fmtTimeSpent(9 * 3600 + 600)).toBe("9 h 10 min");
     expect(fmtTimeSpent(3 * 86_400 + 4 * 3600)).toBe("3 d 4 h");
   });
   it("summarises the visits", () => {
-    expect(visitLine({ lastVisitDate: "2026-10-18", visitCount: 12, totalTime: 9 * 3600 }, now)).toBe(
-      "Last visit 18 Oct 2026 · 12 visits · 9 h",
-    );
+    expect(visitLine({ lastVisitDate: "2026-10-18", visitCount: 12, totalTime: 9 * 3600 }, now)).toBe("12 visits · last 18 Oct");
+    expect(visitLine({ lastVisitDate: "2025-03-02", visitCount: 1, totalTime: 60 }, now)).toBe("1 visit · last 2 Mar 2025");
     expect(visitLine({ lastVisitDate: null, visitCount: 0, totalTime: 0 }, now)).toBe("No visits yet");
   });
 });

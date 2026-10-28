@@ -6,6 +6,7 @@ import { Animated, Easing, Pressable, TextInput, View, type StyleProp, type Text
 import { describeError } from "../error-copy";
 import { modeMeta } from "../design/modes";
 import { useStyles, useTheme, type Theme } from "../design/theme";
+import { FONT_FAMILY } from "../design/tokens";
 import { Icon, type IconName, type IconSize } from "./Icon";
 import { Text } from "./Text";
 
@@ -100,11 +101,12 @@ export function ModeIcon({ mode, size = 32 }: { mode: string; size?: 24 | 32 | 4
 
 /* ---------------- actions ---------------- */
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "surface";
+export type ButtonVariant = "primary" | "secondary" | "tonal" | "ghost" | "danger";
 
 /**
- * One solid (primary) button per screen; everything else secondary (tonal),
- * ghost (text) or danger. 48 tall; `size="sm"` is 36 tall with the same 48 touch area.
+ * One solid (primary) button per screen; everything else secondary (neutral
+ * tonal), tonal (the accent's or a status tone's container), ghost (text) or
+ * danger. 48 tall; `size="sm"` is 40 tall with the same 48 touch area.
  */
 export function Button({
   label,
@@ -115,10 +117,13 @@ export function Button({
   busy,
   disabled,
   stretch,
+  tone,
   accessibilityLabel,
 }: {
   label: string;
   icon?: IconName;
+  /** With variant "tonal": whose container colour (accent by default; a status tone on a banner). */
+  tone?: Tone;
   onPress?: () => void;
   variant?: ButtonVariant;
   size?: "md" | "sm";
@@ -129,15 +134,15 @@ export function Button({
   accessibilityLabel?: string;
 }) {
   const t = useTheme();
+  const tonal = !tone || tone === "accent" ? { bg: t.c.primarySoft, fg: t.c.primary } : { bg: t.alpha(toneColors(t, tone).fg, 0.16), fg: toneColors(t, tone).fg };
   const look = {
     primary: { bg: t.c.primary, fg: t.c.onPrimary },
     secondary: { bg: t.c.surfaceAlt, fg: t.c.text },
+    tonal,
     ghost: { bg: "transparent", fg: t.c.primary },
     danger: { bg: t.c.dangerSoft, fg: t.c.danger },
-    // On a tinted banner: a plain surface button.
-    surface: { bg: t.c.surface, fg: t.c.text },
   }[variant];
-  const h = size === "sm" ? 36 : 48;
+  const h = size === "sm" ? 40 : 48;
   return (
     <Pressable
       onPress={onPress}
@@ -145,10 +150,10 @@ export function Button({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: !!(disabled || busy), busy: !!busy }}
-      hitSlop={size === "sm" ? 6 : 0}
+      hitSlop={size === "sm" ? 4 : 0}
       style={({ pressed }) => ({
         height: h,
-        paddingHorizontal: variant === "ghost" ? t.space.sm : size === "sm" ? t.space.md : t.space.lg,
+        paddingHorizontal: variant === "ghost" ? t.space.md : size === "sm" ? t.space.lg : t.space.xl,
         borderRadius: t.radius.sm,
         flexDirection: "row",
         alignItems: "center",
@@ -280,7 +285,11 @@ export function Badge({ label, tone = "neutral", icon }: { label: string; tone?:
   );
 }
 
-/** One choice out of a few short options (Insights segments, Countries/Cities, presets). */
+/**
+ * M3 segmented buttons: one choice out of two to five short options (a
+ * setting, a scan/type switch). Outlined, 40 tall in a 48 target, the chosen
+ * segment filled with the accent container and a check.
+ */
 export function Segmented<T extends string | number>({
   options,
   value,
@@ -288,7 +297,7 @@ export function Segmented<T extends string | number>({
   label,
   showLabel,
   disabled,
-  role = "tablist",
+  role = "radiogroup",
 }: {
   options: readonly { value: T; label: string; icon?: IconName }[];
   value: T;
@@ -305,33 +314,35 @@ export function Segmented<T extends string | number>({
     <View
       accessibilityRole={role}
       accessibilityLabel={label}
-      style={{ flexDirection: "row", backgroundColor: t.c.surfaceAlt, borderRadius: t.radius.sm, padding: 4, gap: 4 }}
+      style={{ flexDirection: "row", borderWidth: 1, borderColor: t.c.borderStrong, borderRadius: t.radius.pill, overflow: "hidden", height: 40 }}
     >
-      {options.map((o) => {
+      {options.map((o, i) => {
         const on = o.value === value;
+        const glyph = on ? "check" : o.icon;
         return (
           <Pressable
             key={String(o.value)}
             disabled={disabled}
             onPress={() => onChange(o.value)}
+            hitSlop={{ top: 4, bottom: 4 }}
             accessibilityRole={role === "tablist" ? "tab" : "radio"}
             accessibilityState={role === "tablist" ? { selected: on, disabled } : { checked: on, disabled }}
             accessibilityLabel={o.label}
-            style={{
+            style={({ pressed }) => ({
               flex: 1,
-              height: 36,
               flexDirection: "row",
               gap: 6,
               alignItems: "center",
               justifyContent: "center",
-              borderRadius: t.radius.sm - 3,
-              backgroundColor: on ? t.c.raised : "transparent",
-              boxShadow: on && t.scheme === "light" ? "0 1px 2px rgba(16,16,24,0.10)" : undefined,
+              paddingHorizontal: t.space.xs,
+              borderLeftWidth: i > 0 ? 1 : 0,
+              borderLeftColor: t.c.borderStrong,
+              backgroundColor: on ? t.c.primarySoft : pressed ? t.c.surfaceAlt : "transparent",
               opacity: disabled ? 0.5 : 1,
-            }}
+            })}
           >
-            {o.icon ? <Icon name={o.icon} size={16} color={on ? t.c.text : t.c.textSecondary} /> : null}
-            <Text variant="label" numberOfLines={1} style={{ color: on ? t.c.text : t.c.textSecondary }}>
+            {glyph ? <Icon name={glyph} size={16} color={on ? t.c.primary : t.c.textSecondary} /> : null}
+            <Text variant="label" numberOfLines={1} style={{ color: on ? t.c.primary : t.c.text }}>
               {o.label}
             </Text>
           </Pressable>
@@ -346,6 +357,56 @@ export function Segmented<T extends string | number>({
         {label}
       </Text>
       {track}
+    </View>
+  );
+}
+
+/**
+ * M3 primary tabs: text tabs on a hairline, the current one in the accent
+ * with a 3 dp indicator. 48 tall. For switching views (Insights segments,
+ * Countries / Cities).
+ */
+export function Tabs<T extends string>({
+  options,
+  value,
+  onChange,
+  label,
+  inset = 0,
+}: {
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  label: string;
+  /** Side padding (the tabs run edge to edge under an app bar). */
+  inset?: number;
+}) {
+  const t = useTheme();
+  return (
+    <View
+      accessibilityRole="tablist"
+      accessibilityLabel={label}
+      style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: t.c.border, paddingHorizontal: inset }}
+    >
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={o.label}
+            style={({ pressed }) => ({ flex: 1, height: 48, alignItems: "center", justifyContent: "center", backgroundColor: pressed ? t.c.surfaceAlt : "transparent" })}
+          >
+            <Text variant="label" style={{ fontSize: 14, color: on ? t.c.primary : t.c.textSecondary }} numberOfLines={1}>
+              {o.label}
+            </Text>
+            {on ? (
+              <View style={{ position: "absolute", bottom: -1, height: 3, width: 40, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: t.c.primary }} />
+            ) : null}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -503,7 +564,11 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
   );
 }
 
-/** Tinted notice with an icon on the first line, a message and optional actions underneath. */
+/**
+ * A notice in its tone's container colour (M3 card): the icon in the tone,
+ * the title and message in text colours, actions as tonal buttons of the same
+ * tone (pass `variant="tonal" tone=…` to Buttons inside).
+ */
 export function Banner({
   tone,
   icon,
@@ -527,12 +592,8 @@ export function Banner({
           <Icon name={glyph} size={20} color={fg} />
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          {title ? (
-            <Text variant="headline" style={{ color: fg }}>
-              {title}
-            </Text>
-          ) : null}
-          <Text variant="callout" style={{ color: title ? t.c.text : fg, lineHeight: 20 }}>
+          {title ? <Text variant="headline">{title}</Text> : null}
+          <Text variant="callout" color={title ? "textSecondary" : "text"} style={{ lineHeight: 20 }}>
             {message}
           </Text>
         </View>
@@ -569,6 +630,7 @@ export function Field(props: TextInputProps & { dense?: boolean }) {
           color: t.c.text,
           paddingHorizontal: focused ? t.space.md - 1 : t.space.md,
           fontSize: 15,
+          fontFamily: FONT_FAMILY,
         },
         style,
       ]}

@@ -2,15 +2,15 @@ import { useCallback } from "react";
 import { View } from "react-native";
 import { categoryMeta } from "../../design/categories";
 import { getCity } from "../../insights";
-import { placeLabel } from "../../format";
-import { fmtLongDuration, fmtShortDate, plural } from "../../insights-logic";
+import { group, placeLabel } from "../../format";
+import { fmtCompactDate, fmtLongDuration, plural } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
-import { Card, EmptyState, ErrorState, IconTile, ListGroup, ListRow, Skeleton, StatGrid } from "../../ui";
-import { BackLink, DetailTitle, Screen } from "../../ui/Screen";
+import { Card, EmptyState, ErrorState, IconTile, ListGroup, ListRow, SectionHeader, Skeleton, StatGrid } from "../../ui";
+import { AppBar, Screen } from "../../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../../ui/session";
 import { useRefresh } from "./parts";
 
-/** One city's places, most visited first. */
+/** One city's places, most visited first. Times here are all your visits, not one trip. */
 export default function CityView({
   name,
   country,
@@ -31,14 +31,10 @@ export default function CityView({
   const visits = places.reduce((a, p) => a + p.visitCount, 0);
   const time = places.reduce((a, p) => a + p.totalTime, 0);
   const last = places.map((p) => p.lastVisit).filter((x): x is string => !!x).sort().at(-1) ?? null;
+  const subtitle = [country, data && places.length ? `last visited ${fmtCompactDate(last)}` : null].filter(Boolean).join(" · ") || null;
 
   return (
-    <Screen refreshing={refreshing} onRefresh={onRefresh}>
-      <BackLink label={backLabel} onPress={onBack} />
-      <DetailTitle
-        title={name}
-        subtitle={[country, data && places.length ? `Last visited ${fmtShortDate(last)}` : null].filter(Boolean).join(" · ") || " "}
-      />
+    <Screen refreshing={refreshing} onRefresh={onRefresh} appBar={<AppBar title={name} subtitle={subtitle} onBack={onBack} backLabel={backLabel} />}>
       {authLost ? <PairingLost /> : null}
 
       {authLost && !data ? null : error && !data ? (
@@ -58,22 +54,23 @@ export default function CityView({
             size="sm"
             columns={3}
             items={[
-              { label: "Places", value: String(places.length) },
-              { label: "Visits", value: visits.toLocaleString() },
-              { label: "Time spent", value: fmtLongDuration(time) },
+              { label: "Places", value: group(places.length) },
+              { label: "Visits", value: group(visits) },
+              { label: "Time, all visits", value: fmtLongDuration(time) },
             ]}
           />
+          <SectionHeader title="Places" trailing="Most visited first" />
           <ListGroup>
             {places.map((p) => {
               const meta = categoryMeta(p.category, p.kind);
               return (
                 <ListRow
                   key={p.id}
-                  leading={<IconTile icon={meta.icon} tone={p.kind ? "accent" : "neutral"} />}
+                  leading={<IconTile icon={meta.icon} />}
                   title={placeLabel(p.name)}
-                  subtitle={meta.label}
+                  titleLines={2}
+                  subtitle={`${meta.label} · ${fmtLongDuration(p.totalTime)}`}
                   trailing={plural(p.visitCount, "visit")}
-                  trailingSub={fmtLongDuration(p.totalTime)}
                 />
               );
             })}

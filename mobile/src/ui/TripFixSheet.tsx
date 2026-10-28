@@ -26,6 +26,7 @@ import { Button, Chip, Divider, Field, IconButton } from "./primitives";
 import { Sheet } from "./Sheet";
 import { useSession } from "./session";
 import { Text } from "./Text";
+import { LineBadge as SharedLineBadge } from "./LineBadge";
 
 /** Debounced search: results for the latest term only. */
 function useSearch<T>(term: string, run: (q: string) => Promise<{ ok: true; data: T[] } | { ok: false }>, min = 1): T[] | null {
@@ -47,14 +48,7 @@ function useSearch<T>(term: string, run: (q: string) => Promise<{ ok: true; data
 }
 
 function LineBadge({ kind, line }: { kind: Route["kind"]; line: string }) {
-  const b = LEG_BADGE[kind];
-  return (
-    <View style={{ backgroundColor: b.bg, borderRadius: 6, paddingHorizontal: 8, height: 22, justifyContent: "center" }}>
-      <Text variant="micro" style={{ color: b.fg }}>
-        {b.label} {line}
-      </Text>
-    </View>
-  );
+  return <SharedLineBadge kind={kind} text={`${LEG_BADGE[kind].label} ${line}`} />;
 }
 
 function TransferField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -141,7 +135,7 @@ function FixSheet({ move, onClose, onSaved }: { move: Move; onClose: () => void;
             </View>
           ) : null}
           <View style={{ flex: 1 }}>
-            <Button label="Save" icon="check" busy={busy} onPress={() => send(postCorrection(pairing, correctionBody(move, draft)))} />
+            <Button label="Save" busy={busy} onPress={() => send(postCorrection(pairing, correctionBody(move, draft)))} />
           </View>
         </>
       }
@@ -168,16 +162,20 @@ function FixSheet({ move, onClose, onSaved }: { move: Move; onClose: () => void;
                   justifyContent: "center",
                   gap: 4,
                   borderRadius: t.radius.sm,
-                  borderWidth: on ? 2 : 0,
-                  borderColor: t.c.primary,
                   backgroundColor: on ? t.c.primarySoft : t.c.surfaceAlt,
                   opacity: pressed ? 0.75 : 1,
                 })}
               >
-                <Icon name={meta.icon} size={20} color={t.mode(m)} />
+                {/* The mode colour only on the chosen one: the grid isn't a rainbow. */}
+                <Icon name={meta.icon} size={20} color={on ? t.mode(m) : t.c.textSecondary} />
                 <Text variant="caption" numberOfLines={1} style={{ color: on ? t.c.primary : t.c.textSecondary, fontWeight: "500" }}>
                   {meta.label}
                 </Text>
+                {on ? (
+                  <View style={{ position: "absolute", top: 4, right: 4 }}>
+                    <Icon name="check" size={16} color={t.c.primary} />
+                  </View>
+                ) : null}
               </Pressable>
             );
           })}

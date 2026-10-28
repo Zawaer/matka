@@ -1,49 +1,22 @@
 // Formatting and grouping for the Insights screens (pure, unit-tested). Wording
 // and rules mirror the web app's Insights pages (web/src/lib/format.ts).
 
-import type { ModeTotal, SavedKind, SavedRow, Trip, WorldEntry } from "./insights";
+import { MONTHS, WEEKDAYS, fmtDistance, fmtLongDuration, group } from "./format";
+import type { ModeTotal, SavedKind, SavedRow, Trip, WorldEntry, WorldSort } from "./insights";
 import type { Place } from "./viewer";
-
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const parts = (date: string) => {
   const [y, m, d] = date.split("-").map(Number);
   return { y, m, d: d || 1 };
 };
 
-/** Thousands with a thin-ish space, like the rest of the app ("1 235"). */
-const group = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+/** Distances and totals of time follow the app-wide rules in format.ts. */
+export { fmtDistance as fmtKm, fmtLongDuration } from "./format";
 
-/** Metres → "1 235 km" / "8.4 km" / "340 m": whole km once the decimal stops mattering. */
-export function fmtKm(m: number | null | undefined): string {
-  if (m == null || !Number.isFinite(m)) return "—";
-  if (m < 1000) return `${Math.round(m)} m`;
-  const km = m / 1000;
-  return km < 100 ? `${km.toFixed(1)} km` : `${group(km)} km`;
-}
+/** Hours at a saved place: a total of time, like everywhere else. */
+export const fmtHours = (s: number) => fmtLongDuration(s);
 
-/** Seconds → "3 h 20 min", or "4 d 6 h" from two days on. */
-export function fmtLongDuration(s: number | null | undefined): string {
-  if (!s || s < 0) return "—";
-  if (s >= 48 * 3600) {
-    const d = Math.floor(s / 86_400);
-    const h = Math.floor((s % 86_400) / 3600);
-    return h > 0 ? `${d} d ${h} h` : `${d} d`;
-  }
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return m > 0 ? `${h} h ${m} min` : `${h} h`;
-  if (m > 0) return `${m} min`;
-  return `${Math.round(s)} s`;
-}
-
-/** Saved-places hours: "62 h" from ten hours, "3.5 h" below. */
-export function fmtHours(s: number): string {
-  return `${s >= 36_000 ? Math.round(s / 3600) : Math.round(s / 360) / 10} h`;
-}
-
-export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+export const plural = (n: number, one: string, many = `${one}s`) => `${group(n)} ${n === 1 ? one : many}`;
 
 /** "2026-10" → "October 2026", or "Oct" with `short`. */
 export function fmtMonth(month: string, short = false): string {
@@ -72,12 +45,16 @@ export function monthRange(first: string | null, last: string | null, shown: str
   return out;
 }
 
-/** Local calendar dates → "3–5 Oct 2026", "28 Sep – 2 Oct 2026", "30 Dec 2026 – 2 Jan 2027". */
-export function fmtDateRange(start: string, end: string): string {
+/**
+ * Local calendar dates → "3–5 Oct 2026", "28 Sep – 2 Oct 2026", "30 Dec 2026 – 2 Jan 2027".
+ * `year: false` drops the year of a range inside one year (under a year heading): "3–5 Oct".
+ */
+export function fmtDateRange(start: string, end: string, opts: { year?: boolean } = {}): string {
   const a = parts(start);
   const b = parts(end);
   const mon = (m: number) => (MONTHS[m - 1] ?? "?").slice(0, 3);
-  const full = (x: typeof a) => `${x.d} ${mon(x.m)} ${x.y}`;
+  const withYear = opts.year !== false || a.y !== b.y;
+  const full = (x: typeof a) => (withYear ? `${x.d} ${mon(x.m)} ${x.y}` : `${x.d} ${mon(x.m)}`);
   if (start === end) return full(a);
   if (a.y !== b.y) return `${full(a)} – ${full(b)}`;
   if (a.m !== b.m) return `${a.d} ${mon(a.m)} – ${full(b)}`;
@@ -125,6 +102,19 @@ export const tripLength = (t: Pick<Trip, "days" | "nights">) => `${plural(t.days
 /** "3–5 Oct 2026 · ongoing" */
 export const tripDates = (t: Pick<Trip, "startDate" | "endDate" | "arrival">) =>
   `${fmtDateRange(t.startDate, t.endDate)}${t.arrival == null ? " · ongoing" : ""}`;
+
+/** A trip card's one meta line: "2–4 Oct · 3 days · 381 km · Estonia" (the year is in the heading above). */
+export function tripMeta(t: Pick<Trip, "startDate" | "endDate" | "arrival" | "days" | "distance" | "countries">): string {
+  return [
+    fmtDateRange(t.startDate, t.endDate, { year: false }),
+    t.arrival == null ? "ongoing" : null,
+    plural(t.days, "day"),
+    t.distance > 0 ? fmtDistance(t.distance) : null,
+    t.countries.length ? t.countries.join(", ") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 /** Modes with travel, largest distance first, each with its share of the total distance (0–1). */
 export function modeShares(modes: ModeTotal[]): (ModeTotal & { share: number })[] {
@@ -175,19 +165,13 @@ export const KIND_META: Record<SavedKind, { label: string; icon: "home" | "famil
 };
 
 /**
- * What a saved-place row shows: homes lead with nights, everything else with
- * hours ("School 62 h", "Mom's 9 nights · 210 h").
+ * What a saved-place row shows: one trailing value (time there), with the kind
+ * and, for homes, the nights in the meta line ("Mom's", "Family · 9 nights", "8 d 18 h").
  */
-export function savedRowText(r: SavedRow): { title: string; subtitle: string | null; primary: string; secondary: string | null } {
+export function savedRowText(r: SavedRow): { title: string; subtitle: string | null; primary: string } {
   const label = KIND_META[r.kind].label;
-  const home = r.kind === "home" || r.kind === "family";
-  const nights = plural(r.nights, "night");
-  return {
-    title: r.name ?? label,
-    subtitle: r.name && r.name !== label ? label : null,
-    primary: home && r.nights > 0 ? nights : fmtHours(r.seconds),
-    secondary: home && r.nights > 0 ? fmtHours(r.seconds) : r.nights > 0 ? nights : null,
-  };
+  const meta = [r.name && r.name !== label ? label : null, r.nights > 0 ? plural(r.nights, "night") : null].filter(Boolean).join(" · ");
+  return { title: r.name ?? label, subtitle: meta || null, primary: fmtLongDuration(r.seconds) };
 }
 
 /** "3 cities · 12 places · 40 visits" */
@@ -205,4 +189,58 @@ export function worldCounts(e: WorldEntry): string {
 export function scaled(values: number[]): number[] {
   const max = Math.max(0, ...values);
   return values.map((v) => (max > 0 ? Math.max(0, v) / max : 0));
+}
+
+/** The trailing value of a World row: what the list is sorted by ("12 visits", "8 places", "3 d 4 h", "18 Oct"). */
+export function worldTrailing(e: WorldEntry, sort: WorldSort, now = new Date()): string {
+  switch (sort) {
+    case "places":
+      return plural(e.places, "place");
+    case "time":
+      return fmtLongDuration(e.duration);
+    case "recent":
+      return fmtCompactDate(e.lastVisit, now);
+    default:
+      return plural(e.visits, "visit");
+  }
+}
+
+/** The meta line of a World row: the counts the trailing value doesn't already say. */
+export function worldMeta(e: WorldEntry, sort: WorldSort): string {
+  return [
+    e.cities != null ? plural(e.cities, "city", "cities") : null,
+    sort === "places" ? null : plural(e.places, "place"),
+    sort === "visits" || sort === "name" ? null : plural(e.visits, "visit"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** English country names (as the geocoder writes them) → ISO 3166 alpha-2, for the country tiles. */
+const ISO2: Record<string, string> = {
+  Afghanistan: "AF", Albania: "AL", Algeria: "DZ", Andorra: "AD", Argentina: "AR", Armenia: "AM", Australia: "AU", Austria: "AT",
+  Azerbaijan: "AZ", Bahrain: "BH", Bangladesh: "BD", Belarus: "BY", Belgium: "BE", Bolivia: "BO", "Bosnia and Herzegovina": "BA",
+  Brazil: "BR", Bulgaria: "BG", Cambodia: "KH", Canada: "CA", Chile: "CL", China: "CN", Colombia: "CO", "Costa Rica": "CR",
+  Croatia: "HR", Cuba: "CU", Cyprus: "CY", Czechia: "CZ", "Czech Republic": "CZ", Denmark: "DK", "Dominican Republic": "DO",
+  Ecuador: "EC", Egypt: "EG", Estonia: "EE", Ethiopia: "ET", Faroe: "FO", "Faroe Islands": "FO", Finland: "FI", France: "FR",
+  Georgia: "GE", Germany: "DE", Ghana: "GH", Greece: "GR", Greenland: "GL", Hungary: "HU", Iceland: "IS", India: "IN",
+  Indonesia: "ID", Iran: "IR", Iraq: "IQ", Ireland: "IE", Israel: "IL", Italy: "IT", Japan: "JP", Jordan: "JO",
+  Kazakhstan: "KZ", Kenya: "KE", Kosovo: "XK", Kuwait: "KW", Latvia: "LV", Lebanon: "LB", Liechtenstein: "LI", Lithuania: "LT",
+  Luxembourg: "LU", Malaysia: "MY", Malta: "MT", Mexico: "MX", Moldova: "MD", Monaco: "MC", Mongolia: "MN", Montenegro: "ME",
+  Morocco: "MA", Nepal: "NP", Netherlands: "NL", "The Netherlands": "NL", "New Zealand": "NZ", Nigeria: "NG", "North Macedonia": "MK",
+  Norway: "NO", Oman: "OM", Pakistan: "PK", Panama: "PA", Peru: "PE", Philippines: "PH", Poland: "PL", Portugal: "PT",
+  Qatar: "QA", Romania: "RO", Russia: "RU", "San Marino": "SM", "Saudi Arabia": "SA", Serbia: "RS", Singapore: "SG",
+  Slovakia: "SK", Slovenia: "SI", "South Africa": "ZA", "South Korea": "KR", Spain: "ES", "Sri Lanka": "LK", Sweden: "SE",
+  Switzerland: "CH", Taiwan: "TW", Tanzania: "TZ", Thailand: "TH", Tunisia: "TN", Turkey: "TR", "Türkiye": "TR", Ukraine: "UA",
+  "United Arab Emirates": "AE", "United Kingdom": "GB", "United States": "US", "United States of America": "US", Uruguay: "UY",
+  Uzbekistan: "UZ", "Vatican City": "VA", Venezuela: "VE", Vietnam: "VN", "Viet Nam": "VN",
+  // Local names the geocoder sometimes keeps.
+  Suomi: "FI", Sverige: "SE", Norge: "NO", Danmark: "DK", Eesti: "EE", Deutschland: "DE", España: "ES", Italia: "IT",
+};
+
+/** "Finland" → "FI"; null when unknown (the tile falls back to a globe). */
+export function countryCode(name: string | null | undefined): string | null {
+  if (!name) return null;
+  if (/^[A-Z]{2}$/.test(name)) return name;
+  return ISO2[name] ?? ISO2[name.split(/\s*[/(,]/)[0].trim()] ?? null;
 }

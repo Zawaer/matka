@@ -1,8 +1,8 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 import { modeMeta } from "../../design/modes";
-import { useStyles, useTheme } from "../../design/theme";
-import { fmtDuration } from "../../format";
+import { useTheme } from "../../design/theme";
+import { fmtDuration, fmtLongDuration, group } from "../../format";
 import { getMonthModes, getSavedMonth, type MonthPoint } from "../../insights";
 import {
   KIND_META,
@@ -15,49 +15,48 @@ import {
   plural,
   roundShares,
   savedRowText,
-  scaled,
 } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
 import { Card, Divider, EmptyState, ErrorState, IconTile, ListGroup, ListRow, ModeIcon, SectionHeader, Skeleton, StatGrid } from "../../ui";
+import { ModeLegend, ModeShareBar } from "../../ui/ModeShare";
 import { Pager, Screen } from "../../ui/Screen";
 import { useSession, useViewerQuery } from "../../ui/session";
 import { Text } from "../../ui/Text";
 import { useRefresh } from "./parts";
 
-/** Six months of one mode: the shown month in the mode's colour, tap a bar to open that month. */
-function MiniBars({ mode, history, selected, onPick }: { mode: string; history: MonthPoint[]; selected: string; onPick: (m: string) => void }) {
+const SPARK_H = 32;
+
+/**
+ * Six months of one mode on the scale shared by every mode (so a tall bar is
+ * a long distance, wherever it is): the shown month in the mode's colour, the
+ * others neutral. Tap a bar to open that month.
+ */
+function Sparkline({ mode, history, selected, max, onPick }: { mode: string; history: MonthPoint[]; selected: string; max: number; onPick: (m: string) => void }) {
   const t = useTheme();
   const color = t.mode(mode);
-  const h = scaled(history.map((p) => p.distance));
   return (
-    <View style={{ flexDirection: "row", gap: 6, marginTop: t.space.md }}>
-      {history.map((p, i) => {
+    <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4, height: SPARK_H }}>
+      {history.map((p) => {
         const on = p.month === selected;
+        const h = p.distance > 0 && max > 0 ? Math.max(3, Math.round((p.distance / max) * SPARK_H)) : 2;
         return (
           <Pressable
             key={p.month}
             onPress={() => onPick(p.month)}
+            hitSlop={{ top: 8, bottom: 8, left: 2, right: 2 }}
             accessibilityRole="button"
             accessibilityLabel={`${fmtMonth(p.month)}: ${fmtKm(p.distance)}`}
             accessibilityState={{ selected: on }}
-            style={{ flex: 1, alignItems: "center", gap: 4 }}
+            style={{ width: 10, height: SPARK_H, justifyContent: "flex-end" }}
           >
-            <View style={{ height: 36, width: "100%", justifyContent: "flex-end", alignItems: "center" }}>
-              <View
-                style={{
-                  width: "70%",
-                  maxWidth: 20,
-                  height: p.distance > 0 ? Math.max(3, Math.round(h[i] * 36)) : 2,
-                  borderTopLeftRadius: 3,
-                  borderTopRightRadius: 3,
-                  // The shown month in the mode's colour, the others neutral.
-                  backgroundColor: p.distance === 0 ? t.c.grid : on ? color : t.c.barMuted,
-                }}
-              />
-            </View>
-            <Text variant="micro" color={on ? "text" : "textMuted"} style={{ fontWeight: on ? "500" : "400" }}>
-              {fmtMonth(p.month, true)}
-            </Text>
+            <View
+              style={{
+                height: h,
+                borderTopLeftRadius: 2,
+                borderTopRightRadius: 2,
+                backgroundColor: p.distance === 0 ? t.c.grid : on ? color : t.c.barMuted,
+              }}
+            />
           </Pressable>
         );
       })}
@@ -99,16 +98,7 @@ function SavedPlacesCard({ month, version }: { month: string; version: number })
         <ListGroup>
           {data.rows.map((r) => {
             const x = savedRowText(r);
-            return (
-              <ListRow
-                key={r.placeId}
-                leading={<IconTile icon={KIND_META[r.kind].icon} tone="accent" />}
-                title={x.title}
-                subtitle={x.subtitle}
-                trailing={x.primary}
-                trailingSub={x.secondary}
-              />
-            );
+            return <ListRow key={r.placeId} leading={<IconTile icon={KIND_META[r.kind].icon} />} title={x.title} titleLines={2} subtitle={x.subtitle} trailing={x.primary} />;
           })}
         </ListGroup>
       )}
@@ -116,7 +106,7 @@ function SavedPlacesCard({ month, version }: { month: string; version: number })
   );
 }
 
-export default function TravelView({ header }: { header: ReactNode }) {
+export default function TravelView() {
   const t = useTheme();
   const { authLost } = useSession();
   // null = the latest month with travel (server default)
@@ -131,11 +121,6 @@ export default function TravelView({ header }: { header: ReactNode }) {
     }, [reload]),
   );
 
-  const s = useStyles((th) => ({
-    shareBar: { flexDirection: "row", height: 10, borderRadius: 5, overflow: "hidden", backgroundColor: th.c.surfaceAlt, gap: 2 },
-    legend: { flexDirection: "row", flexWrap: "wrap", columnGap: th.space.lg, rowGap: th.space.sm },
-  }));
-
   // The picked month shows at once; its numbers follow when they arrive.
   const month = want ?? data?.month ?? null;
   const months = data ? monthRange(data.firstMonth, data.lastMonth, data.month) : [];
@@ -149,27 +134,33 @@ export default function TravelView({ header }: { header: ReactNode }) {
   const shares = data ? modeShares(data.modes) : [];
   const pct = roundShares(shares.map((m) => m.share));
   const cards = data ? orderModeCards(data.modes) : [];
+  const used = cards.filter((c) => !c.quiet).map((c) => c.mode);
+  const quiet = cards.filter((c) => c.quiet).map((c) => c.mode);
   const journeys = shares.reduce((a, m) => a + m.count, 0);
+  // One scale for every sparkline.
+  const sparkMax = Math.max(0, ...used.flatMap((m) => m.history.map((p) => p.distance)));
+  const pick = (mm: string) => months.includes(mm) && setWant(mm);
+  const failed = !!error && !data;
 
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
-      {header}
-      <Pager
-        kicker={month ? month.slice(0, 4) : " "}
-        title={month ? fmtMonth(month).split(" ")[0] : "…"}
-        onPrev={idx > 0 ? () => go(-1) : undefined}
-        onNext={idx >= 0 && idx < months.length - 1 ? () => go(1) : undefined}
-        prevLabel="Previous month"
-        nextLabel="Next month"
-      />
+      {failed || (data && !data.firstMonth) ? null : (
+        <Pager
+          title={month ? fmtMonth(month) : null}
+          onPrev={idx > 0 ? () => go(-1) : undefined}
+          onNext={idx >= 0 && idx < months.length - 1 ? () => go(1) : undefined}
+          prevLabel="Previous month"
+          nextLabel="Next month"
+        />
+      )}
 
-      {authLost && !data ? null : error && !data ? (
-        <ErrorState message={error} onRetry={reload} />
+      {authLost && !data ? null : failed ? (
+        <ErrorState message={error!} onRetry={reload} />
       ) : !data ? (
         <View style={{ gap: t.space.lg }}>
           <Skeleton height={70} />
-          <Skeleton height={120} />
-          <Skeleton height={200} />
+          <Skeleton height={96} />
+          <Skeleton height={240} />
         </View>
       ) : data.modes.length === 0 ? (
         <Card>
@@ -191,8 +182,8 @@ export default function TravelView({ header }: { header: ReactNode }) {
             columns={3}
             items={[
               { label: "Distance", value: fmtKm(data.distance) },
-              { label: "On the move", value: fmtDuration(data.duration) },
-              { label: "Journeys", value: journeys.toLocaleString() },
+              { label: "On the move", value: fmtLongDuration(data.duration) },
+              { label: "Journeys", value: group(journeys) },
             ]}
           />
 
@@ -200,60 +191,47 @@ export default function TravelView({ header }: { header: ReactNode }) {
             <>
               <SectionHeader title="Distance by mode" />
               <Card style={{ gap: t.space.lg }}>
-                <View style={s.shareBar}>
-                  {shares.map((m) => (m.share > 0 ? <View key={m.mode} style={{ flex: m.share, backgroundColor: t.mode(m.mode) }} /> : null))}
-                </View>
-                <View style={s.legend}>
-                  {shares.map((m, i) => (
-                    <View key={m.mode} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: t.mode(m.mode) }} />
-                      <Text variant="callout">{modeMeta(m.mode).label}</Text>
-                      <Text variant="callout" color="textSecondary" tabular>
-                        {pct[i]} %
-                      </Text>
-                    </View>
-                  ))}
-                </View>
+                <ModeShareBar shares={shares} />
+                <ModeLegend shares={shares} percents={pct} />
               </Card>
             </>
           )}
 
           <SavedPlacesCard month={data.month} version={version} />
 
-          <SectionHeader title="By mode" trailing="Last 6 months" />
-          <Card padded={false}>
-            {cards.map(({ mode: m, quiet }, i) => (
-              <View key={m.mode}>
-                {i > 0 ? <Divider /> : null}
-                <View style={{ padding: t.space.lg, opacity: quiet ? 0.6 : 1 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
+          {used.length > 0 || quiet.length > 0 ? <SectionHeader title="By mode" trailing="Last 6 months" /> : null}
+          {used.length > 0 ? (
+            <Card padded={false}>
+              {used.map((m, i) => (
+                <View key={m.mode}>
+                  {i > 0 ? <Divider inset={t.space.lg + 40 + t.space.md} /> : null}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md, paddingHorizontal: t.space.lg, paddingVertical: t.space.md, minHeight: 72 }}>
                     <ModeIcon mode={m.mode} size={40} />
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text variant="headline">{modeMeta(m.mode).label}</Text>
-                      <Text variant="callout" color="textSecondary" tabular>
-                        {m.count === 0 ? "None this month" : plural(m.count, "journey")}
+                      <Text variant="headline" numberOfLines={1}>
+                        {modeMeta(m.mode).label}
+                      </Text>
+                      <Text variant="callout" color="textSecondary" tabular numberOfLines={1}>
+                        {m.count > 0 ? plural(m.count, "journey") : fmtDuration(m.duration)}
                       </Text>
                     </View>
-                    {m.count > 0 || m.distance > 0 ? (
-                      <View style={{ alignItems: "flex-end", gap: 2 }}>
-                        <Text variant="headline" tabular>
-                          {fmtKm(m.distance)}
-                        </Text>
-                        <Text variant="callout" color="textSecondary" tabular>
-                          {fmtDuration(m.duration)}
-                        </Text>
-                      </View>
-                    ) : null}
+                    <Sparkline mode={m.mode} history={m.history} selected={data.month} max={sparkMax} onPick={pick} />
+                    <Text variant="headline" tabular numberOfLines={1} style={{ minWidth: 64, textAlign: "right" }}>
+                      {fmtKm(m.distance)}
+                    </Text>
                   </View>
-                  <MiniBars mode={m.mode} history={m.history} selected={data.month} onPick={(mm) => months.includes(mm) && setWant(mm)} />
                 </View>
-              </View>
-            ))}
-          </Card>
+              ))}
+            </Card>
+          ) : null}
+          {quiet.length > 0 ? (
+            <Text variant="callout" color="textSecondary" style={{ paddingHorizontal: t.space.lg }}>
+              Also: {quiet.map((m) => modeMeta(m.mode).label).join(", ")} — none in {fmtMonth(data.month).split(" ")[0]}
+            </Text>
+          ) : null}
 
           <Text variant="caption" color="textMuted" style={{ paddingHorizontal: t.space.lg }}>
-            Months follow your account&apos;s time zone; a journey across a month boundary is split by time. Tap a bar to open that
-            month.
+            Tap a bar to see that month.
           </Text>
         </View>
       )}

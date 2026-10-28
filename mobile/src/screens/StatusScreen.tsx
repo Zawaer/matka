@@ -1,26 +1,37 @@
 import { useState } from "react";
 import { errorLine } from "../error-copy";
-import { Platform, Switch, View } from "react-native";
+import { Platform, Pressable, Switch, View } from "react-native";
 import { useTheme } from "../design/theme";
-import { ago, count, inFuture } from "../format";
+import { ago, count, fmtDateShort, fmtDuration, fmtTime, group, inFuture } from "../format";
 import { displayServer } from "../pairing";
 import { openAppSettings, requestIgnoreBatteryOptimizations } from "../system";
 import { PRESETS, startTracking, stopTracking } from "../tracking";
-import { Banner, Button, Card, Group, GroupBlock, Icon, IconButton, IconTile, InfoRow, Skeleton, type ValueTone } from "../ui";
+import { Banner, Button, Card, Group, GroupBlock, Icon, IconButton, IconTile, InfoRow, Skeleton, type IconName, type ValueTone } from "../ui";
 import { PairingLostBanner } from "../ui/components";
 import { Screen, ScreenHeader } from "../ui/Screen";
 import { Text } from "../ui/Text";
 import type { CollectorState } from "../ui/useCollectorState";
 import { refreshServerStatus, uploadNow } from "../uploader";
-import { POWER_CALIBRATION } from "../power-model";
 import { describeRecovery } from "../watchdog-logic";
 
 /** "14:02" today, else "Fri 16 Oct 14:02". */
 function clock(ms: number): string {
   const d = new Date(ms);
-  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = fmtTime(d.toISOString());
   if (d.toDateString() === new Date().toDateString()) return time;
-  return `${d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })} ${time}`;
+  return `${fmtDateShort(d)} ${time}`;
+}
+
+/** The one line under the status card: everything fine, or the most important problem in plain words. */
+function health(state: CollectorState): { icon: IconName; tone: "ok" | "warn" | "bad" | "off"; text: string } | null {
+  const perm = state.permissions;
+  const uploaded = state.lastSuccessAt ? `last upload ${ago(state.lastSuccessAt)}` : "nothing uploaded yet";
+  if (!state.trackingEnabled) return { icon: "info", tone: "off", text: "Recording is off · nothing new is logged" };
+  if (!state.trackingRunning) return { icon: "error", tone: "bad", text: "Recording should be on but isn't running" };
+  // These have a banner of their own above; don't say it twice.
+  if ((perm && perm.background !== "granted") || !state.pairing || state.authLost) return null;
+  if (state.failures > 0) return { icon: "warning", tone: "warn", text: `Upload failing · retrying ${inFuture(state.nextRetryAt)}` };
+  return { icon: "ok", tone: "ok", text: `All good · ${uploaded}` };
 }
 
 type Props = {
@@ -35,12 +46,14 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
   const [busy, setBusy] = useState<"toggle" | "upload" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // null = automatic: open only when something in there needs a look.
+  const [details, setDetails] = useState<boolean | null>(null);
 
   if (!state) {
     return (
-      <Screen>
-        <ScreenHeader title="Recorder" />
+      <Screen appBar={<ScreenHeader title="Recorder" />}>
         <Skeleton height={72} />
+        <Skeleton height={20} width="60%" radius={6} />
         <Skeleton height={180} />
       </Screen>
     );
@@ -94,6 +107,10 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
           ? "Denied"
           : "Not asked";
   const permTone: ValueTone = perm?.background === "granted" ? (perm.precise ? "ok" : "warn") : "bad";
+  const h = health(state);
+  const serverProblem = !!state.pairing && !state.authLost && !state.heartbeatAt && !!state.heartbeatError;
+  const showDetails = details ?? serverProblem;
+  const hColor = !h ? t.c.textMuted : h.tone === "ok" ? t.c.success : h.tone === "warn" ? t.c.warning : h.tone === "bad" ? t.c.danger : t.c.textMuted;
 
   const trackingProblem = state.trackingEnabled && !state.trackingRunning;
   const recentRecoveries = state.recoveries.slice(0, 3);
@@ -110,6 +127,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
 
   return (
     <Screen
+      appBar={<ScreenHeader title="Recorder" right={<IconButton icon="settings" label="Settings" onPress={onSettings} />} />}
       refreshing={refreshing}
       onRefresh={async () => {
         setRefreshing(true);
@@ -118,11 +136,10 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         setRefreshing(false);
       }}
     >
-      <ScreenHeader title="Recorder" right={<IconButton icon="settings" label="Settings" onPress={onSettings} />} />
 
       {!state.pairing ? (
         <Banner tone="warning" title="Not paired" message="Points are kept on the phone until you pair it with your Matka server.">
-          <Button label="Pair with server" icon="qr" variant="surface" size="sm" onPress={onPair} />
+          <Button label="Pair with server" icon="qr" variant="tonal" tone="warning" size="sm" onPress={onPair} />
         </Banner>
       ) : state.authLost ? (
         <PairingLostBanner onPair={onPair} />
@@ -134,7 +151,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
           title="Location permission missing"
           message={`Nothing is recorded in the background. Allow location ${Platform.OS === "android" ? '"All the time"' : '"Always"'} in settings.`}
         >
-          <Button label="Open app settings" icon="settings" variant="surface" size="sm" onPress={openAppSettings} />
+          <Button label="Open app settings" icon="settings" variant="tonal" tone="danger" size="sm" onPress={openAppSettings} />
         </Banner>
       ) : null}
 
@@ -143,18 +160,16 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
           tone="warning"
           icon="battery"
           title="Battery optimisation is on"
-          message="Android may delay or stop recording and uploads while the phone is idle. Let Matka run unrestricted."
+          message="Android may pause recording and uploads while the phone is idle. Let Matka run unrestricted."
         >
-          <Button label="Allow unrestricted" variant="surface" size="sm" onPress={requestIgnoreBatteryOptimizations} />
+          <Button label="Allow unrestricted" variant="tonal" tone="warning" size="sm" onPress={requestIgnoreBatteryOptimizations} />
         </Banner>
       ) : null}
 
       <Card style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
         <IconTile icon={status.icon} tone={status.tone} />
         <View style={{ flex: 1, gap: 2 }}>
-          <Text variant="headline" color={trackingProblem ? "danger" : "text"}>
-            {status.title}
-          </Text>
+          <Text variant="headline">{status.title}</Text>
           <Text variant="callout" color="textSecondary">
             {state.standby
               ? `GPS sleeps until you move · ${PRESETS[state.preset].label}`
@@ -171,6 +186,17 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         />
       </Card>
 
+      {h ? (
+        <View style={{ flexDirection: "row", gap: t.space.sm, paddingHorizontal: t.space.lg, marginTop: -t.space.xs }} accessible accessibilityLabel={h.text}>
+          <View style={{ height: 18, justifyContent: "center" }}>
+            <Icon name={h.icon} size={16} color={hColor} />
+          </View>
+          <Text variant="callout" color="textSecondary" tabular style={{ flex: 1 }}>
+            {h.text}
+          </Text>
+        </View>
+      ) : null}
+
       <Group title="Recording">
         <InfoRow label="Location permission" value={permText} tone={permTone} />
         <InfoRow label="Last location" value={ago(state.lastFixAt)} tone={state.lastFixAt ? undefined : "dim"} />
@@ -178,10 +204,10 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
           <InfoRow
             label="Motion detection"
             value={state.activityStatus === "on" ? "On" : state.activityStatus === "denied" ? "Not allowed" : "Not available"}
-            tone={state.activityStatus === "on" ? "ok" : "dim"}
+            tone={state.activityStatus === "on" ? undefined : "dim"}
             note={
               state.activityStatus === "on"
-                ? "Tells a bike from a bus."
+                ? null
                 : state.activityStatus === "denied"
                   ? "Allow it in Settings → Permissions → Physical activity."
                   : null
@@ -191,14 +217,14 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         {recentRecoveries.length > 0 ? (
           <GroupBlock gap={6}>
             <Text variant="callout" color="textSecondary">
-              Watchdog: the phone stopped location updates
+              Times the phone paused recording
             </Text>
             {recentRecoveries.map((r) => (
               <View key={r.at} style={{ flexDirection: "row", gap: t.space.sm }}>
                 <View style={{ height: 20, justifyContent: "center" }}>
-                  <Icon name={r.ok ? "check" : "warning"} size={16} color={r.ok ? t.c.success : t.c.warning} />
+                  <Icon name={r.ok ? "ok" : "warning"} size={16} color={r.ok ? t.c.success : t.c.warning} />
                 </View>
-                <Text variant="callout" color={r.ok ? "text" : "warning"} style={{ flex: 1, lineHeight: 20 }}>
+                <Text variant="callout" tabular style={{ flex: 1, lineHeight: 20 }}>
                   {describeRecovery(r, clock)}
                 </Text>
               </View>
@@ -207,13 +233,11 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         ) : null}
       </Group>
 
-      {state.usage ? <UsageToday usage={state.usage} /> : null}
-
       <Group
         title="Upload"
         footer={
           state.droppedOverflow > 0
-            ? `${count(state.droppedOverflow)} oldest points were discarded because the queue hit its size cap.`
+            ? `${count(state.droppedOverflow)} of the oldest points were dropped because the queue was full.`
             : undefined
         }
       >
@@ -221,14 +245,14 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         {state.oldestQueued ? <InfoRow label="Oldest queued" value={ago(state.oldestQueued)} /> : null}
         <InfoRow label="Last upload" value={ago(state.lastSuccessAt)} tone={state.lastSuccessAt ? undefined : "dim"} />
         {state.failures > 0 && !state.authLost ? (
-          <InfoRow label="Next retry" value={`${inFuture(state.nextRetryAt)} (${state.failures} failed)`} tone="warn" />
+          <InfoRow label="Upload failing" value={`Retrying ${inFuture(state.nextRetryAt)}`} tone="warn" note={`${state.failures} ${state.failures === 1 ? "try" : "tries"} so far`} />
         ) : null}
         {state.lastError ? (
           <GroupBlock gap={2}>
             <Text variant="callout" color="textSecondary">
-              Last error · {ago(state.lastErrorAt)}
+              Last error, {ago(state.lastErrorAt)}
             </Text>
-            <Text variant="callout" color={errorIsStale ? "textMuted" : "warning"}>
+            <Text variant="callout" color={errorIsStale ? "textMuted" : "text"}>
               {errorLine(state.lastError)}
             </Text>
           </GroupBlock>
@@ -247,47 +271,69 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
 
       {message ? <Banner tone="info" message={message} /> : null}
 
-      <Group title="Server" footer={state.pairing ? `Checked ${ago(state.serverAt)}` : undefined}>
-        {state.pairing ? (
-          <>
-            <InfoRow label="Server" value={displayServer(state.pairing.server)} />
-            <InfoRow label="Device" value={state.server?.device ?? "–"} />
-            <InfoRow label="Points on server" value={count(state.server?.points)} />
-            <InfoRow label="Newest on server" value={state.server?.last ? ago(Date.parse(state.server.last)) : "–"} />
-            <InfoRow
-              label="Last check-in"
-              value={state.heartbeatAt ? ago(state.heartbeatAt) : state.heartbeatError ? "Failed" : "Never"}
-              tone={state.heartbeatAt ? undefined : "dim"}
-            />
-          </>
-        ) : (
-          <InfoRow label="Server" value="Not paired" tone="dim" />
-        )}
-      </Group>
+      <Pressable
+        onPress={() => setDetails(!showDetails)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: showDetails }}
+        accessibilityLabel={showDetails ? "Hide battery and server details" : "Show battery and server details"}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          gap: t.space.sm,
+          minHeight: 48,
+          marginTop: t.space.sm,
+          opacity: pressed ? 0.6 : 1,
+        })}
+      >
+        <Text variant="title3" style={{ flex: 1 }}>
+          Details
+        </Text>
+        <Text variant="callout" color="textSecondary">
+          Battery and server
+        </Text>
+        <Icon name={showDetails ? "collapse" : "expand"} size={20} color={t.c.textSecondary} />
+      </Pressable>
+
+      {showDetails ? (
+        <>
+          {state.usage ? <UsageToday usage={state.usage} /> : null}
+
+          <Group title="Server" footer={state.pairing ? `Checked ${ago(state.serverAt)}` : undefined}>
+            {state.pairing ? (
+              <>
+                <InfoRow label="Server" value={displayServer(state.pairing.server)} />
+                <InfoRow label="Device" value={state.server?.device ?? "–"} />
+                <InfoRow label="Points on server" value={count(state.server?.points)} />
+                <InfoRow label="Newest on server" value={state.server?.last ? ago(Date.parse(state.server.last)) : "–"} />
+                <InfoRow
+                  label="Last check-in"
+                  value={state.heartbeatAt ? ago(state.heartbeatAt) : state.heartbeatError ? "Failed" : "Never"}
+                  tone={state.heartbeatAt ? undefined : state.heartbeatError ? "warn" : "dim"}
+                />
+              </>
+            ) : (
+              <InfoRow label="Server" value="Not paired" tone="dim" />
+            )}
+          </Group>
+        </>
+      ) : null}
     </Screen>
   );
 }
 
-const span = (s: number) => (s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
-
 /** Matka's estimated battery use today, and the phone's own (whole-phone) measurements. */
 function UsageToday({ usage }: { usage: NonNullable<CollectorState["usage"]> }) {
   const { estimate, current } = usage;
-  const pct = estimate.percent < 1 ? estimate.percent.toFixed(1) : String(Math.round(estimate.percent));
-  const measured = current.active.median != null || current.standby.median != null || usage.dropS > 0;
+  const share = estimate.percent < 0.5 ? "Under 1%" : `About ${Math.round(estimate.percent)}%`;
+  const time = (s: number) => (s > 0 && s < 60 ? "Under 1 min" : s > 0 ? fmtDuration(s) : "None");
   return (
-    <Group
-      title="Battery today"
-      footer={`Matka's own use is estimated from GPS and standby time (calibrated ${POWER_CALIBRATION.date} on a ${POWER_CALIBRATION.device}).${
-        measured ? " Phone draw is measured for the whole phone (screen off, unplugged), not Matka alone." : ""
-      }`}
-    >
-      <InfoRow label="Matka (estimate)" value={`≈ ${pct} % · ${Math.round(estimate.mAh).toLocaleString("en-US")} mAh`} />
-      <InfoRow label="GPS active" value={span(usage.activeS)} />
-      <InfoRow label="Standby" value={span(usage.standbyS)} />
-      {current.active.median != null ? <InfoRow label="Phone draw, recording" value={`~${Math.round(current.active.median)} mA`} /> : null}
-      {current.standby.median != null ? <InfoRow label="Phone draw, standby" value={`~${Math.round(current.standby.median)} mA`} /> : null}
-      {usage.dropS > 0 ? <InfoRow label="Measured drop, unplugged" value={`${Math.round(usage.dropMah)} mAh in ${span(usage.dropS)}`} /> : null}
+    <Group title="Battery today" footer="Matka's share is an estimate; phone draw is measured for the whole phone.">
+      <InfoRow label="Used by Matka" value={`${share} · ${group(estimate.mAh)} mAh`} />
+      <InfoRow label="GPS on" value={time(usage.activeS)} />
+      <InfoRow label="GPS resting" value={time(usage.standbyS)} />
+      {current.active.median != null ? <InfoRow label="Phone draw, recording" value={`${Math.round(current.active.median)} mA`} /> : null}
+      {current.standby.median != null ? <InfoRow label="Phone draw, resting" value={`${Math.round(current.standby.median)} mA`} /> : null}
+      {usage.dropS > 0 ? <InfoRow label="Battery drop, unplugged" value={`${group(usage.dropMah)} mAh in ${fmtDuration(usage.dropS)}`} /> : null}
     </Group>
   );
 }

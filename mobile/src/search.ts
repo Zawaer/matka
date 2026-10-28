@@ -3,6 +3,7 @@
 // with a mocked fetch like viewer.ts.
 
 import { authHeaders, request } from "./api";
+import { fmtLongDuration, group } from "./format";
 import type { Pairing } from "./pairing";
 import { asSavedKind, toResult, type SavedKind, type ViewerResult } from "./viewer";
 
@@ -102,18 +103,11 @@ export function fmtDate(d: string, withYear = false, now = new Date()): string {
   return withYear || Number(m[1]) !== now.getFullYear() ? `${base} ${m[1]}` : base;
 }
 
-/** Time spent somewhere, rounded for a summary line: "45 min", "9 h", "3 d 4 h". */
-export function fmtTimeSpent(seconds: number): string {
-  if (!seconds || seconds < 0) return "—";
-  if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))} min`;
-  if (seconds < 48 * 3600) return `${Math.round(seconds / 3600)} h`;
-  const d = Math.floor(seconds / 86_400);
-  const h = Math.round((seconds % 86_400) / 3600);
-  return h > 0 && h < 24 ? `${d} d ${h} h` : `${h === 24 ? d + 1 : d} d`;
-}
+/** Time spent somewhere: the app-wide total-of-time rule ("45 min", "9 h 10 min", "3 d 4 h", "46 d"). */
+export const fmtTimeSpent = (seconds: number) => fmtLongDuration(seconds);
 
-/** "Last visit 18 Oct 2026 · 12 visits · 9 h" (or "No visits yet"). */
+/** "12 visits · last 18 Oct" (the year only when it isn't this one), or "No visits yet". */
 export function visitLine(p: Pick<SearchPlace, "lastVisitDate" | "visitCount" | "totalTime">, now = new Date()): string {
   if (!p.lastVisitDate || p.visitCount === 0) return "No visits yet";
-  return `Last visit ${fmtDate(p.lastVisitDate, true, now)} · ${p.visitCount} ${p.visitCount === 1 ? "visit" : "visits"} · ${fmtTimeSpent(p.totalTime)}`;
+  return `${group(p.visitCount)} ${p.visitCount === 1 ? "visit" : "visits"} · last ${fmtDate(p.lastVisitDate, false, now)}`;
 }

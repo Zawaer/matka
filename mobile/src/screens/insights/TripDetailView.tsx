@@ -1,32 +1,35 @@
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
-import { modeMeta } from "../../design/modes";
 import { useTheme } from "../../design/theme";
 import { fmtDuration, fmtTime } from "../../format";
 import { getTrip, type TripDetail } from "../../insights";
-import { fmtDay, fmtKm, fmtDateRange, fmtLongDuration, scaled } from "../../insights-logic";
+import { fmtDay, fmtDateRange, fmtKm, fmtLongDuration, modeShares, plural, roundShares } from "../../insights-logic";
 import type { Pairing } from "../../pairing";
-import { Card, Chip, ErrorState, ListGroup, ListRow, ModeIcon, SectionHeader, Skeleton, StatGrid } from "../../ui";
-import { BackLink, DetailTitle, Screen } from "../../ui/Screen";
+import { Card, ErrorState, ListGroup, ListRow, SectionHeader, Skeleton, StatGrid } from "../../ui";
+import { ModeLegend, ModeShareBar } from "../../ui/ModeShare";
+import { AppBar, Screen } from "../../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../../ui/session";
 import { Text } from "../../ui/Text";
 import { PhotoViewer } from "../../ui/TimelineExtras";
-import { ModeChips, Photo, Scrim, onPhotoText, useRefresh } from "./parts";
+import { Photo, Scrim, modeWords, onPhotoText, useRefresh } from "./parts";
 
-function leftHome(t: TripDetail): string | null {
+/** "Out 07:30 Fri 7 Aug · back 18:40 Wed 12 Aug" (or "· still away"). */
+function outAndBack(t: TripDetail): string | null {
   if (!t.departure) return null;
-  const back = t.arrival != null ? `, back ${fmtTime(t.arrival)} on ${fmtDay(t.endDate)}.` : ", still away.";
-  return `Left home ${fmtTime(t.departure)} on ${fmtDay(t.startDate)}${back}`;
+  const out = `Out ${fmtTime(t.departure)} ${fmtDay(t.startDate, true)}`;
+  return `${out} · ${t.arrival != null ? `back ${fmtTime(t.arrival)} ${fmtDay(t.endDate, true)}` : "still away"}`;
 }
 
 export default function TripDetailView({
   id,
   name,
+  backLabel,
   onBack,
   onOpenCity,
 }: {
   id: string;
   name: string;
+  backLabel: string;
   onBack: () => void;
   onOpenCity: (city: string, country: string | null) => void;
 }) {
@@ -37,48 +40,50 @@ export default function TripDetailView({
   const { refreshing, onRefresh } = useRefresh(reload);
   const [viewing, setViewing] = useState<number | null>(null);
 
-  const dates = trip ? `${fmtDateRange(trip.startDate, trip.endDate)}${trip.countries.length ? ` · ${trip.countries.join(", ")}` : ""}` : "";
+  const meta = trip
+    ? [fmtDateRange(trip.startDate, trip.endDate), plural(trip.days, "day"), plural(trip.nights, "night"), trip.countries.join(", ") || null]
+        .filter(Boolean)
+        .join(" · ")
+    : null;
   const away = trip ? [...trip.cities.filter((c) => c.away)].sort((a, b) => b.duration - a.duration) : [];
-  const modes = trip ? [...trip.modes].filter((m) => m.distance > 0 || m.duration > 0).sort((a, b) => b.distance - a.distance) : [];
-  const widths = scaled(modes.map((m) => m.distance));
+  const shares = trip ? modeShares(trip.modes) : [];
+  const pct = roundShares(shares.map((m) => m.share));
+  const cover = trip?.cover ?? null;
 
   return (
-    <Screen refreshing={refreshing} onRefresh={onRefresh}>
-      <BackLink label="Trips" onPress={onBack} />
+    <Screen
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      appBar={<AppBar title={trip?.name ?? (error ? name : null)} subtitle={cover ? null : meta} onBack={onBack} backLabel={backLabel} />}
+    >
       {authLost ? <PairingLost /> : null}
 
       {authLost && !trip ? null : error && !trip ? (
-        <>
-          <DetailTitle title={name} />
-          <ErrorState message={error} onRetry={reload} />
-        </>
+        <ErrorState message={error} onRetry={reload} />
       ) : !trip ? (
         <View style={{ gap: t.space.lg }}>
-          <Skeleton height={230} />
-          <Skeleton height={140} />
+          <Skeleton height={200} />
+          <Skeleton height={70} />
+          <Skeleton height={110} />
           <Skeleton height={180} />
         </View>
       ) : (
         <>
-          {trip.cover ? (
-            <View style={{ aspectRatio: 16 / 9, borderRadius: t.radius.md, overflow: "hidden" }}>
-              <Photo id={trip.cover} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
+          {cover ? (
+            // Full-bleed hero: the cover edge to edge under the app bar.
+            <View style={{ aspectRatio: 16 / 9, marginHorizontal: -t.layout.gutter, marginTop: -t.space.sm }}>
+              <Photo id={cover} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }} />
               <Scrim />
-              <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: t.space.lg, gap: 2 }}>
-                <Text variant="title2" style={onPhotoText} numberOfLines={2} accessibilityRole="header">
-                  {trip.name}
-                </Text>
-                <Text variant="callout" style={[onPhotoText, { opacity: 0.9 }]} tabular>
-                  {dates}
+              <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: t.layout.gutter, paddingBottom: t.space.lg }}>
+                <Text variant="callout" style={[onPhotoText, { opacity: 0.92 }]} tabular numberOfLines={2}>
+                  {meta}
                 </Text>
               </View>
             </View>
-          ) : (
-            <DetailTitle title={trip.name} subtitle={dates} />
-          )}
-          {leftHome(trip) ? (
-            <Text variant="callout" color="textSecondary" tabular>
-              {leftHome(trip)}
+          ) : null}
+          {outAndBack(trip) ? (
+            <Text variant="callout" color="textSecondary" tabular style={{ marginTop: cover ? -t.space.xs : 0 }}>
+              {outAndBack(trip)}
             </Text>
           ) : null}
 
@@ -98,41 +103,30 @@ export default function TripDetailView({
           )}
 
           <StatGrid
+            size="sm"
+            columns={3}
             items={[
               { label: "Distance", value: fmtKm(trip.distance) },
               { label: "On the move", value: fmtDuration(trip.duration) },
-              { label: "Days", value: String(trip.days) },
-              { label: "Nights away", value: String(trip.nights) },
+              { label: "Cities", value: String(away.length) },
             ]}
           />
 
           <SectionHeader title="How you travelled" />
           <Card style={{ gap: t.space.lg }}>
-            {modes.length === 0 ? (
+            {shares.length === 0 ? (
               <Text variant="callout" color="textSecondary">
                 No moves recorded.
               </Text>
             ) : (
-              modes.map((m, i) => (
-                <View key={m.mode} style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
-                  <ModeIcon mode={m.mode} />
-                  <View style={{ flex: 1, gap: 6 }}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text variant="headline">{modeMeta(m.mode).label}</Text>
-                      <Text variant="callout" color="textSecondary" tabular>
-                        {fmtKm(m.distance)}
-                      </Text>
-                    </View>
-                    <View style={{ height: 6, borderRadius: 3, backgroundColor: t.c.surfaceAlt, overflow: "hidden" }}>
-                      <View style={{ width: `${Math.max(2, widths[i] * 100)}%`, height: 6, borderRadius: 3, backgroundColor: t.mode(m.mode) }} />
-                    </View>
-                  </View>
-                </View>
-              ))
+              <>
+                <ModeShareBar shares={shares} />
+                <ModeLegend shares={shares} percents={pct} />
+              </>
             )}
           </Card>
 
-          <SectionHeader title="Cities" />
+          <SectionHeader title="Cities" trailing={away.length ? "Time on this trip" : undefined} />
           {away.length === 0 ? (
             <Card>
               <Text variant="callout" color="textSecondary">
@@ -140,32 +134,36 @@ export default function TripDetailView({
               </Text>
             </Card>
           ) : (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: t.space.sm }}>
+            <ListGroup inset={0}>
               {away.map((c) => (
-                <Chip
+                <ListRow
                   key={`${c.city}/${c.country ?? ""}`}
-                  icon="city"
-                  label={`${c.city} · ${fmtLongDuration(c.duration)}`}
-                  accessibilityLabel={`${c.city}, ${fmtLongDuration(c.duration)}`}
+                  title={c.city}
+                  subtitle={c.country}
+                  trailing={fmtLongDuration(c.duration)}
                   onPress={() => onOpenCity(c.city, c.country)}
+                  accessibilityLabel={`${c.city}${c.country ? `, ${c.country}` : ""}, ${fmtLongDuration(c.duration)} on this trip`}
                 />
               ))}
-            </View>
+            </ListGroup>
           )}
 
-          <SectionHeader title="Day by day" trailing="Tap a day for its timeline" />
+          <SectionHeader title="Day by day" />
           <ListGroup inset={0}>
-            {trip.dayList.map((d, i) => (
-              <ListRow
-                key={d.date}
-                title={`Day ${i + 1} · ${fmtDay(d.date, true)}`}
-                subtitle={d.cities.length ? d.cities.join(", ") : "No places"}
-                below={<View style={{ marginTop: 6 }}><ModeChips modes={d.modes} /></View>}
-                trailing={d.distance > 0 ? fmtKm(d.distance) : "–"}
-                onPress={() => openDay(d.date)}
-                accessibilityLabel={`Day ${i + 1}, ${fmtDay(d.date)}: open timeline`}
-              />
-            ))}
+            {trip.dayList.map((d, i) => {
+              const modes = modeWords(d.modes);
+              const sub = [d.cities.length ? d.cities.join(", ") : "No places", modes || null].filter(Boolean).join(" · ");
+              return (
+                <ListRow
+                  key={d.date}
+                  title={`Day ${i + 1} · ${fmtDay(d.date, true)}`}
+                  subtitle={sub}
+                  trailing={d.distance > 0 ? fmtKm(d.distance) : "–"}
+                  onPress={() => openDay(d.date)}
+                  accessibilityLabel={`Day ${i + 1}, ${fmtDay(d.date)}: ${sub}. Open timeline`}
+                />
+              );
+            })}
           </ListGroup>
         </>
       )}

@@ -1,8 +1,10 @@
 import type { LegKind } from "../viewer";
 
 /**
- * Line badges in HSL's own colours, so they look like the signs at the stop.
- * Text colour chosen for 4.5:1 contrast on each (matches web lib/transit/colors.ts).
+ * Line badges in HSL's own colours, so they look like the signs at the stop
+ * (signage, not the mode palette: docs/redesign/palette.md → "Transit line
+ * badges"). Text white or #16161F, whichever reaches 4.5:1 on each (matches web
+ * lib/transit/colors.ts). Badge: 12/16 text at 500, 4 radius, 6 inset.
  */
 export const LEG_BADGE: Record<LegKind, { label: string; bg: string; fg: string }> = {
   bus: { label: "Bus", bg: "#007AC9", fg: "#FFFFFF" },

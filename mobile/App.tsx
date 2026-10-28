@@ -2,6 +2,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppState, Linking, Pressable, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAppFonts } from "./src/design/fonts";
 import { ThemeProvider, useStyles, useTheme } from "./src/design/theme";
 import { isPairingLink, type Pairing } from "./src/pairing";
 import MapScreen from "./src/screens/MapScreen";
@@ -29,6 +30,10 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
 ];
 
 export default function App() {
+  // Native: Inter is embedded at build time, so this is true from the first frame.
+  // Web preview: hold the first render until the faces are loaded (no fallback flash).
+  const fontsReady = useAppFonts();
+  if (!fontsReady) return null;
   return (
     <SafeAreaProvider>
       <ThemeProvider>

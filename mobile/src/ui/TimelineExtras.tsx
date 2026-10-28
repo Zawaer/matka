@@ -8,7 +8,8 @@ import { FlatList, Image, Linking, Modal, Pressable, View, useWindowDimensions }
 import { categoryLabel } from "../design/categories";
 import { useTheme } from "../design/theme";
 import { assetSource } from "../insights";
-import { fmtDistance, fmtDuration, fmtTime } from "../format";
+import { fmtDuration, fmtTime, sentenceCase } from "../format";
+import { placeIcon } from "../design/placeIcons";
 import { Photo } from "../screens/insights/parts";
 import type { MissingTravel } from "../timeline-logic";
 import { immichPhotoUrl, postPlaceChoice, type PlaceCandidate, type Visit } from "../viewer";
@@ -19,8 +20,8 @@ import { Text } from "./Text";
 
 /* ---------------- "Visited X?" ---------------- */
 
-/** "school", "library", "address": what a candidate is. */
-export const candidateType = (c: PlaceCandidate) => (c.address ? "address" : c.category ? categoryLabel(c.category).toLowerCase() : "place");
+/** "School", "Library", "Address": what a candidate is, as a label (never a raw OSM tag). */
+export const candidateType = (c: PlaceCandidate) => sentenceCase(c.address ? "address" : c.category ? categoryLabel(c.category).toLowerCase() : "place");
 
 /**
  * Under a visit whose name is a guess: "Were you here?" with Yes and Pick
@@ -51,8 +52,8 @@ export function PlaceQuestion({ visit, shownName, onAnswered }: { visit: Visit; 
 
   const row = (pressed: boolean) => ({
     minHeight: 48,
-    justifyContent: "center" as const,
-    paddingHorizontal: t.space.md,
+    justifyContent: "flex-start" as const,
+    paddingHorizontal: 0,
     backgroundColor: pressed ? t.c.surfaceAlt : "transparent",
   });
   return (
@@ -61,11 +62,11 @@ export function PlaceQuestion({ visit, shownName, onAnswered }: { visit: Visit; 
         <Text variant="callout" color="textSecondary" style={{ flex: 1 }}>
           Were you here?
         </Text>
-        <Button label="Yes" size="sm" variant="secondary" disabled={busy} onPress={() => answer({ confirm: true })} />
+        <Button label="Yes" size="sm" variant="tonal" disabled={busy} onPress={() => answer({ confirm: true })} />
         <Button label={open ? "Close" : "Pick another"} size="sm" variant="ghost" disabled={busy} onPress={() => setOpen((o) => !o)} />
       </View>
       {open ? (
-        <View style={{ borderWidth: 1, borderColor: t.c.border, borderRadius: t.radius.sm, overflow: "hidden" }}>
+        <View style={{ borderTopWidth: 1, borderTopColor: t.c.border, marginRight: t.space.sm }}>
           {others.map((c, i) => (
             <View key={c.name}>
               {i > 0 ? <Divider /> : null}
@@ -74,14 +75,17 @@ export function PlaceQuestion({ visit, shownName, onAnswered }: { visit: Visit; 
                 disabled={busy}
                 accessibilityRole="button"
                 accessibilityLabel={`${c.name}, ${candidateType(c)}`}
-                style={({ pressed }) => [row(pressed), { flexDirection: "row", alignItems: "center", gap: t.space.sm }]}
+                style={({ pressed }) => [row(pressed), { flexDirection: "row", alignItems: "center", gap: t.space.md }]}
               >
-                <Text variant="headline" numberOfLines={1} style={{ flexShrink: 1 }}>
-                  {c.name}
-                </Text>
-                <Text variant="callout" color="textSecondary">
-                  {candidateType(c)}
-                </Text>
+                <Icon name={c.address ? "place" : placeIcon(null, c.category, null).icon} size={20} color={t.c.textSecondary} />
+                <View style={{ flex: 1, gap: 2, paddingVertical: t.space.sm }}>
+                  <Text variant="headline" numberOfLines={1}>
+                    {c.name}
+                  </Text>
+                  <Text variant="callout" color="textMuted">
+                    {candidateType(c)}
+                  </Text>
+                </View>
               </Pressable>
             </View>
           ))}
@@ -105,8 +109,10 @@ export function PlaceQuestion({ visit, shownName, onAnswered }: { visit: Visit; 
             </View>
           ) : (
             <Pressable onPress={() => setTyping(true)} accessibilityRole="button" style={({ pressed }) => [row(pressed), { flexDirection: "row", alignItems: "center", gap: t.space.sm }]}>
-              <Icon name="edit" size={16} color={t.c.primary} />
-              <Text variant="headline" color="primary">
+              <View style={{ width: 20, alignItems: "center" }}>
+                <Icon name="edit" size={16} color={t.c.primary} />
+              </View>
+              <Text variant="headline" color="primary" style={{ marginLeft: 4 }}>
                 Type a name
               </Text>
             </Pressable>
@@ -135,26 +141,29 @@ export function DashedRail({ rail, color, dashes = 6 }: { rail: number; color: s
   );
 }
 
-/** "Missing travel · 9.5 km · 17 min" between two rows that are far apart, with "Add travel". */
+/**
+ * "Missing travel" between two rows that are far apart: the title in text
+ * colour, amber only on the dashed rail and its 16 px icon; one meta line in
+ * the same order as gap rows; "Add travel" under the text.
+ */
 export function MissingTravelRow({ gap, rail, onAdd }: { gap: MissingTravel; rail: number; onAdd: () => void }) {
   const t = useTheme();
+  const why = gap.secs >= 30 * 60 ? "no location" : "no trip recorded";
   return (
-    <View style={{ flexDirection: "row", gap: t.space.md }}>
+    <View style={{ flexDirection: "row", gap: 12 }}>
       <DashedRail rail={rail} color={t.c.warning} />
-      <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: t.space.md, paddingVertical: t.space.sm }}>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text variant="headline" color="warning">
-            Missing travel
-          </Text>
-          <Text variant="callout" color="textSecondary" tabular>
-            {fmtDistance(gap.distance)}
-            {gap.secs >= 60 ? ` · ${fmtDuration(gap.secs)}` : ""}
-          </Text>
-          <Text variant="caption" color="textMuted" tabular>
-            {fmtTime(gap.from)}–{fmtTime(gap.to)} · {gap.secs >= 30 * 60 ? "No location recorded" : "No trip recorded"}
-          </Text>
+      <View style={{ flex: 1, gap: 2, paddingVertical: t.space.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Icon name="warning" size={16} color={t.c.warning} />
+          <Text variant="headline">Missing travel</Text>
         </View>
-        <Button label="Add travel" icon="add" size="sm" variant="secondary" onPress={onAdd} />
+        <Text variant="callout" color="textSecondary" tabular>
+          {fmtTime(gap.from)}–{fmtTime(gap.to)}
+          {gap.secs >= 60 ? ` · ${fmtDuration(gap.secs)}` : ""} · {why}
+        </Text>
+        <View style={{ marginTop: t.space.sm, alignSelf: "flex-start" }}>
+          <Button label="Add travel" icon="add" size="sm" variant="tonal" onPress={onAdd} />
+        </View>
       </View>
     </View>
   );
@@ -218,27 +227,31 @@ export function PhotoViewer({
   set,
   start,
   linkBase,
+  caption,
   onClose,
 }: {
   set: PhotoSet | null;
   start: number;
   linkBase: string | null;
+  /** Under the photo, Google Photos style: where and when ("Kamppi Center · 09:05–11:40"). */
+  caption?: string;
   onClose: () => void;
 }) {
   return (
     <Modal visible={set != null} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      {set ? <Viewer key={set.ids[0]} set={set} start={start} linkBase={linkBase} onClose={onClose} /> : null}
+      {set ? <Viewer key={set.ids[0]} set={set} start={start} linkBase={linkBase} caption={caption} onClose={onClose} /> : null}
     </Modal>
   );
 }
 
-function Viewer({ set, start, linkBase, onClose }: { set: PhotoSet; start: number; linkBase: string | null; onClose: () => void }) {
+function Viewer({ set, start, linkBase, caption, onClose }: { set: PhotoSet; start: number; linkBase: string | null; caption?: string; onClose: () => void }) {
   const { pairing } = useSession();
   const { width, height } = useWindowDimensions();
   const [i, setI] = useState(Math.min(start, set.ids.length - 1));
   const id = set.ids[i];
   return (
-    <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.94)" }}>
+    // Opaque black, like a media viewer: nothing of the timeline shows through.
+    <View style={{ flex: 1, backgroundColor: "#000000" }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 44, paddingHorizontal: 8, paddingLeft: 16, paddingBottom: 8 }}>
         <Text variant="label" tabular style={{ color: "#FFFFFFD9", flex: 1 }}>
           {i + 1} / {set.ids.length}
@@ -270,16 +283,23 @@ function Viewer({ set, start, linkBase, onClose }: { set: PhotoSet; start: numbe
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={(e) => setI(Math.round(e.nativeEvent.contentOffset.x / width))}
         renderItem={({ item }) => (
-          <View style={{ width, height: height - 140, alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width, height: height - 180, alignItems: "center", justifyContent: "center" }}>
             <Image
               source={assetSource(pairing, item, "preview")}
-              style={{ width: width - 16, height: height - 160 }}
+              style={{ width, height: height - 200 }}
               resizeMode="contain"
               accessibilityIgnoresInvertColors
             />
           </View>
         )}
       />
+      {caption ? (
+        <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32 }}>
+          <Text variant="callout" tabular numberOfLines={2} style={{ color: "#FFFFFFB3" }}>
+            {caption}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -73,8 +73,10 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
   if (candidate) {
     const switching = currentServer != null && currentServer !== candidate.server;
     return (
-      <Screen>
-        <ScreenHeader title="Pair this phone" subtitle="Check the server before you continue." />
+      <Screen appBar={<ScreenHeader title="Pair this phone" />}>
+        <Text variant="body" color="textSecondary">
+          Check the server before you continue.
+        </Text>
         <Card style={{ gap: t.space.md }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: t.space.md }}>
             <IconTile
@@ -116,10 +118,24 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
   }
 
   return (
-    <Screen>
-      <ScreenHeader title="Pair this phone" subtitle="In the Matka web app, open Devices → Pair a device and scan the QR code it shows." />
+    <Screen appBar={<ScreenHeader title="Pair this phone" />}>
+      <View style={{ gap: t.space.sm }}>
+        {["In the Matka web app, open Devices → Pair a device.", "Scan the QR code it shows."].map((step, i) => (
+          <View key={i} style={{ flexDirection: "row", gap: t.space.md, alignItems: "flex-start" }}>
+            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.c.surfaceAlt, alignItems: "center", justifyContent: "center", marginTop: -1 }}>
+              <Text variant="label" color="textSecondary" tabular>
+                {i + 1}
+              </Text>
+            </View>
+            <Text variant="body" style={{ flex: 1 }}>
+              {step}
+            </Text>
+          </View>
+        ))}
+      </View>
 
       <Segmented
+        role="tablist"
         label="How to pair"
         options={[
           { value: "scan", label: "Scan QR", icon: "qr" },
@@ -171,7 +187,7 @@ export default function PairScreen({ initialLink, currentServer, onDone, onCance
             secureTextEntry
           />
           <Text variant="caption" color="textMuted">
-            You can also paste the whole pairing link (https://…/pair#… or matka://pair?…) into the server field.
+            You can also paste the pairing link here.
           </Text>
           <View style={{ marginTop: t.space.sm }}>
             <Button label="Continue" onPress={fromManual} />

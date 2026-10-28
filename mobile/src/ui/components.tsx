@@ -11,7 +11,7 @@ export function PairingLostBanner({ onPair }: { onPair: () => void }) {
       title="Pairing lost"
       message="The server rejected this phone's token, so uploads are paused. Points stay queued. Pair again from Devices in the web app."
     >
-      <Button label="Pair again" icon="qr" variant="surface" size="sm" onPress={onPair} />
+      <Button label="Pair again" icon="qr" variant="tonal" tone="danger" size="sm" onPress={onPair} />
     </Banner>
   );
 }

@@ -21,6 +21,6 @@ test("round trip", () => {
 test("deferral and description", () => {
   expect(customDeferral({ accuracy: "high", distance: 5, time: 2000 })).toEqual({ interval: 8000, distance: 20 });
   expect(customDeferral({ accuracy: "high", distance: 100, time: 120_000 })).toEqual({ interval: 120_000, distance: 100 });
-  expect(describeCustom({ accuracy: "balanced", distance: 100, time: 120_000 })).toBe("Wi-Fi/cell positioning, a point every ≥2 min / 100 m.");
-  expect(describeCustom({ accuracy: "highest", distance: 5, time: 2000 })).toBe("Best GPS, a point every ≥2 s / 5 m.");
+  expect(describeCustom({ accuracy: "balanced", distance: 100, time: 120_000 })).toBe("Wi-Fi and cell · every 100 m or 2 min");
+  expect(describeCustom({ accuracy: "highest", distance: 5, time: 2000 })).toBe("Best GPS · every 5 m or 2 s");
 });

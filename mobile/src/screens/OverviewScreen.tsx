@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Animated, Easing, Pressable, View } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
-import { count, fmtCompact, fmtDuration, fmtSpan, fmtWhen, greeting, isNamed, placeLabel } from "../format";
+import { count, fmtCompact, fmtDayHeading, fmtDuration, fmtLongDuration, fmtPercent, fmtSpan, fmtTime, group, isNamed, monthShort, MONTHS, placeLabel } from "../format";
 import { startTracking, stopTracking } from "../tracking";
-import { Banner, Button, Card, EmptyState, ErrorState, IconTile, ListGroup, ListRow, SectionHeader, Skeleton, StatGrid } from "../ui";
-import { MonthBars, ShareBar } from "../ui/charts";
-import { Screen } from "../ui/Screen";
+import { Banner, Button, Card, Divider, EmptyState, ErrorState, ListGroup, ListRow, SectionHeader, Skeleton } from "../ui";
+import { MonthBars } from "../ui/charts";
+import { Screen, ScreenHeader } from "../ui/Screen";
 import { PairingLost, useSession, useViewerQuery } from "../ui/session";
 import { Text } from "../ui/Text";
 import type { CollectorState } from "../ui/useCollectorState";
@@ -99,11 +99,12 @@ export default function OverviewScreen({
   const km = totals ? Math.round(totals.distance / 1000) : 0;
   const months = (data?.months ?? []).map((m) => ({
     key: `${m.year}-${m.month}`,
-    label: new Date(m.year, m.month - 1, 1).toLocaleDateString([], { month: "short" }),
-    long: new Date(m.year, m.month - 1, 1).toLocaleDateString([], { month: "long", year: "numeric" }),
+    label: monthShort(m.month - 1),
+    year: m.year,
+    long: `${MONTHS[m.month - 1]} ${m.year}`,
     value: Math.round(m.distance / 1000),
   }));
-  const peak = months.reduce((b, m) => (m.value > b.value ? m : b), months[0] ?? { key: "", label: "", long: "", value: 0 });
+  const peak = months.reduce((b, m) => (m.value > b.value ? m : b), months[0] ?? { key: "", label: "", long: "", value: 0, year: 0 });
   const chosen = picked != null ? months[picked] : peak;
   const range = totals?.first && totals?.last ? fmtSpan(totals.first, totals.last) : "";
   const earth = (km / EARTH_KM) * 100;
@@ -144,17 +145,28 @@ export default function OverviewScreen({
     </Card>
   );
 
-  return (
-    <Screen refreshing={refreshing} onRefresh={refresh}>
-      <View style={{ gap: 2, paddingTop: t.space.xs }}>
-        <Text variant="callout" color="textSecondary">
-          {new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}
-        </Text>
-        <Text variant="title1" accessibilityRole="header">
-          {greeting()}
-        </Text>
-      </View>
+  // Recent visits under day headings ("Today", "Yesterday", "Sun 18 Oct") instead of a date on every row.
+  const recentDays: { day: string; rows: NonNullable<typeof data>["recent"] }[] = [];
+  for (const v of data?.recent ?? []) {
+    const day = fmtDayHeading(new Date(v.startedAt));
+    const last = recentDays[recentDays.length - 1];
+    if (last && last.day === day) last.rows.push(v);
+    else recentDays.push({ day, rows: [v] });
+  }
 
+  const stat = (label: string, value: string) => (
+    <View style={{ flex: 1, gap: 2, paddingVertical: t.space.md, paddingHorizontal: t.space.lg }}>
+      <Text variant="caption" color="textSecondary" numberOfLines={1}>
+        {label}
+      </Text>
+      <Text variant="statSm" tabular numberOfLines={1}>
+        {value}
+      </Text>
+    </View>
+  );
+
+  return (
+    <Screen refreshing={refreshing} onRefresh={refresh} appBar={<ScreenHeader title="Overview" />}>
       {authLost ? <PairingLost /> : null}
       {notice ? <Banner tone="danger" message={notice} /> : null}
 
@@ -168,9 +180,35 @@ export default function OverviewScreen({
       ) : !data ? (
         <>
           {recording}
-          <Skeleton height={124} />
-          <Skeleton height={150} />
-          <Skeleton height={240} />
+          {/* The loading shape: the hero line, the 2x2 grid, a chart baseline with bar stubs. */}
+          <Card padded={false}>
+            <View style={{ padding: t.space.lg, gap: t.space.sm }}>
+              <Skeleton height={14} width="45%" radius={6} />
+              <Skeleton height={28} width="40%" radius={6} />
+            </View>
+            <Divider />
+            {[0, 1].map((r) => (
+              <View key={r}>
+                {r ? <Divider /> : null}
+                <View style={{ flexDirection: "row" }}>
+                  {[0, 1].map((c) => (
+                    <View key={c} style={{ flex: 1, padding: t.space.lg, gap: 6, borderLeftWidth: c ? 1 : 0, borderLeftColor: t.c.border }}>
+                      <Skeleton height={12} width="50%" radius={6} />
+                      <Skeleton height={18} width="35%" radius={6} />
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </Card>
+          <Card style={{ gap: t.space.md }}>
+            <Skeleton height={14} width="35%" radius={6} />
+            <View style={{ height: 120, flexDirection: "row", alignItems: "flex-end", gap: 10, borderBottomWidth: 1, borderBottomColor: t.c.grid }}>
+              {[40, 64, 30, 88, 52, 70, 46, 96, 58, 34, 76, 50].map((h, i) => (
+                <Skeleton key={i} height={h} radius={4} style={{ flex: 1, width: undefined }} />
+              ))}
+            </View>
+          </Card>
         </>
       ) : empty ? (
         <>
@@ -187,49 +225,50 @@ export default function OverviewScreen({
         <>
           {recording}
 
-          <Card style={s.hero}>
-            <Text variant="callout" color="textSecondary">
-              Total distance{range ? ` · ${range}` : ""}
-            </Text>
-            <Text variant="display" tabular>
-              {km.toLocaleString()}
-              <Text variant="title3" color="textSecondary">
-                {" km"}
+          {/* One card: the hero total, then the four supporting numbers. */}
+          <Card padded={false}>
+            <View style={{ padding: t.space.lg, gap: 2 }}>
+              <Text variant="callout" color="textSecondary">
+                Total distance{range ? ` · ${range}` : ""}
               </Text>
-            </Text>
-            <Text variant="callout" color="textSecondary">
-              {earth >= 100 ? `${(earth / 100).toFixed(1)} times around the Earth` : `${Math.round(earth)} % of the way around the Earth`}
-            </Text>
+              <Text variant="display" tabular>
+                {group(km)}
+                <Text variant="title3" color="textSecondary" style={{ fontWeight: "400" }}>
+                  {" km"}
+                </Text>
+              </Text>
+              <Text variant="callout" color="textSecondary">
+                {earth >= 100 ? `${(earth / 100).toFixed(1)} times around the Earth` : `${fmtPercent(earth / 100)} of the way around the Earth`}
+              </Text>
+            </View>
+            <Divider />
+            <View style={{ flexDirection: "row" }}>
+              {stat("Visits", fmtCompact(totals!.visits))}
+              <View style={{ width: 1, backgroundColor: t.c.border }} />
+              {stat("Journeys", fmtCompact(totals!.trips))}
+            </View>
+            <Divider />
+            <View style={{ flexDirection: "row" }}>
+              {stat("Days recorded", fmtCompact(totals!.days))}
+              <View style={{ width: 1, backgroundColor: t.c.border }} />
+              {stat("GPS points", fmtCompact(totals!.points))}
+            </View>
           </Card>
-
-          <StatGrid
-            items={[
-              { label: "Visits", value: fmtCompact(totals!.visits) },
-              { label: "Journeys", value: fmtCompact(totals!.trips) },
-              { label: "Days recorded", value: fmtCompact(totals!.days) },
-              { label: "GPS points", value: fmtCompact(totals!.points) },
-            ]}
-          />
 
           {months.length > 0 && (
             <>
               <SectionHeader title="Distance by month" />
               <Card style={{ gap: t.space.lg }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" }}>
-                  <View style={{ gap: 2 }}>
-                    <Text variant="caption" color="textSecondary">
-                      {chosen.long}
-                      {chosen === peak ? " · most travelled" : ""}
+                <View style={{ gap: 2 }}>
+                  <Text variant="caption" color="textSecondary">
+                    {chosen.long}
+                    {chosen === peak ? " · most travelled" : ""}
+                  </Text>
+                  <Text variant="statSm" tabular>
+                    {group(chosen.value)}
+                    <Text variant="callout" color="textSecondary">
+                      {" km"}
                     </Text>
-                    <Text variant="statSm" tabular>
-                      {chosen.value.toLocaleString()}
-                      <Text variant="callout" color="textSecondary">
-                        {" km"}
-                      </Text>
-                    </Text>
-                  </View>
-                  <Text variant="caption" color="textMuted">
-                    Tap a month
                   </Text>
                 </View>
                 <MonthBars data={months} unit="km" onSelect={setPicked} />
@@ -240,31 +279,48 @@ export default function OverviewScreen({
           {topPlaces.length > 0 && (
             <>
               <SectionHeader title="Where you spend time" action={{ label: "All places", onPress: () => openInsights("places") }} />
-              <Card style={{ gap: t.space.lg }}>
+              <ListGroup inset={0}>
                 {topPlaces.map((p) => (
-                  <ShareBar key={p.id} label={placeLabel(p.name)} value={p.hours} max={maxHours} display={fmtDuration(p.hours * 3600)} />
+                  <ListRow
+                    key={p.id}
+                    title={placeLabel(p.name)}
+                    trailing={fmtLongDuration(p.hours * 3600)}
+                    below={
+                      <View style={{ height: 4, borderRadius: 2, backgroundColor: t.c.surfaceAlt, marginTop: 6, overflow: "hidden" }}>
+                        <View style={{ width: `${Math.max(3, (p.hours / maxHours) * 100)}%`, height: 4, borderRadius: 2, backgroundColor: t.c.barMuted }} />
+                      </View>
+                    }
+                  />
                 ))}
-              </Card>
+              </ListGroup>
             </>
           )}
 
-          {data.recent.length > 0 && (
+          {recentDays.length > 0 && (
             <>
               <SectionHeader title="Recent visits" action={{ label: "Timeline", onPress: () => goTab("timeline") }} />
-              <ListGroup>
-                {data.recent.map((v) => {
-                  const named = isNamed(v.name) ? v.name : null;
-                  return (
-                    <ListRow
-                      key={v.id}
-                      leading={<IconTile icon={named ? "place" : "unnamedPlace"} />}
-                      title={named ?? "Unnamed place"}
-                      subtitle={fmtWhen(v.startedAt)}
-                      trailing={fmtDuration(v.duration)}
-                    />
-                  );
-                })}
-              </ListGroup>
+              {recentDays.map((g) => (
+                <View key={g.day} style={{ gap: t.space.sm }}>
+                  <Text variant="label" color="textSecondary" style={{ paddingHorizontal: t.space.lg }}>
+                    {g.day}
+                  </Text>
+                  <ListGroup inset={0}>
+                    {g.rows.map((v) => {
+                      const named = isNamed(v.name);
+                      const end = v.duration ? new Date(Date.parse(v.startedAt) + v.duration * 1000).toISOString() : null;
+                      return (
+                        <ListRow
+                          key={v.id}
+                          title={placeLabel(v.name)}
+                          subtitle={end ? `${fmtTime(v.startedAt)}–${fmtTime(end)}` : `From ${fmtTime(v.startedAt)}`}
+                          trailing={fmtDuration(v.duration)}
+                          accessibilityLabel={`${named ? placeLabel(v.name) : "Unnamed place"}, ${g.day} ${fmtTime(v.startedAt)}, ${fmtDuration(v.duration)}`}
+                        />
+                      );
+                    })}
+                  </ListGroup>
+                </View>
+              ))}
             </>
           )}
         </>

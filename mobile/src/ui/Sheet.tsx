@@ -71,7 +71,7 @@ function Body({
         <View style={{ alignItems: "center", paddingTop: t.space.sm }}>
           <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: t.c.borderStrong, opacity: 0.6 }} />
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: t.space.xl, paddingRight: t.space.md, paddingTop: t.space.sm, gap: t.space.md }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", paddingLeft: t.space.xl, paddingRight: t.space.md, paddingTop: t.space.md, gap: t.space.md }}>
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="title2" accessibilityRole="header">
               {title}
@@ -84,7 +84,10 @@ function Body({
               subtitle
             )}
           </View>
-          <IconButton icon="close" label="Close" onPress={onClose} variant="tonal" />
+          {/* Centred on the title's line (28 tall), not on the title block. */}
+          <View style={{ marginTop: -6 }}>
+            <IconButton icon="close" label="Close" onPress={onClose} color={t.c.textSecondary} />
+          </View>
         </View>
         <ScrollView
           keyboardShouldPersistTaps="handled"

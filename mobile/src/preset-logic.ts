@@ -47,6 +47,6 @@ export function formatInterval(ms: number): string {
 }
 
 export function describeCustom(c: CustomSettings): string {
-  const source = c.accuracy === "balanced" ? "Wi-Fi/cell positioning" : c.accuracy === "highest" ? "Best GPS" : "GPS";
-  return `${source}, a point every ≥${formatInterval(c.time)} / ${c.distance} m.`;
+  const source = c.accuracy === "balanced" ? "Wi-Fi and cell" : c.accuracy === "highest" ? "Best GPS" : "GPS";
+  return `${source} · every ${c.distance} m or ${formatInterval(c.time)}`;
 }

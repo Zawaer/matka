@@ -18,8 +18,8 @@ import {
 } from "../preset-logic";
 import { PRESETS, setCustom, setPreset, setSmartTracking, type PresetKey } from "../tracking";
 import { presetChanged } from "../watchdog";
-import { Button, Group, GroupBlock, Icon, InfoRow, Segmented } from "../ui";
-import { BackLink, DetailTitle, Screen } from "../ui/Screen";
+import { Group, GroupBlock, Icon, InfoRow, Segmented, Sheet, type IconName } from "../ui";
+import { AppBar, Screen } from "../ui/Screen";
 import { Text } from "../ui/Text";
 import type { CollectorState } from "../ui/useCollectorState";
 import { resetUploadState } from "../uploader";
@@ -34,6 +34,7 @@ type Props = {
 export default function SettingsScreen({ state, refresh, onPair, onBack }: Props) {
   const t = useTheme();
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState<"distance" | "time" | null>(null);
 
   const choose = async (key: PresetKey) => {
     setBusy(true);
@@ -68,7 +69,7 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
   const unpair = () =>
     Alert.alert(
       "Unpair this phone?",
-      "Uploads stop and the token is deleted from the phone. Tracking keeps running and points stay queued until you pair again. Also revoke the device on the web Devices page.",
+      "Uploads stop and the token is deleted from this phone. Recording carries on and points stay queued until you pair again. Also remove the device on the web Devices page.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -86,7 +87,7 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
   const clearQueue = () =>
     Alert.alert(
       "Delete queued points?",
-      `${count(state?.queued)} points that have not been uploaded will be deleted permanently.`,
+      `${count(state?.queued)} points that haven't been uploaded will be deleted for good.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -117,14 +118,8 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
   );
 
   return (
-    <Screen>
-      <BackLink label="Recorder" onPress={onBack} />
-      <DetailTitle title="Settings" />
-
-      <Group
-        title="Recording preset"
-        footer="Points are only recorded when you move at least the given distance, and reach the app in batches to save battery. Changing the preset restarts recording."
-      >
+    <Screen appBar={<AppBar title="Settings" backLabel="Recorder" onBack={onBack} />}>
+      <Group title="Recording preset" footer="Changing the preset restarts recording.">
         {(Object.keys(PRESETS) as PresetKey[]).map((k) => {
           const p = PRESETS[k];
           const on = state?.preset === k;
@@ -135,6 +130,7 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               onPress={() => choose(k)}
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
+              accessibilityLabel={`${p.label}, ${k === "custom" && on ? describeCustom(custom) : p.description}`}
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "flex-start",
@@ -151,16 +147,18 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               <View style={{ flex: 1, gap: 2 }}>
                 <Text variant="headline">{p.label}</Text>
                 <Text variant="callout" color="textSecondary">
-                  {k === "custom" ? (on ? describeCustom(custom) : p.description) : p.description}
+                  {k === "custom" && on ? describeCustom(custom) : p.description}
                 </Text>
               </View>
             </Pressable>
           );
         })}
-        {state?.preset === "custom" ? (
-          <GroupBlock gap={t.space.lg}>
+      </Group>
+
+      {state?.preset === "custom" ? (
+        <Group title="Custom">
+          <GroupBlock>
             <Segmented
-              role="radiogroup"
               showLabel
               label="Accuracy"
               options={CUSTOM_ACCURACIES.map((a) => ({ value: a.key, label: a.label }))}
@@ -168,32 +166,13 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
               disabled={busy}
               onChange={(accuracy) => changeCustom({ accuracy })}
             />
-            <Segmented
-              role="radiogroup"
-              showLabel
-              label="Distance between points"
-              options={CUSTOM_DISTANCES.map((d) => ({ value: d, label: `${d} m` }))}
-              value={custom.distance}
-              disabled={busy}
-              onChange={(distance) => changeCustom({ distance })}
-            />
-            <Segmented
-              role="radiogroup"
-              showLabel
-              label="Time between points"
-              options={CUSTOM_TIMES.map((ms) => ({ value: ms, label: formatInterval(ms) }))}
-              value={custom.time}
-              disabled={busy}
-              onChange={(time) => changeCustom({ time })}
-            />
           </GroupBlock>
-        ) : null}
-      </Group>
+          <ActionRow icon="route" label="Distance between points" value={`${custom.distance} m`} disabled={busy} onPress={() => setPicking("distance")} />
+          <ActionRow icon="wait" label="Time between points" value={formatInterval(custom.time)} disabled={busy} onPress={() => setPicking("time")} />
+        </Group>
+      ) : null}
 
-      <Group
-        title="Smart tracking"
-        footer="After 3 minutes without moving, Matka switches to Wi-Fi and cell positioning and lets GPS sleep. It switches back as soon as motion detection or location shows you moving, so the first metres of a trip may be coarse. Needs motion detection; not used with Low power."
-      >
+      <Group title="Smart tracking" footer="GPS rests after 3 minutes without moving and wakes when you move (not with Low power).">
         {toggleRow("Rest GPS when the phone is still", state?.smartTracking ?? true, (on) => run("smart tracking", () => setSmartTracking(on)), busy || !state)}
       </Group>
 
@@ -201,53 +180,158 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
         title="Keep it running"
         footer={
           Platform.OS === "android"
-            ? "Android's battery optimisation can stop or delay background apps. Some phones (Samsung, Xiaomi, Huawei, OnePlus) have an extra vendor setting: see dontkillmyapp.com."
-            : 'Set Location to "Always" with Precise Location on, and keep Background App Refresh enabled.'
+            ? "Some phones add their own battery limits: see dontkillmyapp.com."
+            : 'Set Location to "Always" with Precise Location on.'
         }
       >
         {Platform.OS === "android" ? (
           <InfoRow
             label="Battery optimisation"
-            value={state?.batteryOptimized == null ? "Unknown" : state.batteryOptimized ? "On (restricted)" : "Off"}
-            tone={state?.batteryOptimized ? "warn" : "ok"}
+            value={state?.batteryOptimized == null ? "Unknown" : state.batteryOptimized ? "On, may pause recording" : "Off"}
+            tone={state?.batteryOptimized ? "warn" : state?.batteryOptimized === false ? "ok" : "dim"}
           />
         ) : null}
-        <GroupBlock>
-          {Platform.OS === "android" ? (
-            <Button label="Allow unrestricted battery use" icon="battery" variant="secondary" onPress={requestIgnoreBatteryOptimizations} />
-          ) : null}
-          <Button label="Open app settings" icon="settings" variant="secondary" onPress={openAppSettings} />
-        </GroupBlock>
+        {Platform.OS === "android" ? (
+          <ActionRow icon="battery" label="Allow unrestricted battery use" onPress={requestIgnoreBatteryOptimizations} />
+        ) : null}
+        <ActionRow icon="settings" label="Open app settings" onPress={openAppSettings} />
       </Group>
 
       <Group title="Pairing">
         {state?.pairing ? <InfoRow label="Server" value={displayServer(state.pairing.server)} /> : null}
         {state?.pairing ? <InfoRow label="Device" value={state.server?.device ?? "–"} /> : null}
-        <GroupBlock>
-          {state?.pairing ? (
-            <>
-              <Button label="Pair again" icon="qr" variant="secondary" onPress={onPair} />
-              <Button label="Unpair this phone" icon="unlink" variant="danger" onPress={unpair} />
-            </>
-          ) : (
-            <Button label="Pair with server" icon="qr" onPress={onPair} />
-          )}
-        </GroupBlock>
+        {state?.pairing ? (
+          <>
+            <ActionRow icon="qr" label="Pair again" onPress={onPair} />
+            <ActionRow icon="unlink" label="Unpair this phone" danger onPress={unpair} />
+          </>
+        ) : (
+          <ActionRow icon="qr" label="Pair with server" onPress={onPair} />
+        )}
       </Group>
 
-      <Group
-        title="Queue"
-        footer={`Points stay on the phone until the server confirms them. Beyond ${count(db.QUEUE_CAP)} queued points the oldest are discarded.`}
-      >
+      <Group title="Queue" footer={`Points stay on the phone until the server has them (at most ${count(db.QUEUE_CAP)}).`}>
         <InfoRow label="Queued points" value={count(state?.queued)} />
-        <GroupBlock>
-          <Button label="Delete queued points" icon="delete" variant="danger" onPress={clearQueue} disabled={!state?.queued} />
-        </GroupBlock>
+        <ActionRow icon="delete" label="Delete queued points" danger onPress={clearQueue} disabled={!state?.queued} />
       </Group>
 
       <Text variant="caption" color="textMuted" tabular style={{ textAlign: "center" }}>
         Matka {Application.nativeApplicationVersion ?? "?"} ({Application.nativeBuildVersion ?? "?"}) · {Platform.OS}
       </Text>
+
+      <ChoiceSheet
+        title={picking === "distance" ? "Distance between points" : null}
+        options={CUSTOM_DISTANCES.map((d) => ({ value: d as number, label: `${d} m` }))}
+        value={custom.distance}
+        onPick={(distance) => changeCustom({ distance })}
+        onClose={() => setPicking(null)}
+      />
+      <ChoiceSheet
+        title={picking === "time" ? "Time between points" : null}
+        options={CUSTOM_TIMES.map((ms) => ({ value: ms as number, label: formatInterval(ms) }))}
+        value={custom.time}
+        onPick={(time) => changeCustom({ time })}
+        onClose={() => setPicking(null)}
+      />
     </Screen>
+  );
+}
+
+/** A tappable settings row: leading icon, label, a value or a chevron. Danger rows are red text. */
+function ActionRow({
+  icon,
+  label,
+  value,
+  onPress,
+  danger,
+  disabled,
+}: {
+  icon: IconName;
+  label: string;
+  value?: string;
+  onPress: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  const t = useTheme();
+  const fg = danger ? t.c.danger : t.c.text;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label}, ${value}` : label}
+      accessibilityState={{ disabled: !!disabled }}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: t.space.md,
+        minHeight: 56,
+        paddingHorizontal: t.space.lg,
+        backgroundColor: pressed ? t.c.surfaceAlt : "transparent",
+        opacity: disabled ? 0.45 : 1,
+      })}
+    >
+      <Icon name={icon} size={20} color={danger ? t.c.danger : t.c.textSecondary} />
+      <Text variant="body" style={{ flex: 1, color: fg }}>
+        {label}
+      </Text>
+      {value ? (
+        <Text variant="body" color="textSecondary" tabular>
+          {value}
+        </Text>
+      ) : null}
+      {danger ? null : <Icon name="chevronRight" size={20} color={t.c.textMuted} />}
+    </Pressable>
+  );
+}
+
+/** A bottom sheet with one radio row per option. */
+function ChoiceSheet<T extends string | number>({
+  title,
+  options,
+  value,
+  onPick,
+  onClose,
+}: {
+  title: string | null;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onPick: (v: T) => void;
+  onClose: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <Sheet visible={title != null} onClose={onClose} title={title ?? ""}>
+      <View accessibilityRole="radiogroup" style={{ marginHorizontal: -t.space.xl, marginTop: -t.space.md }}>
+        {options.map((o) => {
+          const on = o.value === value;
+          return (
+            <Pressable
+              key={String(o.value)}
+              onPress={() => {
+                onPick(o.value);
+                onClose();
+              }}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: t.space.lg,
+                minHeight: 56,
+                paddingHorizontal: t.space.xl,
+                backgroundColor: pressed ? t.c.surfaceAlt : "transparent",
+              })}
+            >
+              <Icon name={on ? "radioOn" : "radioOff"} size={20} color={on ? t.c.primary : t.c.textMuted} />
+              <Text variant="body" tabular>
+                {o.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </Sheet>
   );
 }

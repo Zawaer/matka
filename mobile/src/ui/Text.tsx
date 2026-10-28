@@ -1,6 +1,6 @@
 import { Text as RNText, type TextProps as RNTextProps } from "react-native";
 import { useTheme } from "../design/theme";
-import type { Colors, TypeVariant } from "../design/tokens";
+import { FONT_FAMILY, type Colors, type TypeVariant } from "../design/tokens";
 
 export type TextColor = keyof Pick<
   Colors,
@@ -14,12 +14,13 @@ type Props = RNTextProps & {
   tabular?: boolean;
 };
 
+/** All text: Inter (bundled at 400 / 500 / 600; the weight picks the face), a type-scale variant and a text colour. */
 export function Text({ variant = "body", color = "text", tabular, style, ...rest }: Props) {
   const t = useTheme();
   return (
     <RNText
       {...rest}
-      style={[t.type[variant], { color: t.c[color] }, tabular && { fontVariant: ["tabular-nums"] }, style]}
+      style={[{ fontFamily: FONT_FAMILY }, t.type[variant], { color: t.c[color] }, tabular && { fontVariant: ["tabular-nums"] }, style]}
     />
   );
 }

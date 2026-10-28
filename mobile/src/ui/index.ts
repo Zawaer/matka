@@ -19,9 +19,10 @@ export {
   Skeleton,
   Stat,
   StatGrid,
+  Tabs,
   toneColors,
   type Tone,
 } from "./primitives";
 export { Group, GroupBlock, GroupedItem, InfoRow, ListGroup, ListRow, type ValueTone } from "./lists";
-export { BackLink, DetailTitle, Pager, Screen, ScreenHeader } from "./Screen";
+export { APP_BAR, AppBar, Pager, Screen, ScreenHeader } from "./Screen";
 export { Sheet } from "./Sheet";

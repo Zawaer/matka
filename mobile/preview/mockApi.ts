@@ -255,7 +255,7 @@ const T = (startDate: string, endDate: string, name: string, cities: [string, st
 };
 const trips: TripRow[] = [
   T("2026-10-02", "2026-10-04", "Tampere", [["Tampere", "Finland", 50]], [["train", 352, 3.4], ["walking", 21, 5.2], ["bus", 8, 0.5]], 1, 4),
-  T("2026-08-07", "2026-08-12", "Lisbon and Sintra", [["Lisbon", "Portugal", 102], ["Sintra", "Portugal", 9]], [["flying", 6780, 9], ["walking", 62, 15], ["tram", 14, 1.4], ["metro", 22, 1.1], ["train", 56, 1.5]], 2, 8),
+  T("2026-08-07", "2026-08-12", "Lisbon and Sintra", [["Lisbon", "Portugal", 92], ["Sintra", "Portugal", 3]], [["flying", 6780, 9], ["walking", 62, 15], ["tram", 14, 1.4], ["metro", 22, 1.1], ["train", 56, 1.5]], 2, 8),
   T("2026-07-10", "2026-07-19", "Lapland road trip: Rovaniemi, Inari, Utsjoki and Kilpisjärvi", [["Rovaniemi", "Finland", 40], ["Inari", "Finland", 30], ["Utsjoki", "Finland", 20], ["Enontekiö", "Finland", 60], ["Kittilä", "Finland", 10]], [["driving", 2510, 31], ["walking", 48, 14], ["boat", 6, 0.6]], null, 0),
   T("2026-06-20", "2026-06-21", "Tallinn", [["Tallinn", "Estonia", 26]], [["boat", 166, 4.4], ["walking", 18, 4]], 3, 3),
   T("2026-05-01", "2026-05-03", "Stockholm", [["Stockholm", "Sweden", 46]], [["boat", 830, 33], ["metro", 19, 1], ["walking", 24, 6]], 4, 6),

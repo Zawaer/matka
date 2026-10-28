@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { useStyles, useTheme } from "../design/theme";
-import { fmtCompact, niceMax } from "../format";
+import { fmtCompact, group, niceMax } from "../format";
 import { Text } from "./Text";
 
 const PLOT_H = 140;
@@ -10,7 +10,9 @@ const AXIS = { fontSize: 11, lineHeight: 13, fontWeight: "400" as const };
 
 /**
  * Single-series column chart (emphasis form): the selected column carries the
- * brand hue, the rest sit back in a muted tint. Columns are capped at 24px with a
+ * accent, the rest are neutral grey (3:1, so they still read as marks). Each
+ * y label is centred on its gridline; a year sits under January (and the
+ * first month). Columns are capped at 24px with a
  * 4px rounded tip and a square base; gridlines are hairlines; no legend (one series).
  */
 export function MonthBars({
@@ -18,7 +20,7 @@ export function MonthBars({
   unit,
   onSelect,
 }: {
-  data: { key: string; label: string; value: number }[];
+  data: { key: string; label: string; value: number; year?: number }[];
   unit: string;
   onSelect?: (i: number) => void;
 }) {
@@ -29,7 +31,7 @@ export function MonthBars({
   const ticks = [top, top / 2, 0];
   const s = useStyles((th) => ({
     wrap: { flexDirection: "row", gap: th.space.sm },
-    axis: { width: 36, height: PLOT_H, justifyContent: "space-between", alignItems: "flex-end", marginTop: -6, marginBottom: 6 },
+    axis: { width: 36, height: PLOT_H },
     plot: { flex: 1 },
     grid: { position: "absolute", left: 0, right: 0, height: 1, backgroundColor: th.c.grid },
     cols: { height: PLOT_H, flexDirection: "row", alignItems: "flex-end" },
@@ -46,7 +48,13 @@ export function MonthBars({
     <View style={s.wrap}>
       <View style={s.axis}>
         {ticks.map((v, i) => (
-          <Text key={i} variant="caption" color="textMuted" tabular style={AXIS}>
+          <Text
+            key={i}
+            variant="caption"
+            color="textMuted"
+            tabular
+            style={[AXIS, { position: "absolute", right: 0, top: (i / (ticks.length - 1)) * (PLOT_H - 1) - AXIS.lineHeight / 2 }]}
+          >
             {fmtCompact(v)}
           </Text>
         ))}
@@ -67,7 +75,7 @@ export function MonthBars({
                   onPress={() => pick(i)}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
-                  accessibilityLabel={`${d.label}: ${d.value.toLocaleString()} ${unit}`}
+                  accessibilityLabel={`${d.label}: ${group(d.value)} ${unit}`}
                 >
                   <View
                     style={{
@@ -86,9 +94,16 @@ export function MonthBars({
         </View>
         <View style={s.labels}>
           {data.map((d, i) => (
-            <Text key={d.key} variant="caption" color={i === sel ? "text" : "textMuted"} style={[s.label, AXIS, i === sel && { fontWeight: "500" }]}>
-              {d.label}
-            </Text>
+            <View key={d.key} style={{ flex: 1, alignItems: "center" }}>
+              <Text variant="caption" color={i === sel ? "text" : "textMuted"} style={[AXIS, i === sel && { fontWeight: "500" }]}>
+                {d.label}
+              </Text>
+              {d.year != null && (i === 0 || d.label === "Jan") ? (
+                <Text variant="caption" color="textMuted" tabular style={AXIS}>
+                  {d.year}
+                </Text>
+              ) : null}
+            </View>
           ))}
         </View>
       </View>
@@ -111,7 +126,7 @@ export function ShareBar({ label, value, display, max }: { label: string; value:
         </Text>
       </View>
       <View style={{ height: 6, borderRadius: 3, backgroundColor: t.c.surfaceAlt, overflow: "hidden" }}>
-        <View style={{ width: `${pct * 100}%`, height: 6, borderRadius: 3, backgroundColor: t.c.primary }} />
+        <View style={{ width: `${pct * 100}%`, height: 6, borderRadius: 3, backgroundColor: t.c.barMuted }} />
       </View>
     </View>
   );
