@@ -8,6 +8,8 @@ Defined by `web/migrations/*.sql`, applied in order by `web/scripts/migrate.mjs`
 | `users` | One per OIDC identity (`oidc_sub`) | `timezone`, Immich URL + encrypted key |
 | `sessions` | Browser sessions | `id` = SHA-256 of the cookie token |
 | `devices` | Paired collectors | `token_hash` = SHA-256 of the bearer token; `revoked_at`; `heartbeat_at` + `status` jsonb from `POST /api/devices/heartbeat` (`lib/heartbeat.ts`) |
+| `device_preset_log` | Recording preset changes per device | `preset` jsonb `{preset, custom, smartTracking}`, `since`; a row only when it differs from the latest (heartbeats) |
+| `device_daily_usage` | Recorder usage per device, phone-local day and preset | GPS-active/standby/off seconds, fixes, moving/still seconds, whole-phone current and charge-counter drop (unplugged); from heartbeats |
 | `points` | Raw fixes | `UNIQUE (user_id, ts)`; `geom geography(Point)`; `source` device/import |
 | `places` | Somewhere the user stays | Name: `custom_name` (user), else `ai_name` (opt-in AI picker, from `geo_candidates`), else `geo_name` (Photon): `PLACE_NAME_SQL`/`PLACE_CATEGORY_SQL` in `lib/places.ts`; `category` = OSM value |
 | `visits` | A stay at a place | `started_at`/`ended_at`; derived |

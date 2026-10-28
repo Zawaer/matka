@@ -53,3 +53,53 @@ export function edgeGaps(
       : null;
   return { before, after };
 }
+
+/** A change of place farther than this with no trip between is "Missing travel". */
+export const MISSING_TRAVEL_M = 500;
+
+export type MissingTravel = {
+  /** When the earlier item ended and the later one started (ISO). */
+  from: string;
+  to: string;
+  /** Straight-line metres from where the earlier item ended to where the later one started. */
+  distance: number;
+  secs: number;
+  fromPos: { lat: number; lon: number };
+  toPos: { lat: number; lon: number };
+};
+
+type Pos = { lat: number; lon: number } | null;
+const ok = (p: { lat?: number | null; lon?: number | null } | undefined): Pos =>
+  p && typeof p.lat === "number" && typeof p.lon === "number" && Number.isFinite(p.lat) && Number.isFinite(p.lon)
+    ? { lat: p.lat, lon: p.lon }
+    : null;
+const endPos = (it: TimelineItem): Pos => (it.kind === "visit" ? ok(it.visit) : ok(it.track.to));
+const startPos = (it: TimelineItem): Pos => (it.kind === "visit" ? ok(it.visit) : ok(it.track.from));
+
+function metres(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const r = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * r;
+  const dLon = (b.lon - a.lon) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * Travel the timeline can't account for: two consecutive items (no trip
+ * between them) where the later one starts more than MISSING_TRAVEL_M from
+ * where the earlier one ended, e.g. a "No location recorded" hole that ends
+ * somewhere else, or two visits far apart. The timeline offers "Add travel".
+ */
+export function missingTravel(a: TimelineItem, b: TimelineItem): MissingTravel | null {
+  const fromPos = endPos(a);
+  const toPos = startPos(b);
+  if (!fromPos || !toPos) return null;
+  const distance = metres(fromPos, toPos);
+  if (distance <= MISSING_TRAVEL_M) return null;
+  const from = endOf(a);
+  // Overlapping items (rare): an instant, not a negative span.
+  const to = ms(startOf(b)) < ms(from) ? from : startOf(b);
+  const secs = (ms(to) - ms(from)) / 1000;
+  if (!Number.isFinite(secs)) return null;
+  return { from, to, distance: Math.round(distance), secs, fromPos, toPos };
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { checkDawarich, saveAiPlaces, saveImmich, savePhotoPoints, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
+import { checkDawarich, saveAiPlaces, saveImmich, saveImmichLink, savePhotoPoints, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
 
 const input =
   "mt-1.5 block w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-primary";
@@ -77,6 +77,28 @@ export function ImmichForm({ url, connected }: { url: string | null; connected: 
             Disconnect
           </button>
         )}
+        <Result r={r} />
+      </div>
+    </form>
+  );
+}
+
+export function ImmichLinkForm({ url }: { url: string | null }) {
+  const [r, action, pending] = useActionState<FormResult, FormData>(saveImmichLink, null);
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <label className="text-sm font-medium">
+        Immich address for links <span className="font-normal text-muted">(optional)</span>
+        <input name="link_url" defaultValue={url ?? ""} placeholder="https://immich.lan" className={input} />
+      </label>
+      <p className="text-xs text-muted">
+        Where you open Immich in your browser. Photos on the timeline link there; leave it empty to view them in
+        Matka only. The server URL above is often a container address your devices can&apos;t open.
+      </p>
+      <div className="flex items-center gap-3">
+        <button className={button} disabled={pending}>
+          Save
+        </button>
         <Result r={r} />
       </div>
     </form>

@@ -48,7 +48,8 @@ export async function saveAiPlaces(_prev: FormResult, form: FormData): Promise<F
     );
   } else {
     await q(
-      `UPDATE places SET geo_candidates = NULL, ai_name = NULL, ai_category = NULL, ai_confidence = NULL,
+      // The nearby candidates stay: the timeline's "Visited X?" uses them too.
+      `UPDATE places SET ai_name = NULL, ai_category = NULL, ai_confidence = NULL,
                          ai_version = NULL, ai_checked_at = NULL, ai_visits = NULL
        WHERE user_id = $1`,
       [user.id],
@@ -81,7 +82,7 @@ export async function savePhotoPoints(_prev: FormResult, form: FormData): Promis
 export async function saveImmich(_prev: FormResult, form: FormData): Promise<FormResult> {
   const user = await requireUser();
   if (form.get("disconnect")) {
-    await q(`UPDATE users SET immich_url = NULL, immich_api_key = NULL WHERE id = $1`, [user.id]);
+    await q(`UPDATE users SET immich_url = NULL, immich_api_key = NULL, immich_link_url = NULL WHERE id = $1`, [user.id]);
     revalidatePath("/settings");
     return { ok: true, message: "Immich disconnected." };
   }
@@ -148,6 +149,21 @@ export async function saveImmich(_prev: FormResult, form: FormData): Promise<For
   ]);
   revalidatePath("/settings");
   return { ok: true, message: "Immich connected." };
+}
+
+/**
+ * "Immich address for links": where the user opens Immich in a browser (e.g.
+ * https://immich.lan). The timeline's photos link there; it is never
+ * fetched by the server, so it may be a name only the user's devices know.
+ */
+export async function saveImmichLink(_prev: FormResult, form: FormData): Promise<FormResult> {
+  const user = await requireUser();
+  const raw = String(form.get("link_url") ?? "").trim();
+  const url = raw ? normalizeImmichUrl(raw) : null;
+  if (raw && !url) return { ok: false, message: "Enter an address like https://immich.example.com, or leave it empty." };
+  await q(`UPDATE users SET immich_link_url = $2 WHERE id = $1`, [user.id, url]);
+  revalidatePath("/settings");
+  return { ok: true, message: url ? "Saved. Photos on the timeline open in Immich." : "Cleared. Photos open in Matka only." };
 }
 
 export async function checkDawarich(): Promise<FormResult> {

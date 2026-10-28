@@ -1,14 +1,14 @@
+import { correctionJoin } from "../corrections";
 import { q, tx } from "../db";
 import { configuredFeeds } from "./feed";
-import { TransitIndex, matchLegs, type Shape, type Stop, type TransitKind } from "./match";
+import { MATCHER_VERSION, TransitIndex, matchLegs, type Shape, type Stop, type TransitKind } from "./match";
 
-/** Bump when the matcher changes, so every trip is matched again. */
-export const MATCHER_VERSION = "2";
+export { MATCHER_VERSION };
 const SKIP_MODES = new Set(["walking", "flying", "stationary"]);
 
 let cache: { key: string; index: TransitIndex } | null = null;
 
-async function loadIndex(): Promise<TransitIndex | null> {
+export async function loadIndex(): Promise<TransitIndex | null> {
   const [{ key }] = await q<{ key: string | null }>(
     `SELECT string_agg(id || ':' || coalesce(version, ''), ',' ORDER BY id) AS key FROM transit_feeds WHERE loaded_at IS NOT NULL`,
   );
@@ -16,7 +16,7 @@ async function loadIndex(): Promise<TransitIndex | null> {
   if (cache?.key === key) return cache.index;
   const shapes = await q<Shape>(
     `SELECT s.feed_id || '/' || s.shape_id AS key, r.kind, r.short_name AS line,
-            ST_AsGeoJSON(s.path::geometry)::json -> 'coordinates' AS coords
+            ST_AsGeoJSON(s.path::geometry)::json -> 'coordinates' AS coords, s.trips
      FROM transit_shapes s JOIN transit_routes r USING (feed_id, route_id)`,
   );
   const stops = await q<Stop>(`SELECT name, ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon FROM transit_stops`);
@@ -26,6 +26,8 @@ async function loadIndex(): Promise<TransitIndex | null> {
   return cache.index;
 }
 
+let requeued = false;
+
 /**
  * Matches up to `limit` not-yet-checked trips of users who have line matching
  * on, newest first. Returns how many trips it looked at.
@@ -34,6 +36,11 @@ export async function matchPendingTrips(limit = 200): Promise<number> {
   if (configuredFeeds().length === 0) return 0;
   const index = await loadIndex();
   if (!index) return 0;
+  if (!requeued) {
+    // Once per process: trips matched by an older matcher are matched again.
+    await q(`UPDATE trips SET transit_checked = NULL WHERE transit_checked IS NOT NULL AND transit_checked <> $1`, [MATCHER_VERSION]);
+    requeued = true;
+  }
   const trips = await q<{ id: string; user_id: string; mode: string; started_at: Date; ended_at: Date }>(
     `SELECT t.id, t.user_id, t.mode, t.started_at, t.ended_at
      FROM trips t JOIN users u ON u.id = t.user_id
@@ -46,8 +53,8 @@ export async function matchPendingTrips(limit = 200): Promise<number> {
     try {
       let legs: ReturnType<typeof matchLegs> = [];
       if (!SKIP_MODES.has(trip.mode)) {
-        const pts = await q<{ ts: number; lat: number; lon: number }>(
-          `SELECT extract(epoch FROM ts)::float8 AS ts, ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon
+        const pts = await q<{ ts: number; lat: number; lon: number; accuracy: number | null }>(
+          `SELECT extract(epoch FROM ts)::float8 AS ts, ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon, accuracy
            FROM points WHERE user_id = $1 AND ts BETWEEN $2 AND $3 ORDER BY ts`,
           [trip.user_id, trip.started_at, trip.ended_at],
         );
@@ -101,7 +108,8 @@ export function displayMode(mode: string, distanceM: number, legs: Pick<LegRow, 
 /**
  * displayMode in SQL, for queries over trips aliased `t`: add displayModeJoin(flag)
  * and select displayModeSql(flag), flag being the SQL for "line matching on"
- * (the legs aren't read when it is off).
+ * (the legs aren't read when it is off). The user's own correction of the
+ * trip (lib/corrections.ts) comes first, whatever the flag.
  * Sums leg distance per kind like displayMode; ties go to the kind seen first
  * (lowest seq), as displayMode's stable sort over legs in seq order does.
  */
@@ -109,9 +117,10 @@ export const displayModeJoin = (flag: string) => `LEFT JOIN LATERAL (
        SELECT sum(d) AS covered, (array_agg(kind ORDER BY d DESC, first_seq))[1] AS kind
        FROM (SELECT kind, sum(distance_m::float8) AS d, min(seq) AS first_seq
              FROM trip_legs WHERE trip_id = t.id GROUP BY kind) k
-     ) l ON ${flag}`;
+     ) l ON ${flag}
+     ${correctionJoin("tcorr")}`;
 export const displayModeSql = (flag: string) =>
-  `CASE WHEN ${flag} AND l.covered >= 0.5 * t.distance_m THEN l.kind ELSE t.mode END`;
+  `COALESCE(tcorr.mode, CASE WHEN ${flag} AND l.covered >= 0.5 * t.distance_m THEN l.kind ELSE t.mode END)`;
 
 /** Legs of these trips, grouped by trip id (empty when none). */
 export async function legsByTrip(tripIds: (string | number)[]): Promise<Map<string, LegRow[]>> {

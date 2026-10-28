@@ -11,3 +11,6 @@ export const LEG_BADGE: Record<LegKind, { label: string; bg: string; fg: string 
   train: { label: "Train", bg: "#8C4799", fg: "#FFFFFF" },
   boat: { label: "Ferry", bg: "#00B9E4", fg: "#16161F" },
 };
+
+/** "Metro M1", or every line still possible on shared track: "Metro M1/M2", "Bus 102N/510". */
+export const legBadgeText = (kind: LegKind, lines: string[]) => `${LEG_BADGE[kind].label} ${lines.join("/")}`;

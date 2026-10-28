@@ -104,7 +104,8 @@ export type Ranked = {
   offCentre: number;
 };
 
-function takenAt(a: ImmichAsset): number | null {
+/** When the photo was taken (epoch ms), or null when it doesn't say. */
+export function takenAt(a: ImmichAsset): number | null {
   for (const s of [a.fileCreatedAt, a.exifInfo?.dateTimeOriginal]) {
     const t = s ? Date.parse(s) : NaN;
     if (Number.isFinite(t)) return t;
@@ -112,10 +113,21 @@ function takenAt(a: ImmichAsset): number | null {
   return null;
 }
 
+/** A photo from a camera: an image with a camera make (not a screenshot, download or edited export). */
+export const isCameraPhoto = (a: ImmichAsset): boolean =>
+  !!a?.id && (!a.type || a.type === "IMAGE") && !!a.exifInfo?.make?.trim();
+
+/** The photo's GPS position, or null (0,0 is a missing fix). */
+export function photoPosition(a: ImmichAsset): { lat: number; lon: number } | null {
+  const lat = a.exifInfo?.latitude;
+  const lon = a.exifInfo?.longitude;
+  return finite(lat) && finite(lon) && !(lat === 0 && lon === 0) ? { lat, lon } : null;
+}
+
+export { metres as metresApart };
+
 function evaluate(a: ImmichAsset, windows: CoverWindow[], radiusM: number): Ranked | null {
-  if (!a?.id || (a.type && a.type !== "IMAGE")) return null;
-  // No camera make: screenshots, downloads, edited exports.
-  if (!a.exifInfo?.make?.trim()) return null;
+  if (!a?.id || !isCameraPhoto(a) || !a.exifInfo) return null;
   const time = takenAt(a);
   const lat = a.exifInfo.latitude;
   const lon = a.exifInfo.longitude;
@@ -221,8 +233,8 @@ async function limited<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** One metadata search; null when the request failed. */
-async function search(cfg: ImmichConfig, body: Record<string, unknown>): Promise<ImmichAsset[] | null> {
+/** One metadata search; null when the request failed. Shared with lib/dayPhotos.ts. */
+export async function search(cfg: ImmichConfig, body: Record<string, unknown>): Promise<ImmichAsset[] | null> {
   return limited(async () => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);

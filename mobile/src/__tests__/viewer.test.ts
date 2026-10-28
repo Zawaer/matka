@@ -1,5 +1,8 @@
 import type { Pairing } from "../pairing";
 import {
+  deleteCorrection,
+  postCorrection,
+  searchRoutes,
   getEmbedTicket,
   getOverview,
   getPlaces,
@@ -176,9 +179,13 @@ describe("parsing", () => {
     const t = parseTimeline(TIMELINE)!;
     expect(t.day.date).toBe("2026-10-18");
     expect(t.day.items).toHaveLength(3);
-    expect(t.day.items[0]).toEqual(TIMELINE.day.items[0]);
+    const visit = TIMELINE.day.items[0] as { kind: "visit"; visit: object };
+    expect(t.day.items[0]).toEqual({ ...visit, visit: { ...visit.visit, placeKind: null, osmKey: null, candidates: null } });
     const move = TIMELINE.day.items[1] as { kind: "move"; track: object };
-    expect(t.day.items[1]).toEqual({ ...move, track: { ...move.track, legs: [], waits: [] } });
+    expect(t.day.items[1]).toEqual({
+      ...move,
+      track: { ...move.track, legs: [], waits: [], correctionId: null, added: false, from: null, to: null },
+    });
     expect(t.day.items[2]).toMatchObject({ kind: "move", track: { id: 3, mode: "unknown" } });
     expect(t.dates).toEqual(["2026-10-17", "2026-10-18"]);
     expect(t.minDate).toBe("2026-10-17");
@@ -286,5 +293,40 @@ describe("parsing", () => {
     // a kind this app doesn't know reads as not saved
     expect(parsePlaces({ places: [{ id: 5, kind: "castle" }] })![0].kind).toBeNull();
     expect(parsePlaces({ error: "x" })).toBeNull();
+  });
+});
+
+describe("trip corrections", () => {
+  it("reads the correction id of an edited move", () => {
+    const t = parseTimeline({
+      day: { date: "2026-10-27", items: [{ kind: "move", track: { id: 5, startedAt: "a", endedAt: "b", mode: "metro", correctionId: 12 } }] },
+      dates: [],
+    })!;
+    expect(t.day.items[0]).toMatchObject({ track: { correctionId: 12 } });
+  });
+
+  it("searches lines, keeping only known kinds", async () => {
+    respond(200, { routes: [{ line: "M1", kind: "metro", name: "Kivenlahti - Vuosaari" }, { line: "X", kind: "zeppelin" }] });
+    const r = await searchRoutes(P, "M1");
+    expect(calls[0].url).toBe("https://matka.example.com/api/transit/routes?q=M1");
+    expect(r).toEqual({ ok: true, data: [{ line: "M1", kind: "metro", name: "Kivenlahti - Vuosaari" }] });
+  });
+
+  it("posts a fix with the device token and undoes it", async () => {
+    respond(200, { correction: { id: 9 } });
+    const body = {
+      startedAt: "2026-10-27T07:36:00.000Z",
+      endedAt: "2026-10-27T08:10:00.000Z",
+      mode: "metro" as const,
+      legs: [{ kind: "bus" as const, line: "159", transferStop: "Matinkylä" }],
+    };
+    expect(await postCorrection(P, body)).toEqual({ ok: true, data: 9 });
+    expect(calls[0].url).toBe("https://matka.example.com/api/corrections");
+    expect(calls[0].init.method).toBe("POST");
+    expect((calls[0].init.headers as Record<string, string>).Authorization).toBe(`Bearer ${P.token}`);
+    expect(JSON.parse(calls[0].init.body as string)).toEqual(body);
+    respond(200, { ok: true });
+    expect(await deleteCorrection(P, 9)).toEqual({ ok: true, data: true });
+    expect(calls[1]).toMatchObject({ url: "https://matka.example.com/api/corrections/9", init: { method: "DELETE" } });
   });
 });

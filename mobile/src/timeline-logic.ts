@@ -2,7 +2,7 @@
 // __tests__/timeline-logic.test.ts). Same rules as the web timeline
 // (web/src/components/timeline/Timeline.tsx).
 
-import type { Leg, Move, TimelineItem } from "./viewer";
+import type { LatLon, Leg, Move, TimelineItem } from "./viewer";
 
 /** Shorter silences are the phone lying still or a short tunnel, not worth a row. */
 export const MIN_GAP_S = 30 * 60;
@@ -83,4 +83,60 @@ export function selectionKey(it: TimelineItem): string {
 /** Whether the day map has anything to draw (same rule as the web's dayHasMap). */
 export function dayHasMap(items: TimelineItem[]): boolean {
   return items.some((it) => (it.kind === "visit" ? it.visit.lat != null && it.visit.lon != null : it.track.mode !== "stationary"));
+}
+
+/** A change of place farther than this with no move between is "Missing travel". */
+export const MISSING_TRAVEL_M = 500;
+
+export type MissingTravel = { from: string; to: string; distance: number; secs: number; fromPos: LatLon; toPos: LatLon };
+
+const pos = (lat: number | null | undefined, lon: number | null | undefined): LatLon | null =>
+  typeof lat === "number" && typeof lon === "number" && Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+const endPos = (it: TimelineItem) => (it.kind === "visit" ? pos(it.visit.lat, it.visit.lon) : (it.track.to ?? null));
+const startPos = (it: TimelineItem) => (it.kind === "visit" ? pos(it.visit.lat, it.visit.lon) : (it.track.from ?? null));
+
+/** Straight-line metres. */
+export function metres(a: LatLon, b: LatLon): number {
+  const r = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * r;
+  const dLon = (b.lon - a.lon) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * Travel the timeline can't account for (same rule as the web's gaps.ts
+ * missingTravel): two consecutive rows where the later one starts more than
+ * MISSING_TRAVEL_M from where the earlier one ended. The timeline offers
+ * "Add travel".
+ */
+export function missingTravel(a: TimelineItem, b: TimelineItem): MissingTravel | null {
+  const fromPos = endPos(a);
+  const toPos = startPos(b);
+  if (!fromPos || !toPos) return null;
+  const distance = metres(fromPos, toPos);
+  if (distance <= MISSING_TRAVEL_M) return null;
+  const from = endOf(a);
+  const to = ms(startOf(b)) < ms(from) ? from : startOf(b);
+  const secs = (ms(to) - ms(from)) / 1000;
+  if (!Number.isFinite(secs)) return null;
+  return { from, to, distance: Math.round(distance), secs, fromPos, toPos };
+}
+
+/** The move "Add travel" opens the editor with: the missing stretch, as a first guess walking or driving. */
+export function addedMove(m: MissingTravel): Move {
+  return {
+    id: 0,
+    startedAt: m.from,
+    endedAt: m.to,
+    distance: m.distance,
+    duration: m.secs,
+    mode: m.distance < 2500 ? "walking" : "driving",
+    legs: [],
+    waits: [],
+    correctionId: null,
+    added: true,
+    from: m.fromPos,
+    to: m.toPos,
+  };
 }

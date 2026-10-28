@@ -29,3 +29,6 @@ export function badgeColors(kind: TransitLeg["kind"]): { bg: string; fg: string 
   const dark = (L + 0.05) / (lum("#16161f") + 0.05);
   return { bg, fg: white >= 4.5 || white >= dark ? "#ffffff" : "#16161f" };
 }
+
+/** "Metro M1", or every line still possible on shared track: "Metro M1/M2", "Bus 102N/510". */
+export const legBadgeText = (kind: TransitLeg["kind"], lines: string[]) => `${KIND_LABEL[kind]} ${lines.join("/")}`;

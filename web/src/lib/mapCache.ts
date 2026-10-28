@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { correctionsStampSql } from "./corrections";
 import { q } from "./db";
 
 // The map's heatmap and route layers are a few MB of GeoJSON computed over
@@ -15,7 +16,8 @@ const cache = new Map<string, { etag: string; body: string }>();
 async function dataTag(userId: string, req: Request, extra: string): Promise<string> {
   const [r] = await q<{ v: string }>(
     `SELECT concat_ws('|', ps.dirty_from, ps.processed_at,
-              (SELECT count(*) FROM trips WHERE user_id = $1 AND transit_checked IS NOT NULL)) AS v
+              (SELECT count(*) FROM trips WHERE user_id = $1 AND transit_checked IS NOT NULL),
+              ${correctionsStampSql("$1")}) AS v
      FROM (SELECT 1) one LEFT JOIN processing_state ps ON ps.user_id = $1`,
     [userId],
   );

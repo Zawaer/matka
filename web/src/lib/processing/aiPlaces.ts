@@ -10,6 +10,7 @@ import {
   type AiPlaceInput,
 } from "../aiPlaces";
 import { askClaude, claudeConfigured } from "../claude";
+import { AI_MIN_CANDIDATES } from "./geocode";
 
 // Worker step after geocoding: for users who turned on the AI place picker
 // (Settings), places where Photon found several plausible POIs are sent in
@@ -49,6 +50,8 @@ async function pendingFor(userId: string): Promise<Row[]> {
             avg((extract(hour FROM v.local_start) >= 22 OR extract(hour FROM v.local_start) < 6)::int)::float8 AS night
      FROM places p JOIN v ON v.place_id = p.id
      WHERE p.user_id = $1 AND p.geo_candidates IS NOT NULL AND p.kind IS NULL AND p.custom_name IS NULL
+       -- Candidates are kept for every place; only a real choice goes to the model.
+       AND jsonb_array_length(COALESCE(p.geo_candidates->'pois', '[]')) >= ${AI_MIN_CANDIDATES}
      GROUP BY p.id
      -- Not checked with this version, or visited much more since.
      HAVING p.ai_version IS DISTINCT FROM $2 OR count(*) >= greatest(2 * p.ai_visits, p.ai_visits + 3)

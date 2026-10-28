@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NO_CONTACT_WARN_MS, deviceHealth, parseHeartbeat, span } from "./heartbeat";
+import { NO_CONTACT_WARN_MS, deviceHealth, parseHeartbeat, parseUsage, span, statusPreset } from "./heartbeat";
 
 const NOW = Date.UTC(2026, 9, 19, 20, 0);
 const MIN = 60_000;
@@ -19,7 +19,28 @@ const good = {
 describe("parseHeartbeat", () => {
   it("accepts a full heartbeat", () => {
     const r = parseHeartbeat(good, NOW);
-    expect(r).toEqual({ ok: true, status: { ...good } });
+    expect(r).toEqual({ ok: true, status: { ...good, preset: null, custom: null, smartTracking: null }, usage: [] });
+  });
+
+  it("reads the recording preset", () => {
+    const r = parseHeartbeat({ ...good, preset: "precise", smartTracking: true }, NOW);
+    expect(r.ok && r.status).toMatchObject({ preset: "precise", custom: null, smartTracking: true });
+    expect(r.ok && statusPreset(r.status)).toEqual({ preset: "precise", custom: null, smartTracking: true });
+    const c = parseHeartbeat(
+      { ...good, preset: "custom", custom: { accuracy: "highest", distance: 10, time: 10_000 }, smartTracking: false },
+      NOW,
+    );
+    expect(c.ok && c.status).toMatchObject({
+      preset: "custom",
+      custom: { accuracy: "highest", distance: 10, time: 10_000 },
+      smartTracking: false,
+    });
+    // Unknown presets, bad custom values and a non-boolean flag are dropped, not rejected.
+    const bad = parseHeartbeat({ ...good, preset: "turbo", custom: { accuracy: "x" }, smartTracking: "yes" }, NOW);
+    expect(bad.ok && bad.status).toMatchObject({ preset: null, custom: null, smartTracking: null });
+    expect(bad.ok && statusPreset(bad.status)).toBeNull();
+    const badCustom = parseHeartbeat({ ...good, preset: "custom", custom: { accuracy: "high", distance: -1, time: 1 } }, NOW);
+    expect(badCustom.ok && badCustom.status).toMatchObject({ preset: "custom", custom: null });
   });
 
   it("requires recording and mode", () => {
@@ -51,6 +72,9 @@ describe("parseHeartbeat", () => {
       appVersion: "x".repeat(64),
       recoveries: 3,
       problem: null,
+      preset: null,
+      custom: null,
+      smartTracking: null,
     });
   });
 
@@ -62,6 +86,54 @@ describe("parseHeartbeat", () => {
   it("recording off forces mode off and drops the problem", () => {
     const r = parseHeartbeat({ ...good, recording: false, mode: "active", problem: "permission" }, NOW);
     expect(r.ok && r.status).toMatchObject({ mode: "off", problem: null });
+  });
+});
+
+describe("parseUsage", () => {
+  const row = {
+    day: "2026-10-19",
+    preset: "balanced",
+    activeS: 1320.4,
+    standbyS: 50_000,
+    offS: 0,
+    fixes: 210,
+    movingS: 1500,
+    stillS: 48_000,
+    current: { active: { n: 12, mean: 412.34, median: 400 }, standby: { n: 30, mean: 61, median: 55 }, screen: { n: 0 } },
+    dropMah: 1240.06,
+    dropS: 34_000,
+  };
+
+  it("reads rows and cleans them", () => {
+    const [u] = parseUsage([row], NOW);
+    expect(u).toEqual({
+      ...row,
+      activeS: 1320,
+      current: {
+        active: { n: 12, mean: 412.3, median: 400 },
+        standby: { n: 30, mean: 61, median: 55 },
+        screen: { n: 0, mean: null, median: null },
+      },
+      dropMah: 1240.1,
+    });
+    expect(parseHeartbeat({ ...good, usage: [row] }, NOW).ok).toBe(true);
+  });
+
+  it("drops bad rows and duplicates, clamps values", () => {
+    const out = parseUsage(
+      [
+        row,
+        { ...row }, // duplicate day+preset
+        { ...row, preset: "turbo" },
+        { ...row, day: "2026-02-30" },
+        { ...row, day: "2026-09-01" }, // too old
+        { ...row, day: "2026-10-18", preset: "precise", activeS: -5, fixes: "x", standbyS: 1e9, current: null },
+      ],
+      NOW,
+    );
+    expect(out.map((u) => `${u.day} ${u.preset}`)).toEqual(["2026-10-19 balanced", "2026-10-18 precise"]);
+    expect(out[1]).toMatchObject({ activeS: 0, fixes: 0, standbyS: 90_000, current: { active: { n: 0, mean: null } } });
+    expect(parseUsage("nope", NOW)).toEqual([]);
   });
 });
 

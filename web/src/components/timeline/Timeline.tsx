@@ -8,10 +8,13 @@ import { KIND_META } from "@/lib/savedPlaces";
 import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
 import { DaySummaryStrip } from "./DaySummaryStrip";
-import { edgeGaps, gapBetween } from "./gaps";
+import { edgeGaps, gapBetween, missingTravel, type MissingTravel } from "./gaps";
+import { placeIcon } from "@/lib/placeIcons";
+import { MissingTravelRow, PhotoStrip, PhotoViewer, PlaceQuestion, useDayPhotos, type PhotoSet } from "./TimelineExtras";
 import { dayHasMap, selectionKey } from "./dayMap";
 import type { DayMapSelection } from "./DayMap";
-import { KIND_LABEL, badgeColors } from "@/lib/transit/colors";
+import { badgeColors, legBadgeText } from "@/lib/transit/colors";
+import { TripEditor } from "./TripEditor";
 import {
   formatDuration,
   formatDistance,
@@ -90,6 +93,28 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
     );
   };
   let visitNo = 0;
+  // The trip being fixed ("Fix this trip"), or added ("Add travel").
+  const [editing, setEditing] = useState<TrackSummary | null>(null);
+  const addTravel = (gap: MissingTravel) =>
+    setEditing({
+      id: 0,
+      startedAt: gap.from,
+      endedAt: gap.to,
+      distance: gap.distance,
+      duration: gap.secs,
+      // A first guess the user changes anyway: walking distance or not.
+      mode: gap.distance < 2500 ? "walking" : "driving",
+      added: true,
+      from: gap.fromPos,
+      to: gap.toPos,
+    });
+
+  // Photos of the day (Immich), once the list is there.
+  const photos = useDayPhotos(data?.day.date ?? null, !!data && !isLoading);
+  const photosByKey = new Map<string, PhotoSet>(
+    data && photos ? photos.items.map((p) => [p.key, { ids: p.ids, total: p.total }]) : [],
+  );
+  const [viewing, setViewing] = useState<(PhotoSet & { start: number }) | null>(null);
 
   return (
     <div>
@@ -117,7 +142,7 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
               : "hidden"
           }
         >
-          <DayMap day={data.day} selected={selected} onSelect={selectFromMap} />
+          <DayMap day={data.day} selected={selected} onSelect={selectFromMap} photos={photos?.points} />
         </div>
       ) : null}
 
@@ -142,10 +167,15 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
           <ol className="relative">
             {edges.before && <GapRow from={edges.before.from} to={edges.before.to} />}
             {items.map((item, i) => {
-              const gap = i > 0 ? gapBetween(items[i - 1], item) : null;
+              // Far apart with no trip between: "Missing travel" (it says
+              // "No location recorded" itself when that is why).
+              const missing = i > 0 ? missingTravel(items[i - 1], item) : null;
+              const gap = i > 0 && !missing ? gapBetween(items[i - 1], item) : null;
+              const set = photosByKey.get(selectionKey(item));
               return (
                 <Fragment key={rowKey(item, i)}>
                   {gap && <GapRow from={gap.from} to={gap.to} />}
+                  {missing && <MissingTravelRow gap={missing} onAdd={() => addTravel(missing)} />}
                   <TimelineRow
                     item={item}
                     num={item.kind === "visit" && showMap ? ++visitNo : undefined}
@@ -153,6 +183,8 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
                     isLast={i === items.length - 1}
                     selected={selected?.key === selectionKey(item)}
                     onSelect={showMap ? selectFromList : undefined}
+                    onFix={setEditing}
+                    photos={set ? <PhotoStrip set={set} onOpen={(start) => setViewing({ ...set, start })} /> : null}
                   />
                 </Fragment>
               );
@@ -161,6 +193,16 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
           </ol>
         )}
       </div>
+      {editing && <TripEditor key={`${editing.id}-${editing.startedAt}`} track={editing} onClose={() => setEditing(null)} />}
+      {viewing && (
+        <PhotoViewer
+          ids={viewing.ids}
+          total={viewing.total}
+          start={viewing.start}
+          linkBase={photos?.linkBase ?? null}
+          onClose={() => setViewing(null)}
+        />
+      )}
     </div>
   );
 }
@@ -273,8 +315,12 @@ function TimelineRow({
   isLast,
   selected,
   onSelect,
+  onFix,
+  photos,
 }: {
   item: TimelineItem;
+  /** The photos taken during it, if any. */
+  photos: React.ReactNode;
   /** The stop's number on the day map. */
   num?: number;
   isFirst: boolean;
@@ -282,6 +328,7 @@ function TimelineRow({
   selected: boolean;
   /** Set when the day map is shown: a click on the row shows it there. */
   onSelect?: (key: string) => void;
+  onFix: (track: TrackSummary) => void;
 }) {
   const key = selectionKey(item);
   const pick: Pick = {
@@ -296,9 +343,9 @@ function TimelineRow({
       : undefined,
   };
   return item.kind === "visit" ? (
-    <VisitRow visit={item.visit} num={num} isFirst={isFirst} isLast={isLast} pick={pick} />
+    <VisitRow visit={item.visit} num={num} isFirst={isFirst} isLast={isLast} pick={pick} photos={photos} />
   ) : (
-    <MoveRow track={item.track} pick={pick} />
+    <MoveRow track={item.track} pick={pick} onFix={onFix} photos={photos} />
   );
 }
 
@@ -331,16 +378,21 @@ function VisitRow({
   isFirst,
   isLast,
   pick,
+  photos,
 }: {
   visit: Visit;
   num?: number;
   isFirst: boolean;
   isLast: boolean;
   pick: Pick;
+  photos: React.ReactNode;
 }) {
   const name = placeTitle(visit.placeName, visit.category);
   const unknown = !visit.placeName;
   const kind = visit.placeKind ? KIND_META[visit.placeKind] : null;
+  const icon = placeIcon(visit.placeKind, visit.category, visit.osmKey);
+  // "Visited X?": the name is a guess among several.
+  const asking = !!visit.candidates?.length;
 
   return (
     <li
@@ -351,7 +403,7 @@ function VisitRow({
       <Rail topLine={!isFirst} bottomLine={!isLast}>
         <span
           className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 bg-surface text-primary shadow-sm"
-          title={kind?.label}
+          title={kind?.label ?? icon.label}
         >
           {num != null && (
             <span
@@ -363,15 +415,9 @@ function VisitRow({
               {num}
             </span>
           )}
-          {kind ? (
-            <span className="text-base leading-none" aria-hidden>
-              {kind.icon}
-            </span>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M12 2C7.6 2 4 5.6 4 10c0 5.5 8 12 8 12s8-6.5 8-12c0-4.4-3.6-8-8-8Zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" />
-            </svg>
-          )}
+          <span className="text-[15px] leading-none" aria-hidden>
+            {icon.emoji}
+          </span>
         </span>
       </Rail>
 
@@ -389,6 +435,11 @@ function VisitRow({
             <Link href={`/places/${visit.placeId}`} className="hover:text-primary">
               {name}
             </Link>
+            {asking && (
+              <span className="text-primary" title="Not sure this is the right place">
+                ?
+              </span>
+            )}
           </h3>
           <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-muted">
             {formatDuration(visit.duration)}
@@ -399,6 +450,8 @@ function VisitRow({
           {formatTime(visit.startedAt)}
           {visit.endedAt ? ` – ${formatTime(visit.endedAt)}` : ""}
         </p>
+        {asking && <PlaceQuestion visit={visit} shownName={name} />}
+        {photos}
       </div>
     </li>
   );
@@ -447,17 +500,26 @@ function LegLine({ leg: l }: { leg: TransitLeg }) {
       <span
         className="rounded-md px-2 py-0.5 text-xs font-bold"
         style={{ backgroundColor: c.bg, color: c.fg }}
-        title={l.lines.length > 1 ? `Could also be ${l.lines.slice(1).join(", ")}` : undefined}
+        title={l.lines.length > 1 ? `One of ${l.lines.join(", ")} (they share this stretch)` : undefined}
       >
-        {KIND_LABEL[l.kind]} {l.lines[0]}
-        {l.lines.length > 1 ? ` +${l.lines.length - 1}` : ""}
+        {legBadgeText(l.kind, l.lines)}
       </span>
       {route && <span className="text-muted">{route}</span>}
     </div>
   );
 }
 
-function MoveRow({ track, pick }: { track: TrackSummary; pick: Pick }) {
+function MoveRow({
+  track,
+  pick,
+  onFix,
+  photos,
+}: {
+  track: TrackSummary;
+  pick: Pick;
+  onFix: (track: TrackSummary) => void;
+  photos: React.ReactNode;
+}) {
   const meta = MODE_META[track.mode];
   const parts = [
     formatDistance(track.distance),
@@ -486,7 +548,7 @@ function MoveRow({ track, pick }: { track: TrackSummary; pick: Pick }) {
           pick.selected ? "bg-surface-2" : pick.onClick ? "hover:bg-surface-2/50" : ""
         }`}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm"
             style={{ backgroundColor: `${meta.color}22` }}
@@ -498,7 +560,24 @@ function MoveRow({ track, pick }: { track: TrackSummary; pick: Pick }) {
             {meta.label}
           </span>
           {parts.length > 0 && (
-            <span className="text-sm text-muted">· {parts.join(" · ")}</span>
+            <span className="whitespace-nowrap text-sm text-muted">· {parts.join(" · ")}</span>
+          )}
+          {track.correctionId != null && (
+            <span
+              className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted"
+              title={track.added ? "You added this trip; nothing was recorded" : "You fixed this trip"}
+            >
+              {track.added ? "added by you" : "edited"}
+            </span>
+          )}
+          {track.mode !== "stationary" && (
+            <button
+              type="button"
+              onClick={() => onFix(track)}
+              className="ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-primary"
+            >
+              {track.added ? "Edit" : track.correctionId != null ? "Edit fix" : "Fix this trip"}
+            </button>
           )}
         </div>
         {subRows(track).map((r, i) =>
@@ -510,6 +589,7 @@ function MoveRow({ track, pick }: { track: TrackSummary; pick: Pick }) {
             <LegLine key={i} leg={r.leg} />
           ),
         )}
+        {photos && <div className="pl-9">{photos}</div>}
       </div>
     </li>
   );

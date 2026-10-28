@@ -19,8 +19,9 @@ import {
   stopActivityUpdates,
 } from "../modules/matka-activity";
 import { customDeferral, parseCustom, serializeCustom, type CustomSettings } from "./preset-logic";
-import { INITIAL_STATE, parseSmartState, step, type Fix, type Mode } from "./smart-logic";
+import { INITIAL_STATE, MIN_CONFIDENCE, parseSmartState, step, type Fix, type Mode } from "./smart-logic";
 import { maybeUploadFromTask } from "./uploader";
+import { recordMotion, recordUsage } from "./usage";
 import { addRecovery, parseRecoveries, type Recovery } from "./watchdog-logic";
 
 export const TASK = "matka-bg-location";
@@ -190,6 +191,8 @@ TaskManager.defineTask<{ locations?: Location.LocationObject[] }>(TASK, async ({
       .filter((p): p is QueuedPoint => p != null);
     await db.enqueue(points);
     if (points.length > 0) await db.setNum("last_fix_at", Math.max(...points.map((p) => p.ts)));
+    // Per-day recorder usage and a whole-phone battery reading (we're awake anyway).
+    await recordUsage({ fixes: points.length, battery: true });
     await evaluateSmart(
       locations.map(
         (l): Fix => ({
@@ -330,6 +333,7 @@ async function startUpdates(preset: PresetKey): Promise<void> {
   await db.setKv("applied_mode", mode);
   // The watchdog's "no fixes for too long" clock starts here, not at an old fix.
   await db.setNum("tracking_started_at", Date.now());
+  await recordUsage();
 }
 
 // ---- Watchdog support --------------------------------------------------------
@@ -382,6 +386,7 @@ export function recoverUpdates(action: "start" | "reregister" | "restart"): Prom
     if (Platform.OS === "android") await db.setKv("applied_fg", "0");
     await db.setKv("applied_preset", key);
     await db.setKv("applied_mode", mode);
+    await recordUsage();
   });
 }
 
@@ -420,6 +425,7 @@ export function evaluateSmart(fixes: Fix[] = []): Promise<void> {
         await db.setKv("applied_preset", key);
         await db.setKv("applied_mode", switchTo);
         await db.setNum("smart_switched_at", now);
+        await recordUsage();
       } catch (e) {
         // Keep the old mode; lastSwitchAt makes the retry wait a little.
         next = { ...state, mode: prev.mode, anchor: prev.anchor };
@@ -433,10 +439,16 @@ export function evaluateSmart(fixes: Fix[] = []): Promise<void> {
   return serialSmart(run);
 }
 
+const MOVING_TYPES: readonly string[] = ["walking", "running", "on_bicycle", "in_vehicle"];
+
 // Activity changes wake us up (new native builds) so standby starts and ends
 // without waiting for a fix. Older builds never fire this; fixes still work.
-addActivityListener(() => {
+addActivityListener((a) => {
   evaluateSmart().catch(() => undefined);
+  // Moving vs still minutes for the usage stats (unknown or unsure readings: neither).
+  const motion =
+    a.confidence < MIN_CONFIDENCE ? null : a.type === "still" ? "still" : MOVING_TYPES.includes(a.type) ? "moving" : null;
+  recordMotion(motion).catch(() => undefined);
 });
 
 export function setSmartTracking(on: boolean): Promise<void> {
@@ -474,6 +486,7 @@ export async function stopTracking(): Promise<void> {
   if (await isTrackingRunning()) await Location.stopLocationUpdatesAsync(TASK);
   await stopActivityUpdates();
   await unregisterWatchdog();
+  await recordUsage();
 }
 
 /** Leaves standby (the next still spell re-enters it) and restarts with the current preset. */
@@ -488,6 +501,7 @@ function restartActive(): Promise<void> {
 export async function setPreset(preset: PresetKey): Promise<void> {
   await db.setKv("preset", preset);
   await restartActive();
+  await recordUsage();
 }
 
 export async function setCustom(c: CustomSettings): Promise<void> {

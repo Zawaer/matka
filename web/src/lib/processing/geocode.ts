@@ -12,7 +12,7 @@ import { haversine } from "./geo";
 // ("Pohjantie 2 B"), else the district. Never a road, and never a bar.
 
 /** Bump to re-geocode every place with the current rules on the next ticks. */
-export const GEOCODER_VERSION = 2;
+export const GEOCODER_VERSION = 3;
 
 const BATCH = 20;
 const TIMEOUT_MS = 8000;
@@ -251,19 +251,21 @@ const AI_MAX_CANDIDATES = 8;
 /** One POI the AI picker may choose: only the kind of feature pickPhotonName could assert. */
 export type GeoCandidate = { name: string; key: string | null; kind: string | null; d: number };
 /**
- * What geocoding kept for the AI picker (places.geo_candidates): the nearby
- * POIs, and the nearest address, which is never sent to the model (it only
- * hears that an address exists and may answer "address").
+ * What geocoding keeps for every place (places.geo_candidates): the nearby
+ * POIs, and the nearest address. The address is never sent to the AI picker
+ * (it only hears that an address exists and may answer "address"); the
+ * timeline offers it among the names to pick (lib/placeConfirm.ts).
  */
 export type GeoCandidates = { pois: GeoCandidate[]; address: string | null };
 
 /**
- * The plausible POIs around (lat, lon) when there are at least
- * AI_MIN_CANDIDATES of them within AI_CANDIDATE_M, else null. Uses the same
- * assertable() rule as pickPhotonName, so the AI can never pick a bar, a
- * clinic or a church either.
+ * The plausible POIs around (lat, lon) within AI_CANDIDATE_M, nearest first,
+ * and the nearest address; null when there is neither. Uses the same
+ * assertable() rule as pickPhotonName, so neither the AI picker nor the
+ * timeline's "Visited X?" ever offers a bar, a clinic or a church. Kept for
+ * every place (places.geo_candidates).
  */
-export function aiCandidates(features: PhotonFeature[], lat: number, lon: number): GeoCandidates | null {
+export function nearbyCandidates(features: PhotonFeature[], lat: number, lon: number): GeoCandidates | null {
   const near = features
     .filter((f) => f.properties && f.geometry?.coordinates)
     .map((f) => {
@@ -281,9 +283,18 @@ export function aiCandidates(features: PhotonFeature[], lat: number, lon: number
     pois.push({ name, key: p.osm_key ?? null, kind: p.osm_value ?? null, d: Math.round(d) });
     if (pois.length === AI_MAX_CANDIDATES) break;
   }
-  if (pois.length < AI_MIN_CANDIDATES) return null;
   const addr = near.find((c) => c.d <= ADDRESS_M && addressOf(c.p));
-  return { pois, address: addr ? addressOf(addr.p) : null };
+  const address = addr ? addressOf(addr.p) : null;
+  return pois.length || address ? { pois, address } : null;
+}
+
+/**
+ * The candidates for the AI picker: nearbyCandidates() when there are at
+ * least AI_MIN_CANDIDATES POIs, else null.
+ */
+export function aiCandidates(features: PhotonFeature[], lat: number, lon: number): GeoCandidates | null {
+  const c = nearbyCandidates(features, lat, lon);
+  return c && c.pois.length >= AI_MIN_CANDIDATES ? c : null;
 }
 
 /**
@@ -293,9 +304,9 @@ export function aiCandidates(features: PhotonFeature[], lat: number, lon: number
 export async function geocodePending(): Promise<number> {
   const base = process.env.PHOTON_URL?.trim().replace(/\/+$/, "");
   if (!base) return 0;
-  const places = await q<{ id: string; lat: number; lon: number; ai: boolean }>(
-    `SELECT p.id, ST_Y(p.geom::geometry) lat, ST_X(p.geom::geometry) lon, u.ai_places AND p.kind IS NULL AS ai
-     FROM places p JOIN users u ON u.id = p.user_id
+  const places = await q<{ id: string; lat: number; lon: number }>(
+    `SELECT p.id, ST_Y(p.geom::geometry) lat, ST_X(p.geom::geometry) lon
+     FROM places p
      WHERE p.geocoded_at IS NULL OR p.geocoder_version IS DISTINCT FROM $2
      ORDER BY p.geocoded_at NULLS FIRST, p.id LIMIT $1`,
     [BATCH, GEOCODER_VERSION],
@@ -318,8 +329,9 @@ export async function geocodePending(): Promise<number> {
     }
     const body = (await res.json().catch(() => null)) as { features?: PhotonFeature[] } | null;
     const pick = pickPhotonName(body?.features ?? [], p.lat, p.lon);
-    // Candidates for the AI picker only for users who turned it on (Settings).
-    const cands = p.ai ? aiCandidates(body?.features ?? [], p.lat, p.lon) : null;
+    // Nearby candidates for every place: the timeline's "Visited X?" offers
+    // them, and the AI picker (opt-in) chooses among them.
+    const cands = nearbyCandidates(body?.features ?? [], p.lat, p.lon);
     // Only the geocoder's columns: a user's custom_name is left alone. When the
     // candidates changed, an earlier AI pick no longer stands.
     await q(

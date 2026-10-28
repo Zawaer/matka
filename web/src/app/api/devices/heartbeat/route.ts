@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authenticateDevice, recordHeartbeat } from "@/lib/devices";
+import { authenticateDevice, recordHeartbeat, recordUsage } from "@/lib/devices";
 import { MAX_HEARTBEAT_BYTES, parseHeartbeat } from "@/lib/heartbeat";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
 
   try {
     await recordHeartbeat(device.id, parsed.status);
+    await recordUsage(device.id, parsed.usage);
   } catch (err) {
     console.error("[/api/devices/heartbeat] failed:", err);
     return NextResponse.json({ error: "internal" }, { status: 500 });

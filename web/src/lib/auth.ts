@@ -153,6 +153,15 @@ export async function readUser(req: Request): Promise<User | NextResponse> {
   return (embed && (await userById(embed.userId))) || unauthorized();
 }
 
+/**
+ * For the few routes the phone app may change data through (trip corrections):
+ * a browser session or a paired device's bearer token, but not the map embed
+ * cookie (that one is for viewing only).
+ */
+export async function deviceOrSessionUser(req: Request): Promise<User | NextResponse> {
+  return req.headers.get("authorization") ? readUser(req) : apiUser();
+}
+
 /** For embed pages: a browser session or a valid embed cookie. */
 export async function viewerUser(): Promise<User | null> {
   const session = await getUser();

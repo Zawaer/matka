@@ -20,6 +20,7 @@ import * as db from "./db";
 import { addActivityListener, latestActivity, startActivityUpdates } from "../modules/matka-activity";
 import { MIN_CONFIDENCE } from "./smart-logic";
 import {
+  getCustom,
   getPermissions,
   getPreset,
   getRecoveries,
@@ -32,6 +33,7 @@ import {
   WATCHDOG_TASK,
 } from "./tracking";
 import { markPairingLost, uploadNow } from "./uploader";
+import { recordUsage, usageForHeartbeat } from "./usage";
 import { buildHeartbeat, decide, heartbeatDue, type Decision } from "./watchdog-logic";
 
 export type Trigger = "background" | "foreground" | "motion";
@@ -88,6 +90,9 @@ async function doRun(trigger: Trigger): Promise<Decision | null> {
     await db.setKv("activity_status", await startActivityUpdates(false));
   }
 
+  // Usage so far, with a whole-phone battery reading.
+  await recordUsage({ battery: true });
+
   const now = Date.now();
   const [runningNow, mode, lastFixAt, startedAt, storedMovingAt, recoveries, preset, smart, activityStatus] = await Promise.all([
     isTrackingRunning(),
@@ -142,7 +147,7 @@ export async function sendHeartbeat(force = false): Promise<void> {
   const pairing = await loadPairing();
   if (!pairing || (await db.getKv("auth_lost")) === "1") return;
 
-  const [enabled, runningNow, perm, mode, lastFixAt, queued, recoveries] = await Promise.all([
+  const [enabled, runningNow, perm, mode, lastFixAt, queued, recoveries, preset, custom, smart, usage] = await Promise.all([
     isTrackingEnabled(),
     isTrackingRunning(),
     getPermissions().catch(() => null),
@@ -150,6 +155,10 @@ export async function sendHeartbeat(force = false): Promise<void> {
     db.getNum("last_fix_at"),
     db.count(),
     getRecoveries(),
+    getPreset(),
+    getCustom(),
+    isSmartTracking(),
+    usageForHeartbeat().catch(() => undefined),
   ]);
   const body = buildHeartbeat({
     now,
@@ -161,6 +170,8 @@ export async function sendHeartbeat(force = false): Promise<void> {
     queued,
     appVersion: appVersion(),
     recoveries,
+    preset: { key: preset, custom, smartTracking: smart },
+    usage,
   });
   const r = await api.postHeartbeat(pairing, body);
   if (r.status === 200) {
@@ -172,6 +183,11 @@ export async function sendHeartbeat(force = false): Promise<void> {
     // 404 = a server from before heartbeats; harmless, try again next time.
     await db.setKv("heartbeat_error", r.status == null ? (r.error ?? "network error") : `HTTP ${r.status}`);
   }
+}
+
+/** The user changed the preset or Smart Tracking: tell the server now (stats split at the change). */
+export function presetChanged(): void {
+  sendHeartbeat(true).catch(() => undefined);
 }
 
 // Motion events: remember when we last moved (survives the process, so the

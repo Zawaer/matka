@@ -2,8 +2,16 @@
 // recording-health line on the Devices page. Pure, so it is unit-tested.
 
 import { toEpochSeconds } from "./ingest";
+import { isDate } from "./insights/time";
+import {
+  type CustomPreset,
+  type PresetKey,
+  PRESET_KEYS,
+  type RecordingPreset,
+  parseRecordingPreset,
+} from "./recordingPreset";
 
-export const MAX_HEARTBEAT_BYTES = 4096;
+export const MAX_HEARTBEAT_BYTES = 8192;
 /** Recording on and nothing heard from the phone for this long: warn. */
 export const NO_CONTACT_WARN_MS = 3 * 60 * 60_000;
 
@@ -23,22 +31,93 @@ export type DeviceStatus = {
   /** Watchdog restarts in the last 24 h. */
   recoveries: number;
   problem: Problem | null;
+  /** The recording preset (apps from before it was reported: null). */
+  preset: PresetKey | null;
+  /** The "custom" preset's choices, else null. */
+  custom: CustomPreset | null;
+  smartTracking: boolean | null;
 };
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const oneOf = <T extends string>(list: readonly T[], v: unknown): v is T =>
   typeof v === "string" && (list as readonly string[]).includes(v);
 
+/** Whole-phone current samples (mA, discharge positive) in one state, unplugged. */
+export type CurrentAgg = { n: number; mean: number | null; median: number | null };
+
+/**
+ * What the recorder did on one of the phone's local days with one preset
+ * (running totals; stored in device_daily_usage).
+ */
+export type DailyUsage = {
+  day: string;
+  preset: PresetKey;
+  activeS: number;
+  standbyS: number;
+  offS: number;
+  fixes: number;
+  movingS: number;
+  stillS: number;
+  /** Screen off with GPS active, screen off in standby, screen on. */
+  current: { active: CurrentAgg; standby: CurrentAgg; screen: CurrentAgg };
+  /** Charge-counter fall while unplugged (mAh) and the time it covers (s). */
+  dropMah: number;
+  dropS: number;
+};
+
+const MAX_USAGE_ROWS = 8;
+const DAY_S = 90_000; // a 25 h DST day, with slack
+
+const clampInt = (v: unknown, max: number) => (finite(v) && v >= 0 ? Math.min(Math.round(v), max) : 0);
+const maOrNull = (v: unknown) => (finite(v) && v >= 0 && v <= 20_000 ? Math.round(v * 10) / 10 : null);
+
+function parseCurrent(v: unknown): CurrentAgg {
+  const o = typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
+  const n = clampInt(o.n, 1_000_000);
+  return n > 0 ? { n, mean: maOrNull(o.mean), median: maOrNull(o.median) } : { n: 0, mean: null, median: null };
+}
+
+/** The heartbeat's `usage` rows; malformed rows, unknown presets and days far from now are dropped. */
+export function parseUsage(v: unknown, now = Date.now()): DailyUsage[] {
+  if (!Array.isArray(v)) return [];
+  const out: DailyUsage[] = [];
+  const lo = new Date(now - 3 * 86_400_000).toISOString().slice(0, 10);
+  const hi = new Date(now + 2 * 86_400_000).toISOString().slice(0, 10);
+  for (const x of v.slice(0, MAX_USAGE_ROWS)) {
+    if (typeof x !== "object" || x === null) continue;
+    const o = x as Record<string, unknown>;
+    if (typeof o.day !== "string" || !isDate(o.day) || o.day < lo || o.day > hi) continue;
+    if (!oneOf(PRESET_KEYS, o.preset)) continue;
+    if (out.some((u) => u.day === o.day && u.preset === o.preset)) continue;
+    const cur = typeof o.current === "object" && o.current !== null ? (o.current as Record<string, unknown>) : {};
+    out.push({
+      day: o.day,
+      preset: o.preset,
+      activeS: clampInt(o.activeS, DAY_S),
+      standbyS: clampInt(o.standbyS, DAY_S),
+      offS: clampInt(o.offS, DAY_S),
+      fixes: clampInt(o.fixes, 1_000_000),
+      movingS: clampInt(o.movingS, DAY_S),
+      stillS: clampInt(o.stillS, DAY_S),
+      current: { active: parseCurrent(cur.active), standby: parseCurrent(cur.standby), screen: parseCurrent(cur.screen) },
+      dropMah: finite(o.dropMah) && o.dropMah >= 0 ? Math.min(Math.round(o.dropMah * 10) / 10, 50_000) : 0,
+      dropS: clampInt(o.dropS, DAY_S),
+    });
+  }
+  return out;
+}
+
 /** Validates a heartbeat body. `recording` and `mode` are required; bad optional fields become null/0. */
 export function parseHeartbeat(
   body: unknown,
   now = Date.now(),
-): { ok: true; status: DeviceStatus } | { ok: false; error: string } {
+): { ok: true; status: DeviceStatus; usage: DailyUsage[] } | { ok: false; error: string } {
   if (typeof body !== "object" || body === null || Array.isArray(body)) return { ok: false, error: "expected an object" };
   const b = body as Record<string, unknown>;
   if (typeof b.recording !== "boolean") return { ok: false, error: "recording must be a boolean" };
   if (!oneOf(MODES, b.mode)) return { ok: false, error: "mode must be active, standby or off" };
   const fixS = b.lastFixAt == null ? null : toEpochSeconds(b.lastFixAt, now);
+  const preset = parseRecordingPreset(b);
   return {
     ok: true,
     status: {
@@ -49,7 +128,11 @@ export function parseHeartbeat(
       appVersion: typeof b.appVersion === "string" && b.appVersion.trim() ? b.appVersion.trim().slice(0, 64) : null,
       recoveries: finite(b.recoveries) && b.recoveries >= 0 ? Math.min(Math.round(b.recoveries), 1000) : 0,
       problem: b.recording && oneOf(PROBLEMS, b.problem) ? b.problem : null,
+      preset: preset?.preset ?? null,
+      custom: preset?.custom ?? null,
+      smartTracking: typeof b.smartTracking === "boolean" ? b.smartTracking : null,
     },
+    usage: parseUsage(b.usage, now),
   };
 }
 
@@ -57,6 +140,11 @@ export function parseHeartbeat(
 export function readStatus(v: unknown): DeviceStatus | null {
   const r = parseHeartbeat(v, Date.now());
   return r.ok ? r.status : null;
+}
+
+/** The preset from a status, for device_preset_log; null when the app didn't report one. */
+export function statusPreset(s: DeviceStatus): RecordingPreset | null {
+  return s.preset ? { preset: s.preset, custom: s.custom, smartTracking: s.smartTracking } : null;
 }
 
 /** "0 min", "12 min", "5 h", "3 d". */

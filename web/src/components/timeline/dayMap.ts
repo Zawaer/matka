@@ -3,6 +3,7 @@
 // tracks request window.
 
 import { placeTitle } from "@/components/places/category";
+import { type PlaceIconGroup, placeIconGroup } from "@/lib/placeIcons";
 import type { TimelineDay, TimelineItem } from "@/lib/types";
 
 type FC = GeoJSON.FeatureCollection;
@@ -22,6 +23,8 @@ export type Stop = {
   numbers: number[];
   /** selectionKey of each visit, same order as `numbers`. */
   keys: string[];
+  /** Category icon (lib/placeIcons.ts). */
+  icon: PlaceIconGroup;
 };
 
 /**
@@ -48,6 +51,7 @@ export function dayStops(items: TimelineItem[]): Stop[] {
         name: placeTitle(v.placeName, v.category),
         numbers: [n],
         keys: [selectionKey(it)],
+        icon: placeIconGroup(v.placeKind, v.category, v.osmKey),
       });
     }
   }
@@ -85,13 +89,38 @@ export function dayWindow(day: Pick<TimelineDay, "start" | "end">): { from: numb
 export function dayTracks(fc: FC | null, items: TimelineItem[]): FC {
   const modes = new Map<number, string>();
   for (const it of items) if (it.kind === "move") modes.set(it.track.id, it.track.mode);
-  const features = (fc?.features ?? []).flatMap((f) => {
+  const features: GeoJSON.Feature[] = (fc?.features ?? []).flatMap((f): GeoJSON.Feature[] => {
     const id = Number(f.properties?.id);
     const mode = modes.get(id);
     if (mode == null || mode === "stationary" || !f.geometry) return [];
     return [{ ...f, properties: { ...f.properties, id, mode, key: `m-${id}` } }];
   });
+  // Trips the user added: a straight line between where they were (drawn dashed).
+  for (const it of items) {
+    if (it.kind !== "move" || !it.track.added || !it.track.from || !it.track.to) continue;
+    const { id, mode, from, to } = it.track;
+    features.push({
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: [[from.lon, from.lat], [to.lon, to.lat]] },
+      properties: { id, mode, key: `m-${id}`, added: true },
+    });
+  }
   return { type: "FeatureCollection", features };
+}
+
+/**
+ * Groups screen points (photo markers) that would overlap: greedy, in the
+ * given order, each joining the first group whose first point is within
+ * `cell` pixels on both axes. Returns the members' indexes per group.
+ */
+export function clusterPoints(points: { x: number; y: number }[], cell: number): number[][] {
+  const groups: { x: number; y: number; members: number[] }[] = [];
+  points.forEach((p, i) => {
+    const g = groups.find((g) => Math.abs(g.x - p.x) < cell && Math.abs(g.y - p.y) < cell);
+    if (g) g.members.push(i);
+    else groups.push({ x: p.x, y: p.y, members: [i] });
+  });
+  return groups.map((g) => g.members);
 }
 
 /** Bounding box [w, s, e, n] of some lines and points, or null when empty. */

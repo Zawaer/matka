@@ -20,12 +20,17 @@ const PUBLIC = [
 // the map embed cookie; those routes authenticate with readUser().
 const DEVICE_READABLE = [
   /^\/api\/(overview|timeline|places|points|tracks\/geojson|day-summary|search)$/,
-  /^\/api\/insights\/(modes|world|trips|saved|battery)$/,
+  /^\/api\/insights\/(modes|world|trips|saved|battery|quality)$/,
   /^\/api\/insights\/trips\/\d{4}-\d{2}-\d{2}$/,
+  /^\/api\/timeline\/photos$/,
   /^\/api\/places\/\d+\/photos$/,
   /^\/api\/immich\/asset\/[0-9a-fA-F-]+$/,
   /^\/embed\/(map|day)$/,
+  /^\/api\/transit\/(routes|stops)$/,
 ];
+// The app's Timeline fixes and adds trips ("Fix this trip", "Add travel") and
+// answers "Visited X?" with its device token only.
+const DEVICE_WRITABLE = [/^\/api\/corrections(\/\d+)?$/, /^\/api\/places\/\d+\/confirm$/];
 
 export async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -38,6 +43,9 @@ export async function proxy(req: NextRequest) {
     DEVICE_READABLE.some((re) => re.test(pathname)) &&
     (req.headers.get("authorization")?.startsWith("Bearer mtk_") || req.cookies.has(EMBED_COOKIE))
   ) {
+    return NextResponse.next();
+  }
+  if (DEVICE_WRITABLE.some((re) => re.test(pathname)) && req.headers.get("authorization")?.startsWith("Bearer mtk_")) {
     return NextResponse.next();
   }
 

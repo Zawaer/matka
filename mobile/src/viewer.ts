@@ -46,6 +46,11 @@ export const MODES = [
 ] as const;
 export type Mode = (typeof MODES)[number];
 
+/** A name the user may pick for a place ("Visited X?"); category: OSM value, null for the address. */
+export type PlaceCandidate = { name: string; category: string | null; address: boolean };
+
+export type LatLon = { lat: number; lon: number };
+
 export type Visit = {
   id: number;
   startedAt: string;
@@ -54,8 +59,14 @@ export type Visit = {
   placeId: number;
   placeName: string | null;
   category: string | null;
+  /** Saved kind (home, work…), or null. */
+  placeKind?: SavedKind | null;
+  /** OSM key of the place's geocoded feature (shop, amenity…), for its icon. */
+  osmKey?: string | null;
   lat: number | null;
   lon: number | null;
+  /** Set when the name is a guess among several ("Visited X?"): the names to pick from. */
+  candidates?: PlaceCandidate[] | null;
 };
 
 export const LEG_KINDS = ["bus", "tram", "metro", "train", "boat"] as const;
@@ -85,6 +96,13 @@ export type Move = {
   mode: Mode;
   legs: Leg[];
   waits: Wait[];
+  /** Set when the user fixed this trip ("edited"): the correction to undo. */
+  correctionId?: number | null;
+  /** A trip the user added where nothing was recorded ("Add travel"). */
+  added?: boolean;
+  /** Where the move started and ended, when known. */
+  from?: LatLon | null;
+  to?: LatLon | null;
 };
 
 export type TimelineItem = { kind: "visit"; visit: Visit } | { kind: "move"; track: Move };
@@ -184,6 +202,19 @@ function parseWaits(raw: unknown): Wait[] {
   });
 }
 
+const latLon = (v: unknown): LatLon | null =>
+  isObj(v) && typeof v.lat === "number" && typeof v.lon === "number" && Number.isFinite(v.lat) && Number.isFinite(v.lon)
+    ? { lat: v.lat, lon: v.lon }
+    : null;
+
+function parseCandidates(raw: unknown): PlaceCandidate[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out = objs(raw).flatMap((c) =>
+    typeof c.name === "string" && c.name ? [{ name: c.name, category: str(c.category), address: c.address === true }] : [],
+  );
+  return out.length ? out : null;
+}
+
 function parseItem(it: Obj): TimelineItem | null {
   if (it.kind === "visit" && isObj(it.visit)) {
     const v = it.visit;
@@ -198,8 +229,11 @@ function parseItem(it: Obj): TimelineItem | null {
         placeId: num(v.placeId),
         placeName: str(v.placeName),
         category: str(v.category),
+        placeKind: asSavedKind(v.placeKind),
+        osmKey: str(v.osmKey),
         lat: numOrNull(v.lat),
         lon: numOrNull(v.lon),
+        candidates: parseCandidates(v.candidates),
       },
     };
   }
@@ -218,6 +252,10 @@ function parseItem(it: Obj): TimelineItem | null {
         mode,
         legs: parseLegs(t.legs),
         waits: parseWaits(t.waits),
+        correctionId: typeof t.correctionId === "number" && Number.isSafeInteger(t.correctionId) ? t.correctionId : null,
+        added: t.added === true,
+        from: latLon(t.from),
+        to: latLon(t.to),
       },
     };
   }
@@ -315,3 +353,108 @@ export async function getEmbedTicket(p: Pairing): Promise<ViewerResult<string>> 
   }
   return res;
 }
+
+// ---- trip corrections ("Fix this trip", docs/API.md) -----------------------
+
+/** A public transport line, from the server's GTFS routes. */
+export type Route = { line: string; kind: LegKind; name: string | null };
+
+export function parseRoutes(body: unknown): Route[] | null {
+  if (!isObj(body) || !Array.isArray(body.routes)) return null;
+  return objs(body.routes).flatMap((r) =>
+    typeof r.line === "string" && r.line && (LEG_KINDS as readonly unknown[]).includes(r.kind)
+      ? [{ line: r.line, kind: r.kind as LegKind, name: str(r.name) }]
+      : [],
+  );
+}
+
+/** `GET /api/transit/routes?q=`: lines matching "159", "M1"... */
+export async function searchRoutes(p: Pairing, q: string): Promise<ViewerResult<Route[]>> {
+  return toResult(await get(p, `/api/transit/routes?q=${encodeURIComponent(q)}`), parseRoutes);
+}
+
+/** `GET /api/transit/stops?q=`: stop names starting with q (for "changed at"). */
+export async function searchStops(p: Pairing, q: string): Promise<ViewerResult<string[]>> {
+  return toResult(await get(p, `/api/transit/stops?q=${encodeURIComponent(q)}`), (b) =>
+    isObj(b) && Array.isArray(b.stops) ? b.stops.filter((x): x is string => typeof x === "string") : null,
+  );
+}
+
+export type CorrectionBody = {
+  startedAt: string;
+  endedAt: string;
+  mode: Mode;
+  legs: { kind: LegKind; line: string; transferStop: string | null }[];
+  /** "Add travel": a trip where none was recorded, between these points. */
+  added?: true;
+  from?: LatLon;
+  to?: LatLon;
+};
+
+/** `POST /api/corrections`: show this trip as `mode`, with these rides. Answers the correction id. */
+export async function postCorrection(p: Pairing, body: CorrectionBody): Promise<ViewerResult<number>> {
+  const r = await request(`${p.server}/api/corrections`, {
+    method: "POST",
+    headers: { ...authHeaders(p.token), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return toResult(r, (b) => (isObj(b) && isObj(b.correction) && typeof b.correction.id === "number" ? b.correction.id : null));
+}
+
+/** `DELETE /api/corrections/:id`: undo a fix. */
+export async function deleteCorrection(p: Pairing, id: number): Promise<ViewerResult<true>> {
+  const r = await request(`${p.server}/api/corrections/${id}`, { method: "DELETE", headers: authHeaders(p.token) });
+  return toResult(r, () => true as const);
+}
+
+// ---- "Visited X?" (docs/API.md) ---------------------------------------------
+
+/** `POST /api/places/:id/confirm`: yes to the shown name, or a name to use (picked or typed). */
+export async function postPlaceChoice(
+  p: Pairing,
+  placeId: number,
+  choice: { confirm: true } | { name: string; category?: string | null },
+): Promise<ViewerResult<true>> {
+  const r = await request(`${p.server}/api/places/${placeId}/confirm`, {
+    method: "POST",
+    headers: { ...authHeaders(p.token), "Content-Type": "application/json" },
+    body: JSON.stringify(choice),
+  });
+  return toResult(r, () => true as const);
+}
+
+// ---- photos of a day (docs/API.md) -----------------------------------------
+
+/** One visit's or trip's photos: key as selectionKey ("v-<id>", "m-<id>"), ids oldest first. */
+export type ItemPhotos = { key: string; ids: string[]; total: number };
+export type DayPhotos = {
+  configured: boolean;
+  /** Still being looked up on the server: ask again in a few seconds. */
+  pending: boolean;
+  /** Immich's web address for "Open in Immich", or null. */
+  linkBase: string | null;
+  items: ItemPhotos[];
+};
+
+export function parseDayPhotos(body: unknown): DayPhotos | null {
+  if (!isObj(body)) return null;
+  const linkBase = str(body.linkBase);
+  return {
+    configured: body.configured === true,
+    pending: body.pending === true,
+    linkBase: linkBase && /^https?:\/\//.test(linkBase) ? linkBase.replace(/\/+$/, "") : null,
+    items: objs(body.items).flatMap((it) => {
+      const ids = arr(it.ids).filter((x): x is string => typeof x === "string" && x.length > 0);
+      return typeof it.key === "string" && ids.length ? [{ key: it.key, ids, total: Math.max(ids.length, num(it.total)) }] : [];
+    }),
+  };
+}
+
+/** `GET /api/timeline/photos?date=`: the Immich photos taken during each visit and trip of a day. */
+export async function getDayPhotos(p: Pairing, date: string): Promise<ViewerResult<DayPhotos>> {
+  if (!DATE_RE.test(date)) return { ok: false, unauthorized: false, error: `Invalid date ${date}.` };
+  return toResult(await get(p, `/api/timeline/photos?date=${date}`), parseDayPhotos);
+}
+
+/** A photo in Immich's own web UI. */
+export const immichPhotoUrl = (linkBase: string, id: string) => `${linkBase}/photos/${encodeURIComponent(id)}`;

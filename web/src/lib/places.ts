@@ -39,8 +39,13 @@ export interface PlaceListItem {
  */
 export const PLACE_NAME_SQL = `COALESCE(p.custom_name, p.ai_name, p.geo_name)`;
 
-/** The category that goes with the name: the AI pick's type while its name is shown. */
-export const PLACE_CATEGORY_SQL = `CASE WHEN p.custom_name IS NULL AND p.ai_name IS NOT NULL THEN p.ai_category ELSE p.category END`;
+/**
+ * The category that goes with the name: the type of the candidate the user
+ * picked ("Visited X?", lib/placeConfirm.ts; '' = an address, no type), the AI
+ * pick's type while its name is shown, else the geocoder's.
+ */
+export const PLACE_CATEGORY_SQL = `CASE WHEN p.custom_name IS NOT NULL AND p.custom_category IS NOT NULL THEN NULLIF(p.custom_category, '')
+  WHEN p.custom_name IS NULL AND p.ai_name IS NOT NULL THEN p.ai_category ELSE p.category END`;
 
 /** Shared loader so the list page can render server-side without a self-fetch. */
 export async function getPlaces(userId: string): Promise<PlaceListItem[]> {

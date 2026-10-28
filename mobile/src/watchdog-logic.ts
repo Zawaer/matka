@@ -6,6 +6,9 @@
 // when the app comes to the foreground and on motion events, and acts on the
 // decision made here.
 
+import type { CustomSettings } from "./preset-logic";
+import type { UsageRow } from "./usage-logic";
+
 /** No fix for this long while motion says we're moving: updates are broken. */
 export const MOVING_STALE_MS = 20 * 60_000;
 /** A moving activity reading counts as "moving recently" for this long. */
@@ -188,6 +191,7 @@ export function describeRecovery(r: Recovery, time: (ms: number) => string): str
 
 // ---- Heartbeat ---------------------------------------------------------------
 
+
 export type HeartbeatMode = "active" | "standby" | "off";
 
 export type Heartbeat = {
@@ -201,6 +205,12 @@ export type Heartbeat = {
   recoveries: number;
   /** Recording is wanted but can't run (e.g. "permission"), else null. */
   problem: string | null;
+  /** The recording preset (low | balanced | precise | max | custom), its custom values, Smart Tracking. */
+  preset?: string;
+  custom?: CustomSettings | null;
+  smartTracking?: boolean;
+  /** What the recorder did today and yesterday (usage-logic.ts). */
+  usage?: UsageRow[];
 };
 
 export function buildHeartbeat(s: {
@@ -213,6 +223,8 @@ export function buildHeartbeat(s: {
   queued: number;
   appVersion: string | null;
   recoveries: Recovery[];
+  preset?: { key: string; custom: CustomSettings | null; smartTracking: boolean };
+  usage?: UsageRow[];
 }): Heartbeat {
   const problem = !s.enabled ? null : !s.permitted ? "permission" : !s.running ? "not_running" : null;
   return {
@@ -223,6 +235,14 @@ export function buildHeartbeat(s: {
     appVersion: s.appVersion,
     recoveries: recoveriesSince(s.recoveries, s.now - DAY_MS),
     problem,
+    ...(s.preset
+      ? {
+          preset: s.preset.key,
+          custom: s.preset.key === "custom" ? s.preset.custom : null,
+          smartTracking: s.preset.smartTracking,
+        }
+      : {}),
+    ...(s.usage ? { usage: s.usage } : {}),
   };
 }
 

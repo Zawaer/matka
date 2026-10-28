@@ -17,6 +17,7 @@ import {
   type CustomSettings,
 } from "../preset-logic";
 import { PRESETS, setCustom, setPreset, setSmartTracking, type PresetKey } from "../tracking";
+import { presetChanged } from "../watchdog";
 import { Button, Icon } from "../ui";
 import { LinkText, Panel, Row, Segmented } from "../ui/components";
 import { Screen, ScreenHeader } from "../ui/Screen";
@@ -39,6 +40,7 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
     setBusy(true);
     try {
       await setPreset(key);
+      presetChanged();
     } catch (e) {
       Alert.alert("Couldn't change preset", String(e));
     } finally {
@@ -51,6 +53,8 @@ export default function SettingsScreen({ state, refresh, onPair, onBack }: Props
     setBusy(true);
     try {
       await fn();
+      // Preset, custom values and Smart Tracking are in the heartbeat.
+      if (what === "custom settings" || what === "smart tracking") presetChanged();
     } catch (e) {
       Alert.alert(`Couldn't change ${what}`, String(e));
     } finally {

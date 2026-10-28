@@ -2,7 +2,9 @@
 
 // The selected day on a map, above the timeline list (and alone in the
 // phone app's /embed/day): the day's trips as lines in their mode colours
-// and its stops as numbered markers. One MapLibre instance lives for as long
+// and its stops as markers with their category icon and order number, trips
+// the user added as dashed straight lines, and the day's photos as small
+// thumbnails (clustered when dense). One MapLibre instance lives for as long
 // as the component does; switching days swaps its data.
 
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -10,7 +12,9 @@ import { useEffect, useRef, useState } from "react";
 import type { LngLatBoundsLike, Map as MlMap, Marker } from "maplibre-gl";
 import { computeDark, modeColorExpression, resolveColor, styleUrl } from "@/components/map/mapStyle";
 import type { TimelineDay } from "@/lib/types";
-import { bboxOf, dayStops, dayTracks, dayWindow, nextStopKey, stopLabel, type Stop } from "./dayMap";
+import type { PhotoPoint } from "@/lib/dayPhotos";
+import { PLACE_ICONS } from "@/lib/placeIcons";
+import { bboxOf, clusterPoints, dayStops, dayTracks, dayWindow, nextStopKey, stopLabel, type Stop } from "./dayMap";
 
 type FC = GeoJSON.FeatureCollection;
 type BBox = [number, number, number, number];
@@ -58,6 +62,10 @@ function paintSelection(m: MlMap, key: string | null) {
   m.setPaintProperty("day-casing", "line-width", (sel ? ["case", is, LINE_W_SEL + 4, LINE_W + 3] : LINE_W + 3) as never);
   m.setPaintProperty("day-casing", "line-opacity", (sel ? ["case", is, 1, 0.5] : 0.9) as never);
   m.setLayoutProperty("day-routes", "line-sort-key", (sel ? ["case", is, 1, 0] : 0) as never);
+  if (m.getLayer("day-added")) {
+    m.setPaintProperty("day-added", "line-width", (sel ? ["case", is, LINE_W_SEL - 1, LINE_W - 1] : LINE_W - 1) as never);
+    m.setPaintProperty("day-added", "line-opacity", (sel ? ["case", is, 1, 0.45] : 0.95) as never);
+  }
   m.setLayoutProperty("day-casing", "line-sort-key", (sel ? ["case", is, 1, 0] : 0) as never);
 }
 
@@ -74,12 +82,28 @@ function ensureLayers(m: MlMap, tracks: FC) {
     layout,
     paint: { "line-color": resolveColor("var(--mk-surface)"), "line-width": LINE_W + 3, "line-opacity": 0.9 },
   });
+  const added = ["==", ["get", "added"], true] as never;
   m.addLayer({
     id: "day-routes",
     type: "line",
     source: "day-tracks",
     layout,
+    filter: ["!", added] as never,
     paint: { "line-color": modeColorExpression() as never, "line-width": LINE_W, "line-opacity": 0.95 },
+  });
+  // Trips the user added where nothing was recorded: dashed, as a guess.
+  m.addLayer({
+    id: "day-added",
+    type: "line",
+    source: "day-tracks",
+    layout: { "line-cap": "butt", "line-join": "round" },
+    filter: added,
+    paint: {
+      "line-color": modeColorExpression() as never,
+      "line-width": LINE_W - 1,
+      "line-opacity": 0.95,
+      "line-dasharray": [2, 1.5],
+    },
   });
   // Wide and invisible, so a finger can hit a 4 px line.
   m.addLayer({
@@ -92,7 +116,10 @@ function ensureLayers(m: MlMap, tracks: FC) {
 }
 
 const MARKER_CLASS =
-  "group relative flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-full border-2 border-primary bg-surface px-1.5 text-xs font-bold tabular-nums text-primary shadow-md transition-[scale] data-[sel=true]:scale-115 data-[sel=true]:bg-primary data-[sel=true]:text-surface";
+  "group relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-primary bg-surface text-[15px] leading-none shadow-md transition-[scale] data-[sel=true]:scale-115 data-[sel=true]:bg-primary";
+/** The stop's order number(s), as on the timeline's rows. */
+const BADGE_CLASS =
+  "pointer-events-none absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full border border-primary bg-surface px-1 text-[10px] font-bold leading-none tabular-nums text-primary group-data-[sel=true]:bg-primary group-data-[sel=true]:text-surface group-data-[sel=true]:border-surface";
 const LABEL_CLASS =
   "pointer-events-none absolute left-full top-1/2 ml-1.5 hidden data-[flip=true]:left-auto data-[flip=true]:right-full data-[flip=true]:ml-0 data-[flip=true]:mr-1.5 max-w-44 -translate-y-1/2 truncate rounded-lg border border-border bg-surface px-2 py-0.5 text-xs font-medium text-text shadow-md group-hover:block group-data-[sel=true]:block";
 
@@ -105,8 +132,16 @@ function markerElement(stop: Stop): { root: HTMLElement; button: HTMLElement } {
   const el = document.createElement("button");
   el.type = "button";
   el.className = MARKER_CLASS;
-  el.setAttribute("aria-label", `${stop.numbers.join(", ")}. ${stop.name}`);
-  el.textContent = stopLabel(stop.numbers);
+  const icon = PLACE_ICONS[stop.icon];
+  el.setAttribute("aria-label", `${stop.numbers.join(", ")}. ${stop.name} (${icon.label})`);
+  const glyph = document.createElement("span");
+  glyph.setAttribute("aria-hidden", "true");
+  glyph.textContent = icon.emoji;
+  el.appendChild(glyph);
+  const badge = document.createElement("span");
+  badge.className = BADGE_CLASS;
+  badge.textContent = stopLabel(stop.numbers);
+  el.appendChild(badge);
   const label = document.createElement("span");
   label.className = LABEL_CLASS;
   label.textContent = stop.name;
@@ -128,6 +163,34 @@ function markSelected(m: MlMap, markers: { marker: Marker; el: HTMLElement; stop
     const label = mk.el.lastElementChild as HTMLElement | null;
     if (label) label.dataset.flip = String(m.project([mk.stop.lon, mk.stop.lat]).x > w * 0.6);
   }
+}
+
+/* ---------------- Photos ---------------- */
+
+const thumbUrl = (id: string) => `/api/immich/asset/${encodeURIComponent(id)}?size=thumbnail`;
+/** Photo markers closer than this (px) are one marker with a count. */
+const PHOTO_CELL = 38;
+/** Up and to the right of where it was taken, so a photo at a stop peeks out beside its marker. */
+const PHOTO_OFFSET: [number, number] = [18, -20];
+
+/** A photo marker: a small rounded thumbnail, with a count when it stands for several. */
+function photoElement(p: PhotoPoint, count: number): HTMLElement {
+  const root = document.createElement("div");
+  const el = document.createElement("button");
+  el.type = "button";
+  el.className =
+    "relative block h-8 w-8 cursor-pointer rounded-lg border-2 border-white bg-surface-2 bg-cover bg-center shadow-md transition-[scale] hover:scale-110 dark:border-surface";
+  el.style.backgroundImage = `url("${thumbUrl(p.id)}")`;
+  el.setAttribute("aria-label", count > 1 ? `${count} photos` : "Photo");
+  if (count > 1) {
+    const badge = document.createElement("span");
+    badge.className =
+      "pointer-events-none absolute -bottom-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-text px-1 text-[10px] font-bold leading-none tabular-nums text-bg";
+    badge.textContent = String(count);
+    el.appendChild(badge);
+  }
+  root.appendChild(el);
+  return root;
 }
 
 function padding(m: MlMap) {
@@ -152,9 +215,12 @@ export default function DayMap({
   day,
   selected,
   onSelect,
+  photos,
   fill = false,
 }: {
   day: TimelineDay;
+  /** The day's GPS-tagged photos (GET /api/timeline/photos), drawn as thumbnails. */
+  photos?: PhotoPoint[];
   selected: DayMapSelection;
   /** A stop or a line was tapped on the map. */
   onSelect: (key: string) => void;
@@ -165,6 +231,7 @@ export default function DayMap({
   const mapRef = useRef<MlMap | null>(null);
   const mlRef = useRef<typeof import("maplibre-gl") | null>(null);
   const markersRef = useRef<{ marker: Marker; el: HTMLElement; stop: Stop }[]>([]);
+  const photoMarkersRef = useRef<Marker[]>([]);
   const shownRef = useRef<Shown | null>(null);
   const fittedRef = useRef<string | null>(null);
   const selectedRef = useRef<string | null>(null);
@@ -248,6 +315,8 @@ export default function DayMap({
       if (onTheme) mql.removeEventListener("change", onTheme);
       for (const mk of markersRef.current) mk.marker.remove();
       markersRef.current = [];
+      for (const mk of photoMarkersRef.current) mk.remove();
+      photoMarkersRef.current = [];
       map?.remove();
       mapRef.current = null;
     };
@@ -328,6 +397,43 @@ export default function DayMap({
       if (b) m.fitBounds(b as LngLatBoundsLike, { padding: padding(m), maxZoom: 16, duration: 600 });
     }
   }, [selKey, selFrom, ready, shown]);
+
+  // Photo thumbnails, re-clustered whenever the zoom changes. Only the shown
+  // day's: a day switch clears them until its photos arrive.
+  const photoKey = photos ? photos.map((p) => p.id).join(",") : "";
+  useEffect(() => {
+    const m = mapRef.current;
+    const ml = mlRef.current;
+    if (!ready || !m || !ml) return;
+    const pts = (photos ?? []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+    const draw = () => {
+      for (const mk of photoMarkersRef.current) mk.remove();
+      photoMarkersRef.current = [];
+      if (!pts.length) return;
+      const xy = pts.map((p) => m.project([p.lon, p.lat]));
+      for (const group of clusterPoints(xy, PHOTO_CELL)) {
+        const first = pts[group[0]];
+        const root = photoElement(first, group.length);
+        root.firstElementChild?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onSelectRef.current(first.key);
+        });
+        photoMarkersRef.current.push(new ml.Marker({ element: root, anchor: "center", offset: PHOTO_OFFSET }).setLngLat([first.lon, first.lat]).addTo(m));
+        // Below the stops (right after the canvas): a stop stays clickable where a photo sits on it.
+        const canvas = m.getCanvas();
+        canvas.parentElement?.insertBefore(root, canvas.nextSibling);
+      }
+    };
+    draw();
+    m.on("zoomend", draw);
+    return () => {
+      m.off("zoomend", draw);
+      for (const mk of photoMarkersRef.current) mk.remove();
+      photoMarkersRef.current = [];
+    };
+    // photoKey stands for `photos`: a refetch with the same photos leaves the markers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, photoKey]);
 
   const loading = !ready || shown?.date !== day.date;
 

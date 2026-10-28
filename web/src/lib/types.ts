@@ -2,7 +2,10 @@
 // distances metres.
 
 import type { ModeKey } from "./modes";
+import type { PlaceCandidate } from "./placeConfirm";
 import type { PlaceKind } from "./savedPlaces";
+
+export type LatLon = { lat: number; lon: number };
 
 export interface Visit {
   id: number;
@@ -15,8 +18,15 @@ export interface Visit {
   category: string | null;
   /** Saved place kind (home, family, school, work, other), or null when not saved. */
   placeKind: PlaceKind | null;
+  /** OSM key of the place's geocoded feature (shop, amenity…), for its icon; null when unknown. */
+  osmKey?: string | null;
   lat: number;
   lon: number;
+  /**
+   * Set when the name is a guess among several ("Visited X?"): the names the
+   * user may pick instead (lib/placeConfirm.ts). Absent otherwise.
+   */
+  candidates?: PlaceCandidate[];
 }
 
 /** One ride on a public transport line within a trip (lib/transit). */
@@ -39,8 +49,15 @@ export interface TrackSummary {
   distance: number;
   duration: number;
   mode: ModeKey;
-  /** Matched public transport legs, when the user has line matching on. */
+  /** Matched public transport legs, when the user has line matching on (or the user's own). */
   legs?: TransitLeg[];
+  /** Set when the user fixed this trip ("edited"): the correction to undo. */
+  correctionId?: number;
+  /** A trip the user added where none was recorded (its id is -correctionId). */
+  added?: boolean;
+  /** Where the trip started and ended, when known. */
+  from?: LatLon;
+  to?: LatLon;
 }
 
 /** One ordered day on the timeline: visits + the moves between them. */

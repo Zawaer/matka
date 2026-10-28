@@ -13,6 +13,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import type { TimelineDay } from "@/lib/types";
+import type { DayPhotosAnswer, PhotoPoint } from "@/lib/dayPhotos";
 import { dayHasMap } from "./dayMap";
 import type { DayMapSelection } from "./DayMap";
 
@@ -92,6 +93,29 @@ export function DayEmbed({ initialDate }: { initialDate: string | null }) {
     return () => ctrl.abort();
   }, [date]);
 
+  // The day's photo thumbnails, after the day itself (asked again while the server looks them up).
+  const [photos, setPhotos] = useState<{ date: string; points: PhotoPoint[] } | null>(null);
+  const dayDate = day?.date ?? null;
+  useEffect(() => {
+    if (!dayDate) return;
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = (tries: number) =>
+      fetch(`/api/timeline/photos?date=${dayDate}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? (r.json() as Promise<DayPhotosAnswer>) : null))
+        .then((b) => {
+          if (!b || ctrl.signal.aborted) return;
+          setPhotos({ date: dayDate, points: b.points });
+          if (b.pending && tries < 5) timer = setTimeout(() => load(tries + 1), 3000);
+        })
+        .catch(() => {});
+    void load(0);
+    return () => {
+      ctrl.abort();
+      clearTimeout(timer);
+    };
+  }, [dayDate]);
+
   const selected: DayMapSelection = sel && day && sel.date === day.date ? sel : null;
   const hasMap = !!day && dayHasMap(day.items);
   const [mapMounted, setMapMounted] = useState(false);
@@ -105,6 +129,7 @@ export function DayEmbed({ initialDate }: { initialDate: string | null }) {
           <DayMap
             day={day}
             fill
+            photos={photos && photos.date === day.date ? photos.points : undefined}
             selected={selected}
             onSelect={(key) => {
               setSel({ key, from: "map", date: day.date });

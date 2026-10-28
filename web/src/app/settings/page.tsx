@@ -1,4 +1,4 @@
-import { AiPlacesForm, DawarichForm, ImmichForm, PhotoPointsForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
+import { AiPlacesForm, DawarichForm, ImmichForm, ImmichLinkForm, PhotoPointsForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
 import { GoogleImport } from "@/components/settings/GoogleImport";
 import { claudeConfigured } from "@/lib/claude";
 import { dawarichStatus } from "@/lib/dawarichImport";
@@ -17,8 +17,8 @@ export const metadata = {
 export default async function SettingsPage() {
   const user = await requireUser();
   const [[row], [{ sessions }], googleImports, dawarich] = await Promise.all([
-    q<{ immich_url: string | null; has_key: boolean; photo_points: boolean; ai_places: boolean }>(
-      `SELECT immich_url, immich_api_key IS NOT NULL AS has_key, photo_points, ai_places FROM users WHERE id = $1`,
+    q<{ immich_url: string | null; immich_link_url: string | null; has_key: boolean; photo_points: boolean; ai_places: boolean }>(
+      `SELECT immich_url, immich_link_url, immich_api_key IS NOT NULL AS has_key, photo_points, ai_places FROM users WHERE id = $1`,
       [user.id],
     ),
     q<{ sessions: string }>(
@@ -59,9 +59,14 @@ export default async function SettingsPage() {
         <Section title="Immich photos">
           <ImmichForm url={row.immich_url} connected={row.has_key} />
           {row.has_key && (
-            <div className="mt-5 border-t border-border pt-5">
-              <PhotoPointsForm on={row.photo_points} />
-            </div>
+            <>
+              <div className="mt-5 border-t border-border pt-5">
+                <ImmichLinkForm url={row.immich_link_url} />
+              </div>
+              <div className="mt-5 border-t border-border pt-5">
+                <PhotoPointsForm on={row.photo_points} />
+              </div>
+            </>
           )}
         </Section>
 

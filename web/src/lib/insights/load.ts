@@ -2,6 +2,7 @@
 // in the pure modules next to this file.
 
 import type { User } from "../auth";
+import { correctionsStampSql, loadAddedMoves } from "../corrections";
 import { q } from "../db";
 import { PLACE_NAME_SQL, getPlaces } from "../places";
 import { displayModeJoin, displayModeSql } from "../transit/run";
@@ -22,6 +23,20 @@ import {
   dailyBattery,
   dischargeSegments,
 } from "./battery";
+import { parseCustomPreset, parseRecordingPreset } from "../recordingPreset";
+import { type UsageRow, usageGroups } from "./matkaPower";
+import { POWER_CALIBRATION, POWER_MODEL } from "./powerModel";
+import {
+  type PresetChange,
+  type QualityFix,
+  type QualityStats,
+  QUALITY_ANNOTATIONS,
+  QUALITY_RULES,
+  mergeSamples,
+  presetPeriods,
+  qualityReport,
+  qualitySamples,
+} from "./quality";
 import { type SavedPlaceInfo, savedPlaceMonth } from "./savedTime";
 import { type Move, daySummary, monthModes } from "./summary";
 import { addDays, addMonths, dayBounds, localDate, localMonth, monthBounds } from "./time";
@@ -54,7 +69,10 @@ export async function loadMoves(user: Pick<User, "id" | "transitLines">, from?: 
      ORDER BY t.started_at`,
     params,
   );
-  return rows.map((r) => ({ start: r.s, end: r.e, distance: r.distance, mode: r.mode }));
+  const moves = rows.map((r) => ({ start: r.s, end: r.e, distance: r.distance, mode: r.mode }));
+  // Trips the user added where none was recorded ("Add travel") count too.
+  const added = await loadAddedMoves(user.id, from, to);
+  return added.length ? [...moves, ...added].sort((a, b) => a.start - b.start) : moves;
 }
 
 /** Distance and time per mode for a month, with 6 months of history per mode. */
@@ -150,6 +168,7 @@ export async function getAwayTrips(user: User): Promise<{ home: Home | null; tri
     `SELECT concat_ws('/', (SELECT max(id) FROM trips WHERE user_id = $1), (SELECT count(*) FROM trips WHERE user_id = $1),
               (SELECT max(id) FROM visits WHERE user_id = $1), (SELECT count(*) FROM visits WHERE user_id = $1),
               (SELECT count(*) FROM trips WHERE user_id = $1 AND transit_checked IS NOT NULL),
+              ${correctionsStampSql("$1")},
               (SELECT max(geocoded_at) FROM places WHERE user_id = $1),
               (SELECT string_agg(id || ':' || kind || ':' || COALESCE(custom_name, ''), ',' ORDER BY id)
                  FROM places WHERE user_id = $1 AND kind IN ('home', 'family')),
@@ -270,3 +289,159 @@ export async function getBatteryInsight(user: Pick<User, "id" | "timezone">, day
   }));
   return { days: dailyBattery(segments, fromDate, toDate, tz), annotations };
 }
+
+/** Preset changes for the user's phones: the code annotations plus device_preset_log. */
+export async function loadPresetChanges(userId: string | number): Promise<PresetChange[]> {
+  const rows = await q<{ at: number; preset: unknown }>(
+    `SELECT extract(epoch FROM l.since)::float8 * 1000 AS at, l.preset
+     FROM device_preset_log l JOIN devices d ON d.id = l.device_id
+     WHERE d.user_id = $1 ORDER BY l.since`,
+    [userId],
+  );
+  const logged = rows.flatMap((r) => {
+    const preset = parseRecordingPreset(r.preset);
+    return preset ? [{ at: r.at, preset }] : [];
+  });
+  return [...QUALITY_ANNOTATIONS, ...logged];
+}
+
+/** The app's fixes in [from, to), per device, ordered by time. */
+export async function loadQualityFixes(userId: string | number, from: number, to: number): Promise<QualityFix[][]> {
+  const rows = await q<QualityFix & { dev: string | null }>(
+    `SELECT device_id::text AS dev, extract(epoch FROM ts)::float8 * 1000 AS ts,
+            ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon,
+            accuracy::float8 AS accuracy, speed::float8 AS speed, activity
+     FROM points
+     WHERE user_id = $1 AND source = 'device' AND ts >= $2 AND ts < $3
+     ORDER BY device_id, ts`,
+    [userId, new Date(from), new Date(to)],
+  );
+  const byDevice = new Map<string | null, QualityFix[]>();
+  for (const { dev, ...f } of rows) {
+    let list = byDevice.get(dev);
+    if (!list) byDevice.set(dev, (list = []));
+    list.push(f);
+  }
+  return [...byDevice.values()];
+}
+
+/** device_daily_usage rows of the user's phones for local days fromDate..toDate. */
+export async function loadUsageRows(userId: string | number, fromDate: string, toDate: string): Promise<UsageRow[]> {
+  const rows = await q<{
+    day: string;
+    preset: string;
+    active_s: number;
+    standby_s: number;
+    off_s: number;
+    fixes: number;
+    moving_s: number;
+    still_s: number;
+    can: number;
+    camean: number | null;
+    camed: number | null;
+    csn: number;
+    csmean: number | null;
+    csmed: number | null;
+    crn: number;
+    crmean: number | null;
+    crmed: number | null;
+    drop_mah: number;
+    drop_s: number;
+  }>(
+    `SELECT to_char(u.day, 'YYYY-MM-DD') AS day, u.preset, u.active_s, u.standby_s, u.off_s, u.fixes, u.moving_s, u.still_s,
+            u.cur_active_n AS can, u.cur_active_mean_ma AS camean, u.cur_active_median_ma AS camed,
+            u.cur_standby_n AS csn, u.cur_standby_mean_ma AS csmean, u.cur_standby_median_ma AS csmed,
+            u.cur_screen_n AS crn, u.cur_screen_mean_ma AS crmean, u.cur_screen_median_ma AS crmed,
+            u.drop_mah, u.drop_s
+     FROM device_daily_usage u JOIN devices d ON d.id = u.device_id
+     WHERE d.user_id = $1 AND u.day BETWEEN $2::date AND $3::date
+     ORDER BY u.day, u.preset`,
+    [userId, fromDate, toDate],
+  );
+  return rows.map((r) => ({
+    day: r.day,
+    preset: r.preset,
+    activeS: r.active_s,
+    standbyS: r.standby_s,
+    offS: r.off_s,
+    fixes: r.fixes,
+    movingS: r.moving_s,
+    stillS: r.still_s,
+    current: {
+      active: { n: r.can, mean: r.camean, median: r.camed },
+      standby: { n: r.csn, mean: r.csmean, median: r.csmed },
+      screen: { n: r.crn, mean: r.crmean, median: r.crmed },
+    },
+    dropMah: r.drop_mah,
+    dropS: r.drop_s,
+  }));
+}
+
+/** The "Custom" preset's settings on the user's most recently heard-from phone, if any. */
+async function loadCustomPreset(userId: string | number) {
+  const [row] = await q<{ status: unknown }>(
+    `SELECT status FROM devices WHERE user_id = $1 AND revoked_at IS NULL AND status IS NOT NULL
+     ORDER BY heartbeat_at DESC NULLS LAST LIMIT 1`,
+    [userId],
+  );
+  const s = row?.status as Record<string, unknown> | undefined;
+  return s ? parseCustomPreset(s.custom) : null;
+}
+
+/** Battery capacity for the estimate's percentages: MATKA_BATTERY_MAH, else the calibration phone's. */
+export function batteryMah(): number {
+  const v = Number(process.env.MATKA_BATTERY_MAH);
+  return Number.isFinite(v) && v >= 500 && v <= 50_000 ? v : POWER_CALIBRATION.batteryMah;
+}
+
+const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
+
+/**
+ * Recording quality for the last `days` local days, per preset period, plus
+ * the days around the latest change; and Matka's estimated battery use per
+ * day and preset with the phone's own measurements. `now` for tests.
+ */
+export async function loadQuality(user: Pick<User, "id" | "timezone">, days: number, now = Date.now()) {
+  const tz = user.timezone;
+  const toDate = localDate(now, tz);
+  const fromDate = addDays(toDate, -(days - 1));
+  const [rangeFrom] = dayBounds(fromDate, tz);
+  const changes = await loadPresetChanges(user.id);
+  // The comparison may reach before the range: load from the latest change's window too.
+  const periods = presetPeriods(changes);
+  const latest = periods.length > 1 ? periods[periods.length - 1].start : Infinity;
+  const loadFrom = Math.min(rangeFrom, latest - QUALITY_RULES.compareDays * 86_400_000);
+  const [series, usage, custom] = await Promise.all([
+    loadQualityFixes(user.id, loadFrom, now),
+    loadUsageRows(user.id, fromDate, toDate),
+    loadCustomPreset(user.id),
+  ]);
+  const samples = mergeSamples(series.map((s) => qualitySamples(s)));
+  const cap = batteryMah();
+  return {
+    fromDate,
+    toDate,
+    report: qualityReport(samples, changes, fromDate, toDate, tz, now),
+    usage: usageGroups(usage, { custom, batteryMah: cap }),
+    model: { calibrated: POWER_MODEL.date, device: POWER_CALIBRATION.device, batteryMah: cap },
+  };
+}
+
+/** loadQuality with ISO timestamps, as the API and the Insights card use it. */
+export async function getQualityInsight(user: Pick<User, "id" | "timezone">, days: number) {
+  const { report, ...rest } = await loadQuality(user, days);
+  const c = report.comparison;
+  return {
+    ...rest,
+    periods: report.periods.map((p) => ({ ...p, start: iso(p.start), end: iso(p.end) })),
+    comparison: c && {
+      ...c,
+      at: iso(c.at)!,
+      before: { ...c.before, from: iso(c.before.from)!, to: iso(c.before.to)! },
+      after: { ...c.after, from: iso(c.after.from)!, to: iso(c.after.to)! },
+    },
+    rules: QUALITY_RULES,
+  };
+}
+export type QualityInsight = Awaited<ReturnType<typeof getQualityInsight>>;
+export type { QualityStats };

@@ -92,6 +92,8 @@ type FeedData = {
   routes: Record<string, string>[];
   /** shape_id -> route and headsign of the first trip using it. */
   shapeRoute: Map<string, { route: string; headsign: string }>;
+  /** shape_id -> how many trips use it (tells a line's regular route from rare variants). */
+  shapeTrips: Map<string, number>;
   shapes: Map<string, [number, number, number][]>;
   stops: Record<string, string>[];
 };
@@ -146,10 +148,11 @@ function splitCsvLine(line: string): string[] {
  * neither the zip nor a whole file is ever held in memory.
  */
 async function readFeed(url: string): Promise<FeedData> {
-  const data: FeedData = { routes: [], shapeRoute: new Map(), shapes: new Map(), stops: [] };
+  const data: FeedData = { routes: [], shapeRoute: new Map(), shapeTrips: new Map(), shapes: new Map(), stops: [] };
   const sink: Record<string, (r: Record<string, string>) => void> = {
     "routes.txt": (r) => data.routes.push(r),
     "trips.txt": (r) => {
+      if (r.shape_id) data.shapeTrips.set(r.shape_id, (data.shapeTrips.get(r.shape_id) ?? 0) + 1);
       if (r.shape_id && !data.shapeRoute.has(r.shape_id)) {
         data.shapeRoute.set(r.shape_id, { route: r.route_id, headsign: r.trip_headsign });
       }
@@ -207,7 +210,7 @@ async function storeFeed(id: string, version: string, feed: FeedData) {
     .filter(([sid, pts]) => pts.length >= 2 && shapeRoute.has(sid))
     .map(([sid, pts]) => {
       pts.sort((a, b) => a[0] - b[0]);
-      return { sid, ...shapeRoute.get(sid)!, wkt: `LINESTRING(${pts.map(([, lon, lat]) => `${lon} ${lat}`).join(",")})` };
+      return { sid, ...shapeRoute.get(sid)!, trips: feed.shapeTrips.get(sid) ?? 0, wkt: `LINESTRING(${pts.map(([, lon, lat]) => `${lon} ${lat}`).join(",")})` };
     });
   // Only stops, not stations or entrances (filtered while reading).
   const stops = feed.stops;
@@ -222,12 +225,13 @@ async function storeFeed(id: string, version: string, feed: FeedData) {
     for (let k = 0; k < shapes.length; k += 200) {
       const b = shapes.slice(k, k + 200);
       await c.query(
-        `INSERT INTO transit_shapes (feed_id, shape_id, route_id, headsign, path, seen_at)
-         SELECT $1, t.sid, t.route, t.headsign, ST_GeogFromText(t.wkt), now()
-         FROM unnest($2::text[], $3::text[], $4::text[], $5::text[]) AS t(sid, route, headsign, wkt)
+        `INSERT INTO transit_shapes (feed_id, shape_id, route_id, headsign, path, trips, seen_at)
+         SELECT $1, t.sid, t.route, t.headsign, ST_GeogFromText(t.wkt), t.trips, now()
+         FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[]) AS t(sid, route, headsign, wkt, trips)
          ON CONFLICT (feed_id, shape_id) DO UPDATE
-           SET route_id = EXCLUDED.route_id, headsign = EXCLUDED.headsign, path = EXCLUDED.path, seen_at = now()`,
-        [id, b.map((s) => s.sid), b.map((s) => s.route), b.map((s) => s.headsign || null), b.map((s) => s.wkt)],
+           SET route_id = EXCLUDED.route_id, headsign = EXCLUDED.headsign, path = EXCLUDED.path,
+               trips = EXCLUDED.trips, seen_at = now()`,
+        [id, b.map((s) => s.sid), b.map((s) => s.route), b.map((s) => s.headsign || null), b.map((s) => s.wkt), b.map((s) => s.trips)],
       );
     }
     // Shapes of routes that no longer exist, or unseen for over a year, go.

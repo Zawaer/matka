@@ -72,6 +72,11 @@ public class MatkaActivityModule: Module {
       self.manager.stopActivityUpdates()
     }
 
+    /// Android only (BatteryManager current and charge counter); iOS has no public equivalent.
+    Function("batterySnapshot") { () -> [String: Any]? in
+      return nil
+    }
+
     Function("latest") { () -> [String: Any]? in
       guard let type = self.defaults.string(forKey: "matka_activity.type") else { return nil }
       return [

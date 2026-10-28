@@ -194,6 +194,22 @@ describe("heartbeat", () => {
     });
   });
 
+  test("preset and usage", () => {
+    const custom = { accuracy: "highest" as const, distance: 10, time: 10_000 };
+    expect(buildHeartbeat({ ...hb, preset: { key: "precise", custom, smartTracking: true } })).toMatchObject({
+      preset: "precise",
+      custom: null,
+      smartTracking: true,
+    });
+    expect(buildHeartbeat({ ...hb, preset: { key: "custom", custom, smartTracking: false } })).toMatchObject({
+      preset: "custom",
+      custom,
+      smartTracking: false,
+    });
+    expect(buildHeartbeat({ ...hb, usage: [] }).usage).toEqual([]);
+    expect("preset" in buildHeartbeat(hb)).toBe(false);
+  });
+
   test("off and problems", () => {
     expect(buildHeartbeat({ ...hb, enabled: false })).toMatchObject({ recording: false, mode: "off", problem: null });
     expect(buildHeartbeat({ ...hb, permitted: false })).toMatchObject({ problem: "permission" });

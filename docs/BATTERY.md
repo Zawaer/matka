@@ -120,3 +120,26 @@ without battery levels. And once Matka's share fell under 1 % of the phone's
 drain, the whole-phone rate is set by the screen and other apps: 5–7 %/h
 by day, with high "overnight" values on nights the phone was in use. The
 per-app numbers above remain the direct measure of what Matka costs.
+
+## Matka's own use, estimated (from 28 Oct 2026)
+
+Android doesn't let an app read its own battery stats, so the app counts what
+the recorder does (seconds with GPS active per preset, seconds in standby,
+fixes, moving/still minutes) and a model turns that into ≈ mAh and % of the
+battery: `web/src/lib/insights/powerModel.ts` (an identical copy is
+`mobile/src/power-model.ts`). Calibration: the 27–28 Oct cycle above (Balanced,
+15 h 14 min, Matka GNSS 20 min ≈ 25.2 mAh ⇒ ≈ 75.6 mA with the receiver on;
+Matka total 34.3 mAh incl. ~4 mAh CPU, ~2 mAh wakelocks; 6000 mAh battery).
+GPS-active minutes and fixes for that cycle weren't counted yet, so 120 min and
+400 fixes are assumed; the receiver was then on 1/6 of active time, of which
+0.7 s / 30 s is the fix pulses and the rest an overhead that is kept for every
+preset (Precise ≈ 0.21, Max detail = always on). To recalibrate, take the same
+`dumpsys batterystats --charged` figures plus `device_daily_usage` active_s and
+fixes for the cycle and edit `POWER_CALIBRATION` (comment in the file).
+
+The phone also samples its own battery current (`BATTERY_PROPERTY_CURRENT_NOW`,
+normalised to mA, discharge positive) and charge counter whenever fixes arrive
+and on watchdog runs, unplugged only. These are whole-phone figures (screen off
+with GPS active, screen off in standby, screen on) and the charge-counter drop;
+they show on the Recorder tab, in Insights → Travel → Recording quality, and in
+the `[stats] quality` log line.

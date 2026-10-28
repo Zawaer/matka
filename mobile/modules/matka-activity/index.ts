@@ -1,7 +1,7 @@
-import Native, { type NativeActivity, type PermissionResponse } from "./src/MatkaActivityModule";
+import Native, { type NativeActivity, type PermissionResponse, type RawBattery } from "./src/MatkaActivityModule";
 
 export type Activity = "still" | "walking" | "running" | "on_bicycle" | "in_vehicle";
-export type { NativeActivity, PermissionResponse };
+export type { NativeActivity, PermissionResponse, RawBattery };
 
 const KNOWN: readonly string[] = ["still", "walking", "running", "on_bicycle", "in_vehicle"];
 /**
@@ -31,6 +31,15 @@ export function isActivityAvailable(): boolean {
 export function currentActivity(at = Date.now()): Activity | null {
   try {
     return usableActivity(Native?.latest(), at);
+  } catch {
+    return null;
+  }
+}
+
+/** Whole-phone battery readings, or null (iOS, older builds, no React context in a headless task). */
+export function batterySnapshot(): RawBattery | null {
+  try {
+    return Native?.batterySnapshot?.() ?? null;
   } catch {
     return null;
   }

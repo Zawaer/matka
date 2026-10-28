@@ -5,6 +5,7 @@ import * as db from "../db";
 import type { Pairing } from "../pairing";
 import { isBatteryOptimized } from "../system";
 import { parseCustom, type CustomSettings } from "../preset-logic";
+import { usageToday, type UsageToday } from "../usage";
 import { parseRecoveries, type Recovery } from "../watchdog-logic";
 import {
   getPermissions,
@@ -47,6 +48,8 @@ export type CollectorState = {
   heartbeatAt: number | null;
   heartbeatError: string | null;
   watchdogCheckedAt: number | null;
+  /** Today's recorder usage, Matka's estimated battery use and the phone's own measurements. */
+  usage: UsageToday | null;
 };
 
 const num = (v: string | undefined) => {
@@ -55,7 +58,7 @@ const num = (v: string | undefined) => {
 };
 
 export async function readState(): Promise<CollectorState> {
-  const [pairing, kv, queued, oldestQueued, trackingEnabled, trackingRunning, permissions, preset, batteryOptimized] =
+  const [pairing, kv, queued, oldestQueued, trackingEnabled, trackingRunning, permissions, preset, batteryOptimized, usage] =
     await Promise.all([
       loadPairing(),
       db.getAllKv(),
@@ -66,6 +69,7 @@ export async function readState(): Promise<CollectorState> {
       getPermissions().catch(() => null),
       getPreset(),
       isBatteryOptimized(),
+      usageToday().catch(() => null),
     ]);
   let server: ServerStatus | null = null;
   try {
@@ -101,6 +105,7 @@ export async function readState(): Promise<CollectorState> {
     heartbeatAt: num(kv.heartbeat_sent_at),
     heartbeatError: kv.heartbeat_error ?? null,
     watchdogCheckedAt: num(kv.watchdog_checked_at),
+    usage,
   };
 }
 

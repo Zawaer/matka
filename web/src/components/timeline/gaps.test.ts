@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineItem } from "@/lib/types";
-import { edgeGaps, gapBetween } from "./gaps";
+import { edgeGaps, gapBetween, missingTravel } from "./gaps";
 
 const visit = (startedAt: string, endedAt: string): TimelineItem => ({
   kind: "visit",
@@ -55,5 +55,53 @@ describe("edgeGaps", () => {
     expect(edgeGaps(items, day, range, Date.parse("2026-09-10T18:00:00Z")).after).toBeNull();
     expect(edgeGaps([], day, range, later)).toEqual({ before: null, after: null });
     expect(edgeGaps(items, { date: day.date }, range, later)).toEqual({ before: null, after: null });
+  });
+});
+
+describe("missingTravel", () => {
+  const at = (id: number, lat: number, lon: number, startedAt: string, endedAt: string): TimelineItem => ({
+    kind: "visit",
+    visit: { id, startedAt, endedAt, duration: 0, placeId: id, placeName: null, category: null, placeKind: null, lat, lon },
+  });
+  const trip = (from: [number, number] | null, to: [number, number] | null, startedAt: string, endedAt: string): TimelineItem => ({
+    kind: "move",
+    track: {
+      id: 9,
+      startedAt,
+      endedAt,
+      distance: 1000,
+      duration: 600,
+      mode: "walking",
+      ...(from ? { from: { lat: from[0], lon: from[1] } } : {}),
+      ...(to ? { to: { lat: to[0], lon: to[1] } } : {}),
+    },
+  });
+  const home = at(1, 60.17, 24.94, "2026-10-27T06:00:00Z", "2026-10-27T07:00:00Z");
+  const espoo = at(2, 60.205, 24.79, "2026-10-27T07:17:00Z", "2026-10-27T09:00:00Z");
+
+  it("finds two visits far apart with nothing between", () => {
+    const m = missingTravel(home, espoo)!;
+    expect(m.distance).toBeGreaterThan(8500);
+    expect(m.distance).toBeLessThan(9500);
+    expect(m.secs).toBe(17 * 60);
+    expect(m.from).toBe("2026-10-27T07:00:00Z");
+    expect(m.to).toBe("2026-10-27T07:17:00Z");
+    expect(m.fromPos).toEqual({ lat: 60.17, lon: 24.94 });
+  });
+  it("ignores a change of place within 500 m", () => {
+    const near = at(3, 60.1735, 24.94, "2026-10-27T07:30:00Z", "2026-10-27T08:00:00Z");
+    expect(missingTravel(home, near)).toBeNull();
+  });
+  it("uses a trip's ends, and says nothing when they are unknown", () => {
+    const toKamppi = trip([60.17, 24.94], [60.169, 24.93], "2026-10-27T07:00:00Z", "2026-10-27T07:10:00Z");
+    expect(missingTravel(toKamppi, espoo)).not.toBeNull();
+    expect(missingTravel(home, trip([60.1701, 24.9401], null, "2026-10-27T07:00:00Z", "2026-10-27T07:10:00Z"))).toBeNull();
+    expect(missingTravel(trip(null, null, "2026-10-27T05:00:00Z", "2026-10-27T06:00:00Z"), home)).toBeNull();
+  });
+  it("never gives a negative span for overlapping items", () => {
+    const early = at(4, 60.205, 24.79, "2026-10-27T06:50:00Z", "2026-10-27T09:00:00Z");
+    const m = missingTravel(home, early)!;
+    expect(m.secs).toBe(0);
+    expect(m.to).toBe(m.from);
   });
 });

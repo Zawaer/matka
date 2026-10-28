@@ -9,7 +9,9 @@ import { pickPlaceNamesWithAi } from "./aiPlaces";
 import { geocodePending } from "./geocode";
 import { processUser } from "./run";
 import { batteryLogLine, dailyBattery, dischargeSegments } from "../insights/battery";
-import { loadBatteryReadings } from "../insights/load";
+import { loadBatteryReadings, loadQuality } from "../insights/load";
+import { usageLogText } from "../insights/matkaPower";
+import { qualityLogLine } from "../insights/quality";
 import { addDays, dayBounds, localDate } from "../insights/time";
 
 // Background loop started from instrumentation.ts. Only one instance across
@@ -110,6 +112,21 @@ async function logBatteryStats(): Promise<void> {
   }
 }
 
+/**
+ * One `[stats] quality user N: <period>: <numbers> | … || matka ≈ <per-day estimate and measurements>`
+ * line per user with app fixes (aggregates only, no coordinates).
+ */
+async function logQualityStats(): Promise<void> {
+  const users = (await pool().query<{ id: string; timezone: string }>(`SELECT id::text, timezone FROM users ORDER BY id`))
+    .rows;
+  for (const u of users) {
+    const q = await loadQuality(u, 21);
+    if (!q.report.periods.some((p) => p.total.fixes > 0) && q.usage.length === 0) continue;
+    const usage = q.usage.length ? ` || matka (estimate, calibrated ${q.model.calibrated}): ${usageLogText(q.usage)}` : "";
+    console.log(`${qualityLogLine(u.id, q.report, u.timezone)}${usage}`);
+  }
+}
+
 export function startWorker(): void {
   const g = globalThis as unknown as { _matkaWorker?: NodeJS.Timeout };
   if (g._matkaWorker || process.env.MATKA_WORKER === "off") return;
@@ -119,6 +136,7 @@ export function startWorker(): void {
   setTimeout(() => {
     try {
       logBatteryStats().catch((err) => console.error("[stats] battery failed:", err instanceof Error ? err.message : err));
+      logQualityStats().catch((err) => console.error("[stats] quality failed:", err instanceof Error ? err.message : err));
     } catch {}
   }, 5000);
 }

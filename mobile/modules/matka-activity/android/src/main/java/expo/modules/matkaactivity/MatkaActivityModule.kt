@@ -4,8 +4,11 @@ import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.BatteryManager
 import android.os.Build
+import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.tasks.Tasks
@@ -87,6 +90,30 @@ class MatkaActivityModule : Module() {
       val ctx = context
       Tasks.await(ActivityRecognition.getClient(ctx).removeActivityUpdates(pendingIntent(ctx)))
       ActivityReceiver.clear(ctx)
+    }
+
+    /**
+     * Whole-phone battery readings for Matka's stats, raw (normalised in JS,
+     * src/usage-logic.ts): currentNow (BATTERY_PROPERTY_CURRENT_NOW, nominally µA,
+     * positive = charging, but sign and units vary by OEM), chargeCounter
+     * (BATTERY_PROPERTY_CHARGE_COUNTER, nominally µAh), plugged, interactive
+     * (screen on). Each is null when the phone doesn't support it.
+     */
+    Function("batterySnapshot") {
+      val ctx = context
+      val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+      // Unsupported properties return Integer.MIN_VALUE (0 on some older phones).
+      fun prop(id: Int): Double? = bm?.getIntProperty(id)?.takeIf { it != Int.MIN_VALUE && it != 0 }?.toDouble()
+      // ACTION_BATTERY_CHANGED is sticky: a null receiver just returns the last intent.
+      val battery = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+      val plugged = battery?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)?.takeIf { it >= 0 }
+      val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
+      mapOf(
+        "currentNow" to prop(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW),
+        "chargeCounter" to prop(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER),
+        "plugged" to plugged?.let { it != 0 },
+        "interactive" to pm?.isInteractive
+      )
     }
 
     /** The latest reading, or null: { type, confidence (0-100), at (epoch ms) }. */

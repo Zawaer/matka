@@ -12,6 +12,8 @@ import { Screen, ScreenHeader } from "../ui/Screen";
 import { Text } from "../ui/Text";
 import type { CollectorState } from "../ui/useCollectorState";
 import { refreshServerStatus, uploadNow } from "../uploader";
+import { POWER_CALIBRATION } from "../power-model";
+import { usageLines } from "../usage-logic";
 import { describeRecovery } from "../watchdog-logic";
 
 /** "14:02" today, else "Fri 16 Oct 14:02". */
@@ -169,6 +171,7 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         </View>
         <Row label="Location permission" value={permText} tone={permTone} />
         <Row label="Last location" value={ago(state.lastFixAt)} tone={state.lastFixAt ? undefined : "dim"} />
+        {state.usage ? <UsageToday usage={state.usage} /> : null}
         {state.activityStatus ? (
           <Row
             label="Motion detection"
@@ -257,5 +260,28 @@ export default function StatusScreen({ state, refresh, onPair, onSettings }: Pro
         </Text>
       ) : null}
     </Screen>
+  );
+}
+
+/** Matka's estimated battery use today, and the phone's own (whole-phone) measurements. */
+function UsageToday({ usage }: { usage: NonNullable<CollectorState["usage"]> }) {
+  const l = usageLines(usage, usage.estimate);
+  return (
+    <View style={{ gap: 2 }}>
+      <Text variant="callout">{l.estimate}</Text>
+      <Text variant="caption" color="textMuted">
+        Estimate of Matka&apos;s own use from GPS and standby time (calibrated {POWER_CALIBRATION.date} on a{" "}
+        {POWER_CALIBRATION.device}).
+      </Text>
+      {l.draw || l.drop ? (
+        <>
+          {l.draw ? <Text variant="callout">{l.draw}</Text> : null}
+          {l.drop ? <Text variant="callout">{l.drop}</Text> : null}
+          <Text variant="caption" color="textMuted">
+            Measured by the phone for the whole phone (screen off, unplugged), not Matka alone.
+          </Text>
+        </>
+      ) : null}
+    </View>
   );
 }

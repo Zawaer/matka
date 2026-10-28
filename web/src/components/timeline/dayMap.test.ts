@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ModeKey } from "@/lib/modes";
 import type { TimelineItem } from "@/lib/types";
-import { bboxOf, dayHasMap, dayStops, dayTracks, dayWindow, nextStopKey, stopLabel } from "./dayMap";
+import { bboxOf, clusterPoints, dayHasMap, dayStops, dayTracks, dayWindow, nextStopKey, stopLabel } from "./dayMap";
 
 const visit = (id: number, placeId: number, lat = 60, lon = 25, placeName: string | null = "Home"): TimelineItem => ({
   kind: "visit",
@@ -98,5 +98,30 @@ describe("bboxOf", () => {
     const fc = { type: "FeatureCollection" as const, features: [line(1, "bus", [[24, 60], [24.5, 60.2]])] };
     expect(bboxOf(fc, [{ lat: 61, lon: 23 }])).toEqual([23, 60, 24.5, 61]);
     expect(bboxOf({ type: "FeatureCollection", features: [] })).toBeNull();
+  });
+});
+
+describe("stop icons and added trips", () => {
+  it("gives each stop its category icon, the saved kind first", () => {
+    const saved: TimelineItem = { kind: "visit", visit: { ...(visit(1, 10) as Extract<TimelineItem, { kind: "visit" }>).visit, placeKind: "home", category: "cafe" } };
+    const cafe: TimelineItem = { kind: "visit", visit: { ...(visit(2, 20) as Extract<TimelineItem, { kind: "visit" }>).visit, category: "cafe" } };
+    expect(dayStops([saved, cafe]).map((s) => s.icon)).toEqual(["home", "food"]);
+  });
+  it("draws a trip the user added as a straight line", () => {
+    const added: TimelineItem = {
+      kind: "move",
+      track: { ...(move(-4) as Extract<TimelineItem, { kind: "move" }>).track, added: true, from: { lat: 60, lon: 24 }, to: { lat: 61, lon: 25 } },
+    };
+    const fc = dayTracks(null, [added]);
+    expect(fc.features).toHaveLength(1);
+    expect(fc.features[0].properties).toMatchObject({ key: "m--4", added: true, mode: "walking" });
+    expect(fc.features[0].geometry).toEqual({ type: "LineString", coordinates: [[24, 60], [25, 61]] });
+  });
+});
+
+describe("clusterPoints", () => {
+  it("groups points that would overlap", () => {
+    const groups = clusterPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 10, y: 12 }, { x: 0, y: 50 }], 38);
+    expect(groups).toEqual([[0, 2], [1], [3]]);
   });
 });

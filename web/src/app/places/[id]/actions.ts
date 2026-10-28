@@ -19,7 +19,13 @@ export async function renamePlace(form: FormData): Promise<void> {
   const user = await requireUser();
   const id = String(form.get("id") ?? "");
   if (!/^\d+$/.test(id)) return;
-  await q(`UPDATE places SET custom_name = $3 WHERE id = $1 AND user_id = $2`, [id, user.id, cleanName(form.get("name"))]);
+  // A new name drops the type of a name picked on the timeline ("Visited X?").
+  await q(
+    `UPDATE places SET custom_category = CASE WHEN custom_name IS DISTINCT FROM $3 THEN NULL ELSE custom_category END,
+                       custom_name = $3
+     WHERE id = $1 AND user_id = $2`,
+    [id, user.id, cleanName(form.get("name"))],
+  );
   refresh(id);
 }
 
@@ -39,7 +45,8 @@ export async function savePlace(form: FormData): Promise<void> {
   );
   if (!before) return;
   await q(
-    `UPDATE places SET custom_name = $3, kind = $4, radius_m = $5, saved_at = COALESCE(saved_at, now())
+    `UPDATE places SET custom_category = CASE WHEN custom_name IS DISTINCT FROM $3 THEN NULL ELSE custom_category END,
+                       custom_name = $3, kind = $4, radius_m = $5, saved_at = COALESCE(saved_at, now())
      WHERE id = $1 AND user_id = $2`,
     [id, user.id, cleanName(form.get("name")), kind, radius],
   );
