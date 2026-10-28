@@ -17,10 +17,9 @@ services:
       # No identity provider here: sign in with MATKA_LOGIN_KEY (see docs/DEPLOY.md).
       MATKA_AUTH: key
       PHOTON_URL: http://matka_photon:2322
-      # One-time Dawarich history import, run automatically and resumably by the worker
-      # through the read-only matka_ro role. Falls back to the read-only DATABASE_URL this
-      # .env held before Matka had its own database. Harmless to leave once finished.
-      DAWARICH_IMPORT_URL: ${DAWARICH_IMPORT_URL:-${DATABASE_URL:-}}
+      # Dawarich was retired on 2026-10-28 after its history was imported (and topped
+      # up); DAWARICH_IMPORT_URL is no longer set. See docs/DEPLOY.md to import from a
+      # Dawarich database elsewhere.
       # Optional AI place picker (Settings, opt-in per user) on the homelab's shared Claude
       # accounts. Off while CLAUDE_ACCOUNTS_TOKEN is unset; see docs/DEPLOY.md.
       CLAUDE_ACCOUNTS_URL: http://claude-accounts:8080
