@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { assetUrl } from "@/lib/covers";
 
 /** Shown behind (or instead of) a photo: dark in both themes, like the photo scrim. */
-export const COVER_BACKDROP = "bg-linear-to-br from-[#2b2f4d] via-[#1d2036] to-[#141625]";
+export const COVER_BACKDROP = "bg-[#1b1d27]";
 
 export function CoverPhoto({
   assetId,
@@ -47,11 +47,11 @@ export function CoverScrim() {
 export function CoverHeader({ assetId, children }: { assetId: string; children: ReactNode }) {
   return (
     <header
-      className={`relative mb-6 aspect-[3/2] overflow-hidden rounded-[var(--mk-radius)] sm:aspect-[21/9] ${COVER_BACKDROP}`}
+      className={`relative mb-6 aspect-[3/2] overflow-hidden rounded-card sm:aspect-[21/9] ${COVER_BACKDROP}`}
     >
       <CoverPhoto assetId={assetId} eager />
       <CoverScrim />
-      <div className="absolute inset-x-0 bottom-0 p-5 text-white md:p-7 [text-shadow:0_1px_8px_rgb(0_0_0/0.45)]">
+      <div className="absolute inset-x-0 bottom-0 p-5 text-white md:p-6 [text-shadow:0_1px_8px_rgb(0_0_0/0.45)]">
         {children}
       </div>
     </header>
@@ -70,7 +70,7 @@ export function PhotoStrip({ ids }: { ids: string[] }) {
             target="_blank"
             rel="noopener"
             aria-label="Open photo"
-            className={`relative block aspect-square overflow-hidden rounded-xl ring-primary/60 focus:outline-none focus-visible:ring-2 ${COVER_BACKDROP}`}
+            className={`relative block aspect-square overflow-hidden rounded-control ${COVER_BACKDROP}`}
           >
             <CoverPhoto assetId={id} size="thumbnail" className="transition-transform duration-200 hover:scale-105" />
           </a>

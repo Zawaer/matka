@@ -1,94 +1,81 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
+import { ExternalLink, QrCode } from "lucide-react";
 import { pairDevice, type PairResult } from "@/app/devices/actions";
+import { Button, Callout, Card, Field, IconTile, Input } from "@/components/ui";
+import { CopyField } from "@/components/ui/CopyField";
 
 export function PairDevice({ insecure }: { insecure: boolean }) {
   const [result, action, pending] = useActionState<PairResult, FormData>(pairDevice, null);
 
   if (result?.ok) {
     return (
-      <div className="mk-card flex flex-col items-center gap-5 p-6 text-center md:flex-row md:items-start md:text-left">
+      <Card padding="lg" className="flex flex-col gap-6 md:flex-row md:items-start">
         {/* eslint-disable-next-line @next/next/no-img-element -- data: URL, nothing to optimize */}
         <img
           src={result.qr}
           alt="Pairing QR code"
-          width={360}
-          height={360}
+          width={280}
+          height={280}
           // White card with its own quiet zone so it scans in dark mode too.
-          className="aspect-square w-full max-w-[360px] shrink-0 rounded-lg bg-white"
+          className="mx-auto aspect-square w-full max-w-[280px] shrink-0 rounded-control border border-border bg-white md:mx-0"
         />
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-medium">Pair “{result.name}”</h2>
-          <p className="mt-1 text-sm text-muted">
-            Scan this with the Matka app (Pair device → Scan QR), or with the phone’s camera and
-            tap “Open in Matka”. This is the only time the token is shown — if you lose it, revoke
-            the device and pair it again.
-          </p>
-          <CopyField label="Pairing link" value={result.link} />
-          <p className="mt-1 text-xs text-muted">
-            Or paste it into the app’s “Enter manually” tab.
-          </p>
+        <div className="flex min-w-0 flex-1 flex-col gap-4">
+          <div>
+            <h2 className="text-heading text-text">Pair &ldquo;{result.name}&rdquo;</h2>
+            <p className="mt-1 text-meta text-muted">
+              Scan this with the Matka app (Pair device → Scan QR), or with the phone’s camera and tap “Open in
+              Matka”.
+            </p>
+          </div>
+          <Callout tone="warn">
+            This is the only time the token is shown. If you lose it, revoke the device and pair it again.
+          </Callout>
+          <div className="flex flex-col gap-1.5">
+            <CopyField label="Pairing link" value={result.link} />
+            <p className="text-meta text-muted">Or paste it into the app’s “Enter manually” tab.</p>
+          </div>
           <CopyField label="Token" value={result.token} />
-          <a href={result.link} className="mt-3 inline-block text-sm text-primary hover:underline">
+          <a
+            href={result.link}
+            className="inline-flex items-center gap-1.5 self-start text-meta font-medium text-primary hover:underline"
+          >
             Open pairing page on this device
+            <ExternalLink size={16} strokeWidth={1.75} aria-hidden />
           </a>
         </div>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <form action={action} className="mk-card flex flex-col gap-3 p-5 sm:flex-row sm:items-end">
-      <label className="flex-1">
-        <span className="text-sm font-medium">Pair a device</span>
-        <input
-          name="name"
-          required
-          maxLength={64}
-          placeholder="e.g. Pixel 8"
-          className="mt-1.5 block w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-primary"
-        />
-        {result && !result.ok && <span className="mt-1.5 block text-sm text-red-500">{result.error}</span>}
-        {insecure && (
-          <span className="mt-1.5 block text-sm text-amber-500">
-            APP_URL is not https — phones will refuse to pair outside development.
-          </span>
-        )}
-      </label>
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-      >
-        {pending ? "Pairing…" : "Pair"}
-      </button>
-    </form>
-  );
-}
-
-function CopyField({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard
-      ?.writeText(value)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(() => {});
-  };
-  return (
-    <>
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted">{label}</span>
-        <button type="button" onClick={copy} className="text-xs font-medium text-primary hover:underline">
-          {copied ? "Copied" : "Copy"}
-        </button>
+    <Card as="section" padding="none">
+      <div className="flex items-start gap-3 border-b border-border px-4 py-3.5 sm:px-5">
+        <IconTile icon={QrCode} tone="primary" />
+        <div className="min-w-0">
+          <h2 className="text-heading text-text">Pair a device</h2>
+          <p className="mt-0.5 text-meta text-muted">Name the phone, then scan the QR code with the Matka app.</p>
+        </div>
       </div>
-      <code className="mt-1 block select-all break-all rounded-lg bg-surface-2 px-3 py-2 text-left font-mono text-sm">
-        {value}
-      </code>
-    </>
+      <form action={action} className="flex flex-col gap-3 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <Field
+            label="Device name"
+            htmlFor="device-name"
+            className="flex-1"
+            error={result && !result.ok ? result.error : undefined}
+          >
+            <Input id="device-name" name="name" required maxLength={64} placeholder="e.g. Pixel 8" />
+          </Field>
+          <Button type="submit" variant="primary" icon={QrCode} disabled={pending} className={result && !result.ok ? "sm:mb-6" : undefined}>
+            {pending ? "Pairing…" : "Pair"}
+          </Button>
+        </div>
+        {insecure && (
+          <Callout tone="warn">APP_URL is not https: phones will refuse to pair outside development.</Callout>
+        )}
+      </form>
+    </Card>
   );
 }

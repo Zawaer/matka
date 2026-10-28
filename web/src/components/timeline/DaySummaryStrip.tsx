@@ -4,6 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { formatDuration, formatKm } from "@/lib/format";
 import { MODE_META } from "@/lib/modes";
+import { ModeGlyph, Skeleton } from "@/components/ui";
 import { stripModes, type DaySummary, type StripMode } from "./daySummary";
 
 const fetcher = (url: string): Promise<DaySummary> =>
@@ -13,9 +14,9 @@ const fetcher = (url: string): Promise<DaySummary> =>
   });
 
 /**
- * "19.1 km · 25 min · 🚗 Drive …": distance and time per travel mode on the
+ * "19.1 km · 25 min · [car] 18 km …": distance and time per travel mode on the
  * day, under the date header. Text stays in text colours; only the mode icon
- * carries the mode colour.
+ * (a data mark) carries the mode colour.
  *
  * `travelled` is the timeline's own hint that the day has trips, so the strip's
  * height is held while its numbers load and nothing below it jumps.
@@ -52,11 +53,11 @@ function Strip({
       {summary ? (
         <>
           <p className="truncate text-sm text-muted">
-            <span className="font-medium text-text tabular-nums">{total[0]}</span>
+            <span className="font-semibold text-text tabular-nums">{total[0]}</span>
             {total[1] && <span className="tabular-nums"> · {total[1]}</span>} on the move
           </p>
           <ul
-            className="-mx-5 mt-2 flex gap-2 overflow-x-auto px-5 md:mx-0 md:px-0"
+            className="-mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:mx-0 md:px-0"
             style={{ scrollbarWidth: "none" }}
           >
             {shown.map((m) => (
@@ -69,8 +70,7 @@ function Strip({
                   onClick={() => setOpen(true)}
                   aria-label={`Show ${hidden.length} more modes`}
                   title={hidden.map((m) => MODE_META[m.mode].label).join(", ")}
-                  className="mk-card h-8 px-3 text-sm font-medium text-muted transition-colors hover:text-text"
-                  style={{ borderRadius: 999 }}
+                  className="h-8 rounded-full border border-border bg-surface px-3 text-meta font-medium text-muted transition-colors hover:border-strong hover:text-text"
                 >
                   +{hidden.length}
                 </button>
@@ -80,10 +80,10 @@ function Strip({
         </>
       ) : (
         <div aria-hidden>
-          <div className="h-5 w-48 animate-pulse rounded bg-surface-2" />
-          <div className="mt-2 flex gap-2">
-            {[112, 96, 88].map((w) => (
-              <div key={w} className="h-8 animate-pulse rounded-full bg-surface-2" style={{ width: w }} />
+          <Skeleton className="h-5 w-48" />
+          <div className="mt-2 flex gap-1.5">
+            {["w-28", "w-24", "w-20"].map((w) => (
+              <Skeleton key={w} className={`h-8 rounded-full ${w}`} />
             ))}
           </div>
         </div>
@@ -98,15 +98,11 @@ function ModeChip({ m }: { m: StripMode }) {
   const time = m.duration > 0 ? formatDuration(m.duration) : null;
   return (
     <li
-      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface pl-1 pr-3 text-sm"
+      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface pl-2.5 pr-3 text-meta shadow-card"
       title={[meta.label, dist, time].filter(Boolean).join(" · ")}
     >
-      <span
-        className="flex h-6 w-6 items-center justify-center rounded-full text-xs leading-none"
-        style={{ backgroundColor: `color-mix(in srgb, ${meta.color} 22%, transparent)` }}
-        aria-hidden
-      >
-        {meta.icon}
+      <span className="flex items-center" style={{ color: meta.color }} aria-hidden>
+        <ModeGlyph mode={m.mode} size={16} strokeWidth={1.75} />
       </span>
       <span className="sr-only">{meta.label}: </span>
       {dist && <span className="font-medium text-text tabular-nums">{dist}</span>}

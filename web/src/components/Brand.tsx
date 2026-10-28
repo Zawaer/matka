@@ -25,13 +25,11 @@ export function Logo({ size = 28 }: { size?: number }) {
   );
 }
 
-export function Wordmark() {
+export function Wordmark({ size = 26 }: { size?: number }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <Logo />
-      <span className="text-lg font-semibold tracking-tight text-text">
-        Matka
-      </span>
-    </div>
+    <span className="flex items-center gap-2.5">
+      <Logo size={size} />
+      <span className="text-heading font-semibold tracking-tight text-text">Matka</span>
+    </span>
   );
 }

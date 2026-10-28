@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { MODE_META } from "@/lib/modes";
+import { ArrowUp, Search, X } from "lucide-react";
+import { Button, IconButton, ModeGlyph, cx, inputClass } from "@/components/ui";
 import { formatDistance, formatTime } from "@/lib/format";
 import { KIND_LABEL, badgeColors } from "@/lib/transit/colors";
 import type { TrackSummary, TransitLeg } from "@/lib/types";
@@ -114,15 +116,15 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
       onClick={() => !busy && onClose()}
     >
       <div
-        className="mk-card flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-b-none shadow-[var(--mk-shadow)] sm:max-w-md sm:rounded-b-[var(--mk-radius)]"
+        className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-card border border-border bg-surface shadow-pop sm:max-w-md sm:rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 pb-3 pt-4">
           <div className="min-w-0">
-            <h2 id={`${ids}-title`} className="text-lg font-semibold">
+            <h2 id={`${ids}-title`} className="text-heading text-text">
               {track.added ? (track.correctionId != null ? "Trip you added" : "Add travel") : "Fix this trip"}
             </h2>
-            <p className="text-sm text-muted">
+            <p className="mt-0.5 text-meta tabular-nums text-muted">
               {formatTime(track.startedAt)} – {formatTime(track.endedAt)} · {formatDistance(track.distance)}
               {track.added
                 ? " in a straight line"
@@ -131,19 +133,12 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
                   : ` · shown as ${MODE_META[track.mode].label}`}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="-mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl text-muted hover:bg-surface-2 hover:text-text"
-          >
-            ×
-          </button>
+          <IconButton icon={X} label="Close" onClick={onClose} className="-mr-2" />
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
           <fieldset>
-            <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">How did you travel?</legend>
+            <legend className="mb-2 text-label text-text">How did you travel?</legend>
             <div className="grid grid-cols-5 gap-1.5">
               {MODES.map((m) => {
                 const meta = MODE_META[m];
@@ -154,12 +149,15 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
                     type="button"
                     aria-pressed={on}
                     onClick={() => setMode(m)}
-                    className={`flex flex-col items-center gap-0.5 rounded-xl border px-1 py-2 text-xs transition-colors ${
-                      on ? "border-primary bg-primary/15 font-semibold text-text" : "border-border text-muted hover:border-primary/50 hover:text-text"
-                    }`}
+                    className={cx(
+                      "flex flex-col items-center gap-1 rounded-control border px-1 py-2 text-caption transition-colors",
+                      on
+                        ? "border-primary bg-primary/10 font-medium text-text ring-1 ring-primary/40"
+                        : "border-border text-muted hover:border-strong hover:text-text",
+                    )}
                   >
-                    <span className="text-lg leading-none" aria-hidden>
-                      {meta.icon}
+                    <span style={on ? { color: meta.color } : undefined} aria-hidden>
+                      <ModeGlyph mode={m} size={20} />
                     </span>
                     {meta.label}
                   </button>
@@ -170,8 +168,10 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
 
           {transit && (
             <section>
-              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Lines, in order (optional)</h3>
-              <p className="mb-2 text-xs text-muted">Add each line you rode, e.g. bus 159 then metro M1, and where you changed.</p>
+              <h3 className="text-label text-text">
+                Lines, in order <span className="font-normal text-muted">(optional)</span>
+              </h3>
+              <p className="mb-2 mt-0.5 text-meta text-muted">Add each line you rode, e.g. bus 159 then metro M1, and where you changed.</p>
               {legs.length > 0 && (
                 <ol className="mb-3 space-y-1.5">
                   {legs.map((l, i) => {
@@ -179,28 +179,26 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
                     return (
                       <li key={i}>
                         <div className="flex items-center gap-2">
-                          <span className="w-4 text-right text-xs tabular-nums text-muted">{i + 1}</span>
-                          <span className="rounded-md px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: c.bg, color: c.fg }}>
+                          <span className="w-4 text-right text-caption tabular-nums text-muted">{i + 1}</span>
+                          <span className="rounded-[5px] px-1.5 py-px text-caption font-semibold" style={{ backgroundColor: c.bg, color: c.fg }}>
                             {KIND_LABEL[l.kind]} {l.line}
                           </span>
                           <span className="flex-1" />
-                          <button
-                            type="button"
-                            aria-label={`Move ${l.line} up`}
+                          <IconButton
+                            icon={ArrowUp}
+                            size="sm"
+                            label={`Move ${l.line} up`}
                             disabled={i === 0}
                             onClick={() => setLegs((ls) => ls.map((x, k) => (k === i - 1 ? ls[i] : k === i ? ls[i - 1] : x)))}
-                            className="h-7 w-7 rounded-full text-muted hover:bg-surface-2 hover:text-text disabled:opacity-30"
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`Remove ${l.line}`}
+                            className="h-7 w-7"
+                          />
+                          <IconButton
+                            icon={X}
+                            size="sm"
+                            label={`Remove ${l.line}`}
                             onClick={() => setLegs((ls) => ls.filter((_, k) => k !== i))}
-                            className="h-7 w-7 rounded-full text-muted hover:bg-surface-2 hover:text-text"
-                          >
-                            ×
-                          </button>
+                            className="h-7 w-7"
+                          />
                         </div>
                         {i < legs.length - 1 && (
                           <TransferInput
@@ -216,19 +214,20 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
               )}
               <label className="relative block">
                 <span className="sr-only">Find a line</span>
+                <Search size={16} strokeWidth={1.75} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                 <input
                   ref={searchRef}
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={legs.length ? "Add another line" : "Find a line, e.g. 159 or M1"}
-                  className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm text-text placeholder:text-muted focus:border-primary focus:outline-none"
+                  className={cx(inputClass, "pl-9")}
                 />
               </label>
               {term && (
-                <ul className="mt-1.5 max-h-48 overflow-y-auto rounded-xl border border-border">
+                <ul className="mt-1.5 max-h-48 overflow-y-auto rounded-control border border-border">
                   {(found?.routes ?? []).length === 0 ? (
-                    <li className="px-3 py-2 text-sm text-muted">{found ? "No lines found" : "Searching…"}</li>
+                    <li className="px-3 py-2 text-meta text-muted">{found ? "No lines found" : "Searching…"}</li>
                   ) : (
                     found!.routes.map((r) => {
                       const c = badgeColors(r.kind);
@@ -237,9 +236,9 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
                           <button
                             type="button"
                             onClick={() => addLine(r)}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2"
                           >
-                            <span className="shrink-0 rounded-md px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: c.bg, color: c.fg }}>
+                            <span className="shrink-0 rounded-[5px] px-1.5 py-px text-caption font-semibold" style={{ backgroundColor: c.bg, color: c.fg }}>
                               {KIND_LABEL[r.kind]} {r.line}
                             </span>
                             <span className="truncate text-muted">{r.name}</span>
@@ -254,7 +253,7 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
           )}
 
           {error && (
-            <p className="rounded-xl bg-accent/10 px-3 py-2 text-sm text-accent" role="alert">
+            <p className="rounded-control border border-danger/35 bg-danger/8 px-3 py-2 text-meta text-danger" role="alert">
               Couldn&apos;t save: {error}
             </p>
           )}
@@ -262,32 +261,17 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
 
         <div className="flex items-center gap-2 border-t border-border px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {track.correctionId != null && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={undo}
-              className="rounded-full px-3 py-2 text-sm font-medium text-muted hover:bg-surface-2 hover:text-text disabled:opacity-50"
-            >
+            <Button variant={track.added ? "danger" : "ghost"} disabled={busy} onClick={undo}>
               {track.added ? "Remove trip" : "Undo fix"}
-            </button>
+            </Button>
           )}
           <span className="flex-1" />
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onClose}
-            className="rounded-full px-4 py-2 text-sm font-medium text-muted hover:bg-surface-2 hover:text-text"
-          >
+          <Button variant="ghost" disabled={busy} onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={save}
-            className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-strong disabled:opacity-50"
-          >
+          </Button>
+          <Button variant="primary" disabled={busy} onClick={save}>
             {busy ? "Saving…" : "Save"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -300,7 +284,7 @@ function TransferInput({ id, value, onChange }: { id: string; value: string; onC
   const { data } = useSWR<{ stops: string[] }>(q.length >= 2 ? `/api/transit/stops?q=${encodeURIComponent(q)}` : null, json);
   return (
     <div className="my-1.5 ml-6 flex items-center gap-2 border-l-2 border-dashed border-border pl-3">
-      <label htmlFor={id} className="shrink-0 text-xs text-muted">
+      <label htmlFor={id} className="shrink-0 text-meta text-muted">
         Changed at
       </label>
       <input
@@ -309,7 +293,7 @@ function TransferInput({ id, value, onChange }: { id: string; value: string; onC
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Stop (optional)"
-        className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm text-text placeholder:text-muted focus:border-primary focus:outline-none"
+        className={cx(inputClass, "h-8 flex-1")}
       />
       <datalist id={`${id}-list`}>
         {(data?.stops ?? []).map((s) => (

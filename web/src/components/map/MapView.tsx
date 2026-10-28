@@ -9,6 +9,8 @@ import { KindPicker, SizePicker } from "@/components/places/SavedFields";
 import { MODE_META, type ModeKey } from "@/lib/modes";
 import { computeDark, extendBounds, modeColorExpression, resolveColor, styleUrl } from "./mapStyle";
 import { PLACE_SIZES } from "@/lib/savedPlaces";
+import { Check, CircleCheck, Crosshair, Flame, type LucideIcon, MapPinPlus, Route as RouteIcon, X } from "lucide-react";
+import { Button, Callout, cx, IconButton, Input } from "@/components/ui";
 
 type FC = GeoJSON.FeatureCollection;
 
@@ -373,19 +375,11 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
       <div ref={containerRef} className="h-full w-full" />
 
       <div className="pointer-events-none absolute left-3 right-14 top-3 z-10 flex flex-wrap gap-2">
-        <div className="pointer-events-auto flex gap-1 rounded-xl border border-border bg-surface/90 p-1 shadow-lg backdrop-blur">
-          <ToggleButton
-            active={showHeat}
-            onClick={() => setShowHeat((v) => !v)}
-            label="Heatmap"
-          />
-          <ToggleButton
-            active={showRoutes}
-            onClick={() => setShowRoutes((v) => !v)}
-            label="Routes"
-          />
+        <div role="group" aria-label="Layers" className={cx(PANEL, "pointer-events-auto flex gap-0.5 p-1")}>
+          <ToggleButton active={showHeat} onClick={() => setShowHeat((v) => !v)} label="Heatmap" icon={Flame} />
+          <ToggleButton active={showRoutes} onClick={() => setShowRoutes((v) => !v)} label="Routes" icon={RouteIcon} />
         </div>
-        <div className="pointer-events-auto flex rounded-xl border border-border bg-surface/90 p-1 shadow-lg backdrop-blur">
+        <div className={cx(PANEL, "pointer-events-auto flex p-1")}>
           <ToggleButton
             active={saveMode}
             onClick={() => {
@@ -394,24 +388,31 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
               setSavedPlace(null);
               setSaveError(null);
             }}
-            label={saveMode ? "Done" : "＋ Save a place"}
+            label={saveMode ? "Done" : "Save a place"}
+            icon={saveMode ? Check : MapPinPlus}
           />
         </div>
       </div>
 
       {saveMode && !pin && (
         <div className="absolute inset-x-3 bottom-3 z-10 mx-auto max-w-sm sm:left-3 sm:right-auto sm:top-16 sm:bottom-auto sm:mx-0 sm:w-[22rem]">
-          <div className="mk-card px-4 py-3 text-sm shadow-lg">
+          <div className={cx(PANEL, "flex items-start gap-2.5 px-3.5 py-3 text-meta")}>
             {savedPlace ? (
-              <p>
-                Saved <span className="font-medium">{savedPlace.name}</span>.{" "}
-                <Link href={`/places/${savedPlace.id}`} className="text-primary hover:underline">
-                  Open it
-                </Link>{" "}
-                or tap the map to save another.
-              </p>
+              <>
+                <CircleCheck size={16} strokeWidth={1.75} aria-hidden className="mt-px shrink-0 text-success" />
+                <p className="text-secondary">
+                  Saved <span className="font-medium text-text">{savedPlace.name}</span>.{" "}
+                  <Link href={`/places/${savedPlace.id}`} className="font-medium text-primary hover:underline">
+                    Open it
+                  </Link>{" "}
+                  or tap the map to save another.
+                </p>
+              </>
             ) : (
-              <p className="text-muted">Tap the map where the place is — zoom in for the exact spot.</p>
+              <>
+                <Crosshair size={16} strokeWidth={1.75} aria-hidden className="mt-px shrink-0 text-primary" />
+                <p className="text-secondary">Tap the map where the place is. Zoom in for the exact spot.</p>
+              </>
             )}
           </div>
         </div>
@@ -425,52 +426,38 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
               const t = e.target as unknown as HTMLInputElement;
               if (t.name === "radius") setRadius(Number(t.value));
             }}
-            className="mk-card flex max-h-[70dvh] flex-col gap-3 overflow-y-auto p-4 shadow-lg"
+            className={cx(PANEL, "flex max-h-[70dvh] flex-col gap-3.5 overflow-y-auto p-4")}
           >
             <div className="flex items-center justify-between gap-2">
-              <h2 className="font-semibold">Save this spot</h2>
-              <button
-                type="button"
-                onClick={() => setPin(null)}
-                className="rounded-lg px-2 py-1 text-sm text-muted hover:text-text"
-              >
-                Cancel
-              </button>
+              <h2 className="text-heading text-text">Save this spot</h2>
+              <IconButton icon={X} label="Cancel" size="sm" onClick={() => setPin(null)} />
             </div>
-            <input
-              name="name"
-              placeholder="Name, e.g. Mom's"
-              maxLength={120}
-              autoComplete="off"
-              className="rounded-lg border border-border bg-surface-2 px-3 py-2 outline-none focus:border-primary"
-            />
+            <Input name="name" aria-label="Name" placeholder="Name, e.g. Mom's" maxLength={120} autoComplete="off" />
             <KindPicker compact />
             <SizePicker compact defaultValue={radius} />
-            {saveError && <p className="text-sm text-red-400">{saveError}</p>}
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-primary px-4 py-2 font-medium text-white disabled:opacity-60"
-            >
+            {saveError && (
+              <Callout tone="danger" role="alert">
+                {saveError}
+              </Callout>
+            )}
+            <Button type="submit" variant="primary" disabled={saving} block>
               {saving ? "Saving…" : "Save place"}
-            </button>
+            </Button>
           </form>
         </div>
       )}
 
       {showRoutes && !saveMode && (
-        <div className="absolute bottom-3 left-3 z-10 hidden max-w-[70%] flex-wrap gap-x-3 gap-y-1 rounded-xl border border-border bg-surface/90 px-3 py-2 text-xs text-muted shadow-lg backdrop-blur sm:flex">
-          {(["walking", "cycling", "driving", "train", "bus"] as ModeKey[]).map(
-            (k) => (
-              <span key={k} className="flex items-center gap-1.5">
-                <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ background: MODE_META[k].color }}
-                />
-                {MODE_META[k].label}
-              </span>
-            ),
-          )}
+        <div
+          aria-label="Route colours"
+          className={cx(PANEL, "absolute bottom-3 left-3 z-10 hidden max-w-[70%] flex-wrap gap-x-3.5 gap-y-1 px-3 py-2 text-caption text-secondary sm:flex")}
+        >
+          {(["walking", "cycling", "driving", "train", "bus"] as ModeKey[]).map((k) => (
+            <span key={k} className="flex items-center gap-1.5">
+              <span className="inline-block h-[3px] w-3.5 rounded-full" style={{ background: MODE_META[k].color }} />
+              {MODE_META[k].label}
+            </span>
+          ))}
         </div>
       )}
 
@@ -479,36 +466,40 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
       )}
       {status === "error" && (
         <div className="absolute inset-x-0 top-16 z-10 mx-auto w-fit max-w-[90%]">
-          <div className="mk-card border-red-500/40 px-4 py-2 text-sm text-text">
-            Couldn&apos;t load map data
-            {errorMsg ? <span className="text-muted"> — {errorMsg}</span> : null}
-          </div>
+          <Callout tone="danger" role="alert" title="Couldn't load map data" className="bg-surface shadow-pop">
+            {errorMsg}
+          </Callout>
         </div>
       )}
     </div>
   );
 }
 
+/** Floating panels over the map. */
+const PANEL = "rounded-card border border-border bg-surface/95 shadow-pop backdrop-blur-md";
+
 function ToggleButton({
   active,
   onClick,
   label,
+  icon: I,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
+  icon: LucideIcon;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-        active
-          ? "bg-primary/15 text-primary"
-          : "text-muted hover:bg-surface-2 hover:text-text"
-      }`}
+      className={cx(
+        "inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-meta font-medium transition-colors",
+        active ? "bg-primary/12 text-primary" : "text-secondary hover:bg-surface-2 hover:text-text",
+      )}
     >
+      <I size={16} strokeWidth={1.75} aria-hidden />
       {label}
     </button>
   );

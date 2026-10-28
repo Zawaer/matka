@@ -3,35 +3,37 @@
 // client form alike; the values arrive as FormData "kind" and "radius".
 
 import { KIND_META, PLACE_KINDS, PLACE_SIZES, type PlaceKind, formatRadius } from "@/lib/savedPlaces";
+import { Badge, KIND_ICONS } from "@/components/ui";
 
 const SEGMENT =
-  "flex h-full flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-2 text-xs font-medium text-muted transition-colors hover:text-text peer-checked:bg-primary/15 peer-checked:text-primary peer-checked:ring-1 peer-checked:ring-primary/50 peer-focus-visible:ring-2 peer-focus-visible:ring-primary";
+  "flex h-full flex-col items-center justify-center gap-1 rounded-[6px] px-1 py-2 text-caption font-medium text-muted transition-colors hover:text-text peer-checked:bg-surface peer-checked:text-text peer-checked:shadow-[0_1px_2px_rgba(0,0,0,0.12)] peer-checked:ring-1 peer-checked:ring-border peer-focus-visible:ring-2 peer-focus-visible:ring-primary";
 
 export function KindPicker({ defaultValue, compact }: { defaultValue?: PlaceKind | null; compact?: boolean }) {
   return (
     <fieldset>
-      <legend className="mb-1.5 text-xs font-medium text-muted">Kind</legend>
-      <div className="grid grid-cols-5 gap-1 rounded-xl bg-surface-2 p-1">
-        {PLACE_KINDS.map((k) => (
-          <label key={k} className="cursor-pointer" title={KIND_META[k].hint}>
-            <input
-              type="radio"
-              name="kind"
-              value={k}
-              defaultChecked={k === defaultValue}
-              required
-              className="peer sr-only"
-            />
-            <span className={SEGMENT}>
-              <span className="text-lg leading-none" aria-hidden>
-                {KIND_META[k].icon}
+      <legend className="mb-1.5 text-meta font-medium text-secondary">Kind</legend>
+      <div className="grid grid-cols-5 gap-0.5 rounded-control bg-surface-2 p-0.5">
+        {PLACE_KINDS.map((k) => {
+          const I = KIND_ICONS[k];
+          return (
+            <label key={k} className="cursor-pointer" title={KIND_META[k].hint}>
+              <input
+                type="radio"
+                name="kind"
+                value={k}
+                defaultChecked={k === defaultValue}
+                required
+                className="peer sr-only"
+              />
+              <span className={`${SEGMENT} [&>svg]:peer-checked:text-primary`}>
+                <I size={16} strokeWidth={1.75} aria-hidden />
+                {KIND_META[k].label}
               </span>
-              {KIND_META[k].label}
-            </span>
-          </label>
-        ))}
+            </label>
+          );
+        })}
       </div>
-      {!compact && <p className="mt-1.5 text-xs text-muted">Home and Family both count as home for trips.</p>}
+      {!compact && <p className="mt-1.5 text-meta text-muted">Home and Family both count as home for trips.</p>}
     </fieldset>
   );
 }
@@ -41,8 +43,8 @@ export function SizePicker({ defaultValue, compact }: { defaultValue?: number | 
   const custom = !PLACE_SIZES.some((s) => s.radius === value);
   return (
     <fieldset>
-      <legend className="mb-1.5 text-xs font-medium text-muted">Size</legend>
-      <div className={`grid gap-1 rounded-xl bg-surface-2 p-1 ${custom ? "grid-cols-5" : "grid-cols-4"}`}>
+      <legend className="mb-1.5 text-meta font-medium text-secondary">Size</legend>
+      <div className={`grid gap-0.5 rounded-control bg-surface-2 p-0.5 ${custom ? "grid-cols-5" : "grid-cols-4"}`}>
         {PLACE_SIZES.map((s) => (
           <label key={s.key} className="cursor-pointer" title={s.hint}>
             <input
@@ -53,8 +55,8 @@ export function SizePicker({ defaultValue, compact }: { defaultValue?: number | 
               className="peer sr-only"
             />
             <span className={SEGMENT}>
-              <span className="text-sm font-semibold leading-none">{s.label}</span>
-              <span className="tabular-nums opacity-80">{formatRadius(s.radius)}</span>
+              <span className="text-label font-semibold leading-none">{s.label}</span>
+              <span className="tabular-nums">{formatRadius(s.radius)}</span>
             </span>
           </label>
         ))}
@@ -62,28 +64,25 @@ export function SizePicker({ defaultValue, compact }: { defaultValue?: number | 
           <label className="cursor-pointer" title="Set elsewhere">
             <input type="radio" name="radius" value={value} defaultChecked className="peer sr-only" />
             <span className={SEGMENT}>
-              <span className="text-sm font-semibold leading-none">Own</span>
-              <span className="tabular-nums opacity-80">{formatRadius(value)}</span>
+              <span className="text-label font-semibold leading-none">Own</span>
+              <span className="tabular-nums">{formatRadius(value)}</span>
             </span>
           </label>
         )}
       </div>
       {!compact && (
-        <p className="mt-1.5 text-xs text-muted">
-          Stays anywhere within it count as this place; a campus needs L.
-        </p>
+        <p className="mt-1.5 text-meta text-muted">Stays anywhere within it count as this place; a campus needs L.</p>
       )}
     </fieldset>
   );
 }
 
-/** "🏠 Home · 250 m" chip for a saved place. */
+/** "Home · 250 m" badge (with the kind's icon) for a saved place. */
 export function KindBadge({ kind, radius }: { kind: PlaceKind; radius?: number | null }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
-      <span aria-hidden>{KIND_META[kind].icon}</span>
+    <Badge tone="primary" icon={KIND_ICONS[kind]}>
       {KIND_META[kind].label}
       {radius ? <span className="opacity-75">· {formatRadius(radius)}</span> : null}
-    </span>
+    </Badge>
   );
 }

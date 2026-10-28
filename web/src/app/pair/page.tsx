@@ -1,4 +1,6 @@
+import { Wordmark } from "@/components/Brand";
 import { PairLanding } from "@/components/devices/PairLanding";
+import { Card } from "@/components/ui";
 
 // Public (see src/proxy.ts): the phone that opens this has no session. The
 // page itself holds nothing secret; the token is only in the URL fragment,
@@ -11,8 +13,15 @@ export const metadata = {
 
 export default function PairPage() {
   return (
-    <div className="mx-auto max-w-lg px-5 py-10">
-      <PairLanding />
+    <div className="flex min-h-dvh flex-col items-center px-4 py-10 sm:justify-center sm:py-16">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex justify-center">
+          <Wordmark size={28} />
+        </div>
+        <Card padding="lg">
+          <PairLanding />
+        </Card>
+      </div>
     </div>
   );
 }

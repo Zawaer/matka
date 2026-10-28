@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { InsightsHeader } from "@/components/insights/InsightsHeader";
-import { Stat } from "@/components/insights/charts";
+import { Building2, ChevronRight, Earth, Flag } from "lucide-react";
+import { BackLink, EmptyState, IconTile, Page, Segmented, Stat, cardClass, cx } from "@/components/ui";
 import { COVER_BACKDROP, CoverPhoto } from "@/components/insights/Cover";
 import { requireUser } from "@/lib/auth";
 import { getCovers } from "@/lib/covers";
@@ -52,65 +53,66 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
         .catch(() => new Map())
     : new Map();
 
+  const sortParam = (s: WorldSort) => (s === "visits" ? undefined : s);
+
   return (
-    <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
+    <Page width="wide">
       <InsightsHeader active="world" subtitle="The cities and countries your places are in." />
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="Countries" value={String(world.countries.length)} accent />
+      <section aria-label="World totals" className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <Stat label="Countries" value={String(world.countries.length)} />
         <Stat label="Cities" value={String(world.cities.length)} />
-        <div className="col-span-2 md:col-span-1">
-          <Stat label="Places" value={world.cities.reduce((a, c) => a + c.places, 0).toLocaleString("en-GB")} />
-        </div>
+        <Stat
+          className="col-span-2 md:col-span-1"
+          label="Places"
+          value={world.cities.reduce((a, c) => a + c.places, 0).toLocaleString("en-GB")}
+        />
       </section>
 
-      <section className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="mk-card flex gap-1 self-start p-1">
-          {(["countries", "cities"] as const).map((v) => (
-            <Link
-              key={v}
-              href={href({ view: v === "cities" ? "cities" : undefined, sort: sort === "visits" ? undefined : sort })}
-              aria-current={v === view ? "page" : undefined}
-              className={`rounded-[14px] px-4 py-1.5 text-sm font-medium capitalize ${
-                v === view ? "bg-surface-2 text-primary" : "text-muted hover:text-text"
-              }`}
-            >
-              {v}
-            </Link>
-          ))}
-        </div>
-        <div className="-mx-5 flex items-center gap-1.5 overflow-x-auto px-5 text-sm sm:mx-0 sm:px-0">
-          <span className="mr-1 shrink-0 text-xs text-muted">Sort</span>
-          {(Object.keys(SORT_LABEL) as WorldSort[]).map((s) => (
-            <Link
-              key={s}
-              href={href({ view: view === "cities" && !country ? "cities" : undefined, country, sort: s === "visits" ? undefined : s })}
-              aria-current={s === sort ? "true" : undefined}
-              className={`shrink-0 rounded-full border px-3 py-1 text-xs ${
-                s === sort ? "border-primary/60 bg-surface-2 text-text" : "border-border text-muted hover:text-text"
-              }`}
-            >
-              {SORT_LABEL[s]}
-            </Link>
-          ))}
+      <section className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Segmented
+          label="Show"
+          value={view}
+          className="self-start"
+          items={(["countries", "cities"] as const).map((v) => ({
+            key: v,
+            label: v === "cities" ? "Cities" : "Countries",
+            href: href({ view: v === "cities" ? "cities" : undefined, sort: sortParam(sort) }),
+          }))}
+        />
+        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <span className="shrink-0 text-meta text-muted">Sort by</span>
+          <Segmented
+            label="Sort by"
+            size="sm"
+            value={sort}
+            items={(Object.keys(SORT_LABEL) as WorldSort[]).map((s) => ({
+              key: s,
+              label: SORT_LABEL[s],
+              href: href({ view: view === "cities" && !country ? "cities" : undefined, country, sort: sortParam(s) }),
+            }))}
+          />
         </div>
       </section>
 
       {country && (
-        <p className="mt-4 text-sm">
-          <Link href={href({ sort: sort === "visits" ? undefined : sort })} className="text-muted hover:text-text">
-            ← All countries
-          </Link>
-          <span className="ml-2 font-medium">Cities in {country}</span>
-        </p>
+        <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <BackLink href={href({ sort: sortParam(sort) })} className="mb-0">
+            All countries
+          </BackLink>
+          <h2 className="text-heading text-text">Cities in {country}</h2>
+        </div>
       )}
 
       {list.length === 0 ? (
-        <div className="mk-card mt-4 px-6 py-14 text-center text-sm text-muted">
-          No cities yet. They appear as places get their addresses from the geocoder.
-        </div>
+        <EmptyState
+          className="mt-4"
+          icon={Earth}
+          title="No cities yet"
+          description="They appear as places get their addresses from the geocoder."
+        />
       ) : (
-        <ul className="mk-card mt-4 divide-y divide-border">
+        <ul className={cx(cardClass({ padding: "none" }), "mt-4 divide-y divide-border overflow-hidden")}>
           {list.map((e) => (
             <li key={`${e.name}/${e.country ?? ""}`}>
               <Row
@@ -119,8 +121,9 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
                 href={
                   view === "cities"
                     ? `/insights/world/city?name=${encodeURIComponent(e.name)}${e.country ? `&country=${encodeURIComponent(e.country)}` : ""}`
-                    : href({ country: e.name, sort: sort === "visits" ? undefined : sort })
+                    : href({ country: e.name, sort: sortParam(sort) })
                 }
+                isCity={view === "cities"}
                 showCountry={view === "cities" && !country}
                 thumb={covers.size > 0 ? (covers.get(cityKey(e.name, e.country))?.assetId ?? null) : undefined}
               />
@@ -129,11 +132,11 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
         </ul>
       )}
       {world.unplaced > 0 && (
-        <p className="mt-3 text-xs text-muted">
+        <p className="mt-3 text-caption text-muted">
           {world.unplaced} {world.unplaced === 1 ? "place has" : "places have"} no address yet.
         </p>
       )}
-    </div>
+    </Page>
   );
 }
 
@@ -141,14 +144,16 @@ function Row({
   entry: e,
   tz,
   href,
+  isCity,
   showCountry,
   thumb,
 }: {
   entry: WorldEntry;
   tz: string;
   href: string;
+  isCity: boolean;
   showCountry: boolean;
-  /** Cover asset id; null for an empty slot, undefined for no slot. */
+  /** Cover asset id; null or undefined for none. */
   thumb?: string | null;
 }) {
   const counts = [
@@ -157,32 +162,26 @@ function Row({
     `${e.visits.toLocaleString("en-GB")} ${e.visits === 1 ? "visit" : "visits"}`,
   ].filter(Boolean);
   return (
-    <Link href={href} className="flex items-center justify-between gap-4 px-5 py-3.5 hover:bg-surface-2">
-      {thumb !== undefined && (
-        <div
-          aria-hidden
-          className={`relative -my-1 size-12 shrink-0 overflow-hidden rounded-xl ${thumb ? COVER_BACKDROP : "bg-surface-2"}`}
-        >
-          {thumb ? (
-            <CoverPhoto assetId={thumb} size="thumbnail" />
-          ) : (
-            <svg viewBox="0 0 24 24" className="absolute inset-0 m-auto size-5 fill-muted/50">
-              <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z" />
-            </svg>
-          )}
+    <Link href={href} className="flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/60 sm:px-5">
+      {thumb ? (
+        <div aria-hidden className={`relative size-9 shrink-0 overflow-hidden rounded-control ${COVER_BACKDROP}`}>
+          <CoverPhoto assetId={thumb} size="thumbnail" />
         </div>
+      ) : (
+        <IconTile icon={isCity ? Building2 : Flag} />
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">
+        <p className="truncate text-label text-text">
           {e.name}
           {showCountry && e.country && <span className="font-normal text-muted"> · {e.country}</span>}
         </p>
-        <p className="truncate text-xs text-muted">{counts.join(" · ")}</p>
+        <p className="truncate text-meta text-muted">{counts.join(" · ")}</p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm tabular-nums">{formatLongDuration(e.duration)}</p>
-        <p className="text-xs text-muted">Last {formatDateCompact(e.lastVisit, tz)}</p>
+        <p className="text-label tabular-nums text-text">{formatLongDuration(e.duration)}</p>
+        <p className="text-meta text-muted">Last {formatDateCompact(e.lastVisit, tz)}</p>
       </div>
+      <ChevronRight size={16} strokeWidth={1.75} aria-hidden className="-mr-1 hidden shrink-0 text-muted sm:block" />
     </Link>
   );
 }

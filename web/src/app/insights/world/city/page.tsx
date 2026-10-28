@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { EscapeBack } from "@/components/EscapeBack";
 import { notFound } from "next/navigation";
-import { Stat } from "@/components/insights/charts";
+import { Building2 } from "lucide-react";
+import { BackLink, IconTile, Page, PageHeader, SectionHeader, Stat } from "@/components/ui";
 import { PlaceCard } from "@/components/places/PlaceCard";
 import { CoverHeader } from "@/components/insights/Cover";
 import { requireUser } from "@/lib/auth";
@@ -34,36 +34,37 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
   const backHref = country ? `/insights/world?country=${encodeURIComponent(country)}` : "/insights/world?view=cities";
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
+    <Page width="wide">
       <EscapeBack fallback={backHref} />
-      <Link href={backHref} className="mb-6 inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-text">
-        ← {country ? `Cities in ${country}` : "Cities"}
-      </Link>
       {cover ? (
-        <CoverHeader assetId={cover.assetId}>
-          <h1 className="text-2xl font-semibold tracking-tight md:text-4xl">{name}</h1>
-          <p className="mt-1 text-white/90">{subtitle}</p>
-        </CoverHeader>
+        <>
+          <BackLink href={backHref}>{country ? `Cities in ${country}` : "Cities"}</BackLink>
+          <CoverHeader assetId={cover.assetId}>
+            <h1 className="text-title md:text-[2rem] md:leading-10">{name}</h1>
+            <p className="mt-1 text-sm text-white/90">{subtitle}</p>
+          </CoverHeader>
+        </>
       ) : (
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{name}</h1>
-          <p className="mt-1 text-muted">{subtitle}</p>
-        </header>
+        <PageHeader
+          back={{ href: backHref, label: country ? `Cities in ${country}` : "Cities" }}
+          leading={<IconTile icon={Building2} size="lg" />}
+          title={name}
+          subtitle={subtitle}
+        />
       )}
 
-      <section className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3">
+      <section aria-label="City totals" className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label="Places" value={String(places.length)} />
-        <Stat label="Visits" value={visits.toLocaleString("en-GB")} accent />
-        <div className="col-span-2 md:col-span-1">
-          <Stat label="Time spent" value={formatLongDuration(time)} />
-        </div>
+        <Stat label="Visits" value={visits.toLocaleString("en-GB")} />
+        <Stat className="col-span-2 md:col-span-1" label="Time spent" value={formatLongDuration(time)} />
       </section>
 
+      <SectionHeader title="Places" className="mt-8" />
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {places.map((p) => (
           <PlaceCard key={p.id} place={p} />
         ))}
       </section>
-    </div>
+    </Page>
   );
 }

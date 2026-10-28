@@ -5,30 +5,22 @@
 import Link from "next/link";
 import { formatDuration, formatKm, formatMonth } from "@/lib/format";
 import { MODE_META, type ModeKey } from "@/lib/modes";
+import { IconTile, Stat as UiStat, modeIcon } from "@/components/ui";
 
 export function modeMeta(mode: string) {
   return MODE_META[mode as ModeKey] ?? MODE_META.unknown;
 }
 
-/** Round icon chip tinted with the mode colour. */
+/** The mode's Lucide glyph, tinted with the mode colour, on a quiet tile. */
 export function ModeIcon({ mode, size = "md" }: { mode: string; size?: "sm" | "md" }) {
-  const m = modeMeta(mode);
-  return (
-    <span
-      aria-hidden
-      className={`flex shrink-0 items-center justify-center rounded-xl ${size === "sm" ? "h-7 w-7 text-sm" : "h-10 w-10 text-lg"}`}
-      style={{ background: `color-mix(in srgb, ${m.color} 20%, transparent)` }}
-    >
-      {m.icon}
-    </span>
-  );
+  return <IconTile icon={modeIcon(mode)} size={size} color={modeMeta(mode).color} />;
 }
 
 function Tip({ children }: { children: React.ReactNode }) {
   return (
     <span
       role="tooltip"
-      className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-text shadow-[var(--mk-shadow)] group-hover:block group-focus-visible:block"
+      className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-control border border-border bg-surface px-2.5 py-1.5 text-caption text-text shadow-pop group-hover:block group-focus-visible:block"
     >
       {children}
     </span>
@@ -66,11 +58,11 @@ export function ModeHistory({
             <span className="relative flex w-full flex-1 items-end">
               {h.distance > 0 ? (
                 <span
-                  className="w-full rounded-t-[4px] transition-opacity group-hover:opacity-100"
+                  className="w-full rounded-t-[3px] transition-opacity group-hover:opacity-100"
                   style={{ height: `${Math.max(4, pct)}%`, background: color, opacity: on ? 1 : 0.45 }}
                 />
               ) : (
-                <span className="h-[2px] w-full rounded-full bg-border" />
+                <span className="h-px w-full bg-border" />
               )}
               <Tip>
                 <span className="font-medium">{formatMonth(h.month)}</span>
@@ -80,7 +72,7 @@ export function ModeHistory({
                 </span>
               </Tip>
             </span>
-            <span className={`text-[10px] leading-none ${on ? "font-semibold text-text" : "text-muted"}`}>
+            <span className={`text-caption leading-none ${on ? "font-semibold text-text" : "text-muted"}`}>
               {formatMonth(h.month, true)}
             </span>
           </Link>
@@ -95,7 +87,7 @@ export function ShareBar({ modes }: { modes: { mode: string; distance: number; d
   const total = modes.reduce((a, m) => a + m.distance, 0);
   if (total <= 0) return null;
   return (
-    <div className="flex h-3 w-full gap-[2px]" role="img" aria-label="Share of distance by mode">
+    <div className="flex h-2.5 w-full gap-[2px]" role="img" aria-label="Share of distance by mode">
       {modes
         .filter((m) => m.distance / total >= 0.004)
         .map((m, i, arr) => (
@@ -126,16 +118,16 @@ export function ModeBars({ modes }: { modes: { mode: string; distance: number; d
       {modes.map((m) => (
         <li key={m.mode} className="flex items-center gap-3">
           <ModeIcon mode={m.mode} size="sm" />
-          <span className="w-20 shrink-0 text-sm">{modeMeta(m.mode).label}</span>
-          <span className="relative h-2.5 min-w-0 flex-1">
+          <span className="w-20 shrink-0 text-sm text-text">{modeMeta(m.mode).label}</span>
+          <span className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
             <span
-              className="absolute inset-y-0 left-0 rounded-r-[4px]"
+              className="absolute inset-y-0 left-0 rounded-full"
               style={{ width: `${Math.max(1, (m.distance / max) * 100)}%`, background: modeMeta(m.mode).color }}
             />
           </span>
           <span className="w-24 shrink-0 text-right text-sm tabular-nums">
             {formatKm(m.distance)}
-            <span className="block text-xs text-muted">{formatDuration(m.duration)}</span>
+            <span className="block text-caption text-muted">{formatDuration(m.duration)}</span>
           </span>
         </li>
       ))}
@@ -143,30 +135,28 @@ export function ModeBars({ modes }: { modes: { mode: string; distance: number; d
   );
 }
 
-/** Small "🚆 412 km" chips for the top modes of a trip or day. */
+/** Small "[dot][train] 412 km" chips for the top modes of a trip or day. */
 export function ModeChips({ modes, max = 4 }: { modes: { mode: string; distance: number }[]; max?: number }) {
   return (
     <ul className="flex flex-wrap gap-1.5">
-      {modes.slice(0, max).map((m) => (
-        <li
-          key={m.mode}
-          className="flex items-center gap-1.5 rounded-full border border-border bg-surface-2 py-0.5 pl-1.5 pr-2.5 text-xs"
-        >
-          <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: modeMeta(m.mode).color }} />
-          <span aria-hidden>{modeMeta(m.mode).icon}</span>
-          <span className="sr-only">{modeMeta(m.mode).label}</span>
-          <span className="tabular-nums">{formatKm(m.distance)}</span>
-        </li>
-      ))}
+      {modes.slice(0, max).map((m) => {
+        const I = modeIcon(m.mode);
+        return (
+          <li
+            key={m.mode}
+            className="inline-flex h-6 items-center gap-1.5 rounded-full border border-border bg-surface pl-2 pr-2.5 text-caption text-secondary"
+          >
+            <I size={16} strokeWidth={1.75} aria-hidden style={{ color: modeMeta(m.mode).color }} />
+            <span className="sr-only">{modeMeta(m.mode).label}</span>
+            <span className="tabular-nums">{formatKm(m.distance)}</span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-export function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="mk-card p-4">
-      <div className={`text-2xl font-semibold tracking-tight tabular-nums ${accent ? "text-primary" : ""}`}>{value}</div>
-      <div className="mt-1 text-xs text-muted">{label}</div>
-    </div>
-  );
+/** A labelled figure in its own card (the shared ui Stat). */
+export function Stat({ label, value, hint }: { label: string; value: string; hint?: string; accent?: boolean }) {
+  return <UiStat label={label} value={value} hint={hint} />;
 }

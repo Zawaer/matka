@@ -2,7 +2,9 @@ import { BatteryCard } from "@/components/insights/BatteryCard";
 import { QualityCard } from "@/components/insights/QualityCard";
 import { InsightsHeader } from "@/components/insights/InsightsHeader";
 import { MonthPicker } from "@/components/insights/MonthPicker";
-import { ModeHistory, ModeIcon, ShareBar, Stat, modeMeta } from "@/components/insights/charts";
+import { ModeHistory, ModeIcon, ShareBar, modeMeta } from "@/components/insights/charts";
+import { ChevronRight, Route } from "lucide-react";
+import { Card, CardHeader, EmptyState, IconTile, KIND_ICONS, Page, SectionHeader, Stat } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { formatDuration, formatKm, formatMonth } from "@/lib/format";
 import Link from "next/link";
@@ -42,81 +44,88 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
   const quiet = data.modes.filter((m) => m.distance === 0 && m.duration === 0 && m.mode !== "unknown");
   const trips = used.reduce((a, m) => a + m.count, 0);
 
+  const byDistance = [...used].sort((a, b) => b.distance - a.distance);
+
   return (
-    <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
+    <Page width="wide">
       <InsightsHeader active="travel" subtitle="How you got around, month by month." />
 
-      <section className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-semibold tracking-tight">{formatMonth(data.month)}</h2>
+      <section className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-heading text-text">{formatMonth(data.month)}</h2>
         {months.length > 0 && <MonthPicker month={data.month} months={months} />}
       </section>
 
       {data.modes.length === 0 ? (
-        <div className="mk-card px-6 py-14 text-center text-sm text-muted">
-          No travel recorded yet. Trips appear here once your phone has logged a few moves.
-        </div>
+        <EmptyState
+          icon={Route}
+          title="No travel recorded yet"
+          description="Journeys appear here once your phone has logged a few moves."
+        />
       ) : (
         <>
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            <Stat label="Distance" value={formatKm(data.distance)} accent />
+          <section aria-label="Month totals" className="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <Stat label="Distance" value={formatKm(data.distance)} />
             <Stat label="Time on the move" value={formatDuration(data.duration)} />
-            <div className="col-span-2 md:col-span-1">
-              <Stat label="Journeys" value={trips.toLocaleString("en-GB")} />
-            </div>
+            <Stat className="col-span-2 md:col-span-1" label="Journeys" value={trips.toLocaleString("en-GB")} />
           </section>
 
           {used.length > 0 && (
-            <section className="mk-card mt-5 p-5">
-              <h3 className="mb-3 text-sm font-semibold text-muted">Distance by mode</h3>
-              <ShareBar modes={[...used].sort((a, b) => b.distance - a.distance)} />
-              <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
-                {[...used]
-                  .sort((a, b) => b.distance - a.distance)
-                  .map((m) => (
-                    <li key={m.mode} className="flex items-center gap-1.5">
-                      <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: modeMeta(m.mode).color }} />
-                      {modeMeta(m.mode).label}
-                      <span className="text-muted tabular-nums">
-                        {data.distance > 0 ? Math.round((m.distance / data.distance) * 100) : 0}%
-                      </span>
-                    </li>
-                  ))}
+            <Card as="section" className="mt-4">
+              <CardHeader title="Distance by mode" />
+              <ShareBar modes={byDistance} />
+              <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-meta">
+                {byDistance.map((m) => (
+                  <li key={m.mode} className="flex items-center gap-1.5 text-secondary">
+                    <span aria-hidden className="h-2 w-2 rounded-full" style={{ background: modeMeta(m.mode).color }} />
+                    {modeMeta(m.mode).label}
+                    <span className="tabular-nums text-muted">
+                      {data.distance > 0 ? Math.round((m.distance / data.distance) * 100) : 0}%
+                    </span>
+                  </li>
+                ))}
               </ul>
-            </section>
+            </Card>
           )}
 
           <SavedPlacesCard saved={saved.saved} rows={saved.rows} />
 
-          <section className="mt-5 grid gap-3 md:grid-cols-2">
-            {[...used, ...quiet].map((m) => (
-              <article key={m.mode} className={`mk-card p-4 ${m.distance === 0 && m.duration === 0 ? "opacity-70" : ""}`}>
-                <div className="flex items-center gap-3">
-                  <ModeIcon mode={m.mode} />
-                  <div className="min-w-0">
-                    <h3 className="font-medium">{modeMeta(m.mode).label}</h3>
-                    <p className="text-xs text-muted">
-                      {m.count === 0 ? "None this month" : `${m.count} ${m.count === 1 ? "journey" : "journeys"}`}
-                    </p>
+          <SectionHeader title="By mode" className="mt-8" />
+          <section className="grid gap-3 md:grid-cols-2">
+            {[...used, ...quiet].map((m) => {
+              const none = m.distance === 0 && m.duration === 0;
+              return (
+                <Card as="article" key={m.mode}>
+                  <div className="flex items-center gap-3">
+                    <ModeIcon mode={m.mode} />
+                    <div className="min-w-0">
+                      <h3 className={`text-label ${none ? "text-muted" : "text-text"}`}>{modeMeta(m.mode).label}</h3>
+                      <p className="text-meta text-muted">
+                        {m.count === 0 ? "None this month" : `${m.count} ${m.count === 1 ? "journey" : "journeys"}`}
+                      </p>
+                    </div>
+                    <div className="ml-auto text-right">
+                      <p className={`text-label font-semibold tabular-nums ${none ? "text-muted" : "text-text"}`}>
+                        {formatKm(m.distance)}
+                      </p>
+                      <p className="text-meta tabular-nums text-muted">{formatDuration(m.duration)}</p>
+                    </div>
                   </div>
-                  <div className="ml-auto text-right">
-                    <p className="font-semibold tabular-nums">{formatKm(m.distance)}</p>
-                    <p className="text-xs text-muted tabular-nums">{formatDuration(m.duration)}</p>
-                  </div>
-                </div>
-                <ModeHistory mode={m.mode} history={m.history} selected={data.month} />
-              </article>
-            ))}
+                  <ModeHistory mode={m.mode} history={m.history} selected={data.month} />
+                </Card>
+              );
+            })}
           </section>
-          <p className="mt-4 text-xs text-muted">
+          <p className="mt-3 max-w-3xl text-caption text-muted">
             Months follow your time zone ({user.timezone}); a journey across a month boundary is split by time. Tap a
             bar to open that month.{user.transitLines ? " Trips matched to public transport lines count as that kind." : ""}
           </p>
         </>
       )}
 
+      {(battery || quality) && <SectionHeader title="Phone and recording" className="mt-10" />}
       {battery && <BatteryCard days={battery.days} annotations={battery.annotations} tz={user.timezone} />}
       {quality && <QualityCard data={quality} tz={user.timezone} />}
-    </div>
+    </Page>
   );
 }
 
@@ -126,43 +135,44 @@ const nights = (n: number) => `${n} ${n === 1 ? "night" : "nights"}`;
 /** "School 62 h · Mom's 9 nights · Dad's 12 nights" for the month. */
 function SavedPlacesCard({ saved, rows }: { saved: number; rows: SavedPlaceMonth[] }) {
   return (
-    <section className="mk-card mt-5 p-5">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold text-muted">Saved places</h3>
-        <Link href="/places" className="text-xs text-muted hover:text-text">
-          {saved ? "Manage" : "Save places"} →
-        </Link>
-      </div>
+    <Card as="section" className="mt-4">
+      <CardHeader
+        title="Saved places"
+        description="Time at your homes, school and work this month"
+        action={
+          <Link href="/places" className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
+            {saved ? "Manage" : "Save places"}
+            <ChevronRight size={16} strokeWidth={1.75} aria-hidden />
+          </Link>
+        }
+      />
       {saved === 0 ? (
-        <p className="text-sm text-muted">
+        <p className="text-meta text-muted">
           Save your homes, school or work on the Places page to see how much time you spend at each.
         </p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted">No time at your saved places this month.</p>
+        <p className="text-meta text-muted">No time at your saved places this month.</p>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">
           {rows.map((r) => {
             const home = isHomeKind(r.kind);
+            const label = KIND_META[r.kind].label;
             return (
               <li key={r.placeId}>
                 <Link
                   href={`/places/${r.placeId}`}
-                  className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5 transition-colors hover:bg-surface-2/70"
+                  className="flex items-center gap-3 rounded-control border border-border px-3 py-2.5 transition-colors hover:border-strong hover:bg-surface-2/60"
                 >
-                  <span className="text-xl leading-none" aria-hidden>
-                    {KIND_META[r.kind].icon}
-                  </span>
+                  <IconTile icon={KIND_ICONS[r.kind]} tone="primary" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{r.name ?? KIND_META[r.kind].label}</span>
-                    {r.name && r.name !== KIND_META[r.kind].label && (
-                      <span className="block text-xs text-muted">{KIND_META[r.kind].label}</span>
-                    )}
+                    <span className="block truncate text-label text-text">{r.name ?? label}</span>
+                    {r.name && r.name !== label && <span className="block text-meta text-muted">{label}</span>}
                   </span>
                   <span className="text-right">
-                    <span className="block font-semibold tabular-nums">
+                    <span className="block text-label font-semibold tabular-nums text-text">
                       {home && r.nights > 0 ? nights(r.nights) : hours(r.seconds)}
                     </span>
-                    <span className="block text-xs text-muted tabular-nums">
+                    <span className="block text-meta tabular-nums text-muted">
                       {home && r.nights > 0 ? hours(r.seconds) : r.nights > 0 ? nights(r.nights) : "\u00a0"}
                     </span>
                   </span>
@@ -172,6 +182,6 @@ function SavedPlacesCard({ saved, rows }: { saved: number; rows: SavedPlaceMonth
           })}
         </ul>
       )}
-    </section>
+    </Card>
   );
 }

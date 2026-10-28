@@ -4,6 +4,7 @@
 
 import type { BatteryDay, Drain } from "@/lib/insights/battery";
 import { startOfDay } from "@/lib/insights/time";
+import { Card, CardHeader } from "@/components/ui";
 
 type Annotation = { at: number; label: string; date: string; before: Drain; after: Drain };
 
@@ -31,22 +32,24 @@ export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; ann
   const compare = marks.find((m) => m.before.rate != null || m.after.rate != null);
 
   return (
-    <section className="mk-card mt-5 p-5">
-      <div className="mb-1 flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold text-muted">Phone battery</h3>
-        <span className="text-xs text-muted">Drain while unplugged, %/h</span>
-      </div>
+    <Card as="section" className="mt-4">
+      <CardHeader title="Phone battery" description="Drain while unplugged, % per hour" />
       {compare && (
-        <p className="mb-1 text-sm tabular-nums">
-          Before: <span className="font-semibold">{rate(compare.before.rate)}</span>
-          <span className="text-muted"> · </span>
-          After: <span className="font-semibold">{rate(compare.after.rate)}</span>
-          <span className="text-xs text-muted"> (7 days either side of {compare.label})</span>
-        </p>
+        <dl className="mb-2 flex flex-wrap items-end gap-x-8 gap-y-2">
+          <div>
+            <dt className="text-meta text-muted">Before {compare.label}</dt>
+            <dd className="text-stat tabular-nums text-text">{rate(compare.before.rate)}</dd>
+          </div>
+          <div>
+            <dt className="text-meta text-muted">After</dt>
+            <dd className="text-stat tabular-nums text-text">{rate(compare.after.rate)}</dd>
+          </div>
+          <p className="pb-1 text-caption text-muted">7 days either side</p>
+        </dl>
       )}
 
       <div className="relative mt-3 pt-5">
-        <span className="absolute left-0 top-0 text-[10px] leading-none text-muted tabular-nums">{rate(max)}</span>
+        <span className="absolute left-0 top-0 text-caption leading-none text-muted tabular-nums">{rate(max)}</span>
         <div className="relative flex h-28 items-stretch gap-px border-t border-dashed border-border" role="list" aria-label={`Battery drain per day, last ${n} days`}>
           {days.map((d, i) => {
             const align = i < n / 4 ? "left-0" : i > (n * 3) / 4 ? "right-0" : "left-1/2 -translate-x-1/2";
@@ -60,15 +63,15 @@ export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; ann
               >
                 {d.rate != null ? (
                   <span
-                    className="w-full rounded-t-[4px] opacity-70 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                    className="w-full rounded-t-[2px] opacity-55 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
                     style={{ height: `${Math.max(3, (d.rate / max) * 100)}%`, background: "var(--mk-muted)" }}
                   />
                 ) : (
-                  <span className="h-[2px] w-full rounded-full bg-border" />
+                  <span className="h-px w-full bg-border" />
                 )}
                 <span
                   role="tooltip"
-                  className={`pointer-events-none absolute bottom-full z-20 mb-2 hidden whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-text shadow-[var(--mk-shadow)] group-hover:block group-focus-visible:block ${align}`}
+                  className={`pointer-events-none absolute bottom-full z-20 mb-2 hidden whitespace-nowrap rounded-control border border-border bg-surface px-2.5 py-1.5 text-caption text-text shadow-pop group-hover:block group-focus-visible:block ${align}`}
                 >
                   <span className="block font-medium">{dayLabel(d.date)}</span>
                   {d.rate == null ? (
@@ -89,24 +92,24 @@ export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; ann
         </div>
         {marks.map((m) => (
           <span key={m.at} aria-hidden className="pointer-events-none absolute bottom-0 top-0" style={{ left: `${m.pos}%` }}>
-            <span className="absolute bottom-0 top-3 w-px bg-text/60" />
+            <span className="absolute bottom-0 top-3 w-px bg-primary" />
             <span
-              className={`absolute top-0 whitespace-nowrap text-[10px] font-medium leading-none text-text ${m.pos > 70 ? "right-1" : "left-1"}`}
+              className={`absolute top-0 whitespace-nowrap text-caption font-medium leading-none text-primary ${m.pos > 70 ? "right-1" : "left-1"}`}
             >
               {m.label}
             </span>
           </span>
         ))}
       </div>
-      <div className="mt-1.5 flex justify-between text-[10px] leading-none text-muted">
+      <div className="mt-1.5 flex justify-between text-caption leading-none text-muted">
         <span>{dayLabel(days[0].date, false)}</span>
         <span>{dayLabel(days[n - 1].date, false)}</span>
       </div>
 
-      <p className="mt-3 text-xs text-muted">
+      <p className="mt-4 border-t border-border pt-3 text-caption text-muted">
         The whole phone&apos;s drain (screen, other apps), measured from the battery level the app reports with each
         point. Charging and gaps over 3 h are left out; days follow your time zone.
       </p>
-    </section>
+    </Card>
   );
 }

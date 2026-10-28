@@ -3,9 +3,8 @@
 // kind, else its OSM category (geodata osm_value, then osm_key). Client-safe.
 //
 // The phone app has a copy of this table (mobile/src/design/placeIcons.ts):
-// keep the two in step. `emoji` is what the web shows (the web's icons are
-// emoji, like MODE_META and KIND_META); `mci` is the MaterialCommunityIcons
-// name the app shows.
+// keep the two in step. `mci` is the MaterialCommunityIcons name the app
+// shows; the web draws each group with a Lucide icon (components/ui/icons.tsx).
 
 export const PLACE_ICON_GROUPS = [
   "home",
@@ -24,20 +23,20 @@ export const PLACE_ICON_GROUPS = [
 ] as const;
 export type PlaceIconGroup = (typeof PLACE_ICON_GROUPS)[number];
 
-export const PLACE_ICONS: Record<PlaceIconGroup, { label: string; emoji: string; mci: string }> = {
-  home: { label: "Home", emoji: "🏠", mci: "home-outline" },
-  work: { label: "Work", emoji: "💼", mci: "briefcase-outline" },
-  school: { label: "School", emoji: "🎓", mci: "school-outline" },
-  food: { label: "Food & café", emoji: "🍴", mci: "silverware-fork-knife" },
-  shopping: { label: "Shopping", emoji: "🛍️", mci: "shopping-outline" },
-  transit: { label: "Transit", emoji: "🚉", mci: "train-variant" },
-  culture: { label: "Culture", emoji: "🏛️", mci: "bank-outline" },
-  sports: { label: "Sports", emoji: "🏋️", mci: "dumbbell" },
-  health: { label: "Health", emoji: "🏥", mci: "hospital-box-outline" },
-  nature: { label: "Nature", emoji: "🌳", mci: "tree-outline" },
-  hotel: { label: "Hotel", emoji: "🏨", mci: "bed-outline" },
-  airport: { label: "Airport", emoji: "✈️", mci: "airplane" },
-  other: { label: "Place", emoji: "📍", mci: "map-marker-outline" },
+export const PLACE_ICONS: Record<PlaceIconGroup, { label: string; mci: string }> = {
+  home: { label: "Home", mci: "home-outline" },
+  work: { label: "Work", mci: "briefcase-outline" },
+  school: { label: "School", mci: "school-outline" },
+  food: { label: "Food & café", mci: "silverware-fork-knife" },
+  shopping: { label: "Shopping", mci: "shopping-outline" },
+  transit: { label: "Transit", mci: "train-variant" },
+  culture: { label: "Culture", mci: "bank-outline" },
+  sports: { label: "Sports", mci: "dumbbell" },
+  health: { label: "Health", mci: "hospital-box-outline" },
+  nature: { label: "Nature", mci: "tree-outline" },
+  hotel: { label: "Hotel", mci: "bed-outline" },
+  airport: { label: "Airport", mci: "airplane" },
+  other: { label: "Place", mci: "map-marker-outline" },
 };
 
 /** Saved kinds (lib/savedPlaces.ts) that decide the icon by themselves. */
@@ -115,6 +114,6 @@ export function placeIconGroup(
   return "other";
 }
 
-/** The icon itself (label, emoji, MaterialCommunityIcons name). */
+/** The icon itself (label, MaterialCommunityIcons name). */
 export const placeIcon = (kind: string | null | undefined, category: string | null | undefined, osmKey?: string | null) =>
   PLACE_ICONS[placeIconGroup(kind, category, osmKey)];

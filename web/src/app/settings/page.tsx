@@ -1,3 +1,18 @@
+import type { LucideIcon } from "lucide-react";
+import {
+  Clock,
+  Database,
+  Download,
+  FileDown,
+  Images,
+  Import,
+  LogOut,
+  MonitorSmartphone,
+  Smartphone,
+  Sparkles,
+  TramFront,
+} from "lucide-react";
+import { Badge, Button, buttonClass, Card, IconTile, ListRow, Page, PageHeader } from "@/components/ui";
 import { AiPlacesForm, DawarichForm, ImmichForm, ImmichLinkForm, PhotoPointsForm, TimezoneForm, TransitForm } from "@/components/settings/Forms";
 import { GoogleImport } from "@/components/settings/GoogleImport";
 import { claudeConfigured } from "@/lib/claude";
@@ -31,32 +46,41 @@ export default async function SettingsPage() {
   const zones = Intl.supportedValuesOf("timeZone");
   if (!zones.includes(user.timezone)) zones.unshift(user.timezone);
 
-  return (
-    <div className="mx-auto max-w-3xl px-5 py-8 md:px-10 md:py-10">
-      <header className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-muted">
-          Signed in as {user.name}
-          {user.email && user.email !== user.name ? ` (${user.email})` : ""}.
-        </p>
-      </header>
+  const others = Number(sessions) - 1;
 
-      <div className="flex flex-col gap-5">
-        <Section title="Timeline">
+  return (
+    <Page width="narrow">
+      <PageHeader
+        title="Settings"
+        subtitle={
+          <>
+            Signed in as {user.name}
+            {user.email && user.email !== user.name ? ` (${user.email})` : ""}
+          </>
+        }
+      />
+
+      <div className="flex flex-col gap-4">
+        <Section icon={Clock} title="Time zone">
           <TimezoneForm current={user.timezone} zones={zones} />
         </Section>
 
-        <Section title="Public transport">
+        <Section icon={TramFront} title="Public transport">
           <TransitForm on={user.transitLines} available={configuredFeeds().length > 0} />
         </Section>
 
         {claudeConfigured() && (
-          <Section title="Place names">
+          <Section icon={Sparkles} title="Place names">
             <AiPlacesForm on={row.ai_places} />
           </Section>
         )}
 
-        <Section title="Immich photos">
+        <Section
+          icon={Images}
+          title="Immich photos"
+          description="Show your photos on the timeline and on places."
+          badge={row.has_key ? <Badge tone="success">Connected</Badge> : <Badge>Not connected</Badge>}
+        >
           <ImmichForm url={row.immich_url} connected={row.has_key} />
           {row.has_key && (
             <>
@@ -70,62 +94,92 @@ export default async function SettingsPage() {
           )}
         </Section>
 
-        <Section title="Import Google Timeline">
+        <Section icon={Import} title="Import Google Timeline" description="Fill the gaps in your history from Google Maps Timeline.">
           <GoogleImport initial={googleImports} timeZone={user.timezone} />
         </Section>
 
         {dawarich && (
-          <Section title="Dawarich">
+          <Section icon={Database} title="Dawarich">
             <DawarichForm lastCheck={dawarich.lastCheck} ready={dawarich.ready} timeZone={user.timezone} />
           </Section>
         )}
 
-        <Section title="Devices">
-          <p className="text-sm text-muted">Phones that record and upload your location.</p>
-          <a
-            href="/devices"
-            className="mt-3 inline-block rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/60"
-          >
-            Manage devices
-          </a>
-        </Section>
+        <Card padding="none" className="overflow-hidden">
+          <ul className="divide-y divide-border">
+            <ListRow
+              href="/devices"
+              leading={<IconTile icon={Smartphone} />}
+              title="Devices"
+              meta="Phones that record and upload your location"
+            />
+          </ul>
+        </Card>
 
-        <Section title="Your data">
-          <p className="text-sm text-muted">
-            Download every recorded point. Visits and trips are recomputed from these.
-          </p>
-          <div className="mt-3 flex gap-3">
-            <a href="/api/export?format=csv" className="rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/60">
+        <Section icon={Download} title="Your data" description="Download every recorded point. Visits and trips are recomputed from these.">
+          <div className="flex flex-wrap gap-2">
+            <a href="/api/export?format=csv" className={buttonClass()}>
+              <FileDown size={16} strokeWidth={1.75} aria-hidden />
               CSV
             </a>
-            <a href="/api/export?format=geojson" className="rounded-lg border border-border px-4 py-2 text-sm hover:border-primary/60">
+            <a href="/api/export?format=geojson" className={buttonClass()}>
+              <FileDown size={16} strokeWidth={1.75} aria-hidden />
               GeoJSON
             </a>
           </div>
         </Section>
 
-        <Section title="Sessions">
-          <p className="text-sm text-muted">
-            You are signed in on {sessions} {Number(sessions) === 1 ? "browser" : "browsers"}.
-          </p>
-          {Number(sessions) > 1 && (
-            <form action={signOutOthers} className="mt-3">
-              <button className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:border-red-500 hover:text-red-500">
+        <Section
+          icon={MonitorSmartphone}
+          title="Sessions"
+          description={
+            <>
+              You are signed in on <span className="tabular-nums">{sessions}</span>{" "}
+              {Number(sessions) === 1 ? "browser" : "browsers"}.
+            </>
+          }
+        >
+          {others > 0 ? (
+            <form action={signOutOthers}>
+              <Button type="submit" variant="danger" icon={LogOut}>
                 Sign out everywhere else
-              </button>
+              </Button>
             </form>
+          ) : (
+            <p className="text-meta text-muted">This is the only one.</p>
           )}
         </Section>
       </div>
-    </div>
+    </Page>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** One settings group: an icon, a title and what it's for, then its controls. */
+function Section({
+  icon,
+  title,
+  description,
+  badge,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description?: React.ReactNode;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="mk-card p-5">
-      <h2 className="mb-4 font-medium">{title}</h2>
-      {children}
-    </section>
+    <Card as="section" padding="none">
+      <div className={`flex gap-3 border-b border-border px-4 py-3 sm:px-5 ${description ? "items-start" : "items-center"}`}>
+        <IconTile icon={icon} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-heading text-text">{title}</h2>
+            {badge}
+          </div>
+          {description && <p className="mt-0.5 text-meta text-muted">{description}</p>}
+        </div>
+      </div>
+      <div className="p-4 sm:p-5">{children}</div>
+    </Card>
   );
 }

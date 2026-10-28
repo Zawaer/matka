@@ -1,3 +1,6 @@
+import type { LucideIcon } from "lucide-react";
+import { Ban, CircleAlert, CircleCheck, CircleDashed, Smartphone, Trash2, TriangleAlert } from "lucide-react";
+import { Badge, Button, CardList, EmptyState, IconTile, Page, PageHeader, SectionHeader, cx } from "@/components/ui";
 import { PairDevice } from "@/components/devices/PairDevice";
 import { appUrl, isDeviceSafeUrl } from "@/lib/appUrl";
 import { requireUser } from "@/lib/auth";
@@ -18,72 +21,91 @@ export default async function DevicesPage() {
   const user = await requireUser();
   const devices = await listDevices(user.id);
 
+  const active = devices.filter((d) => d.revoked_at == null);
+  const revoked = devices.filter((d) => d.revoked_at != null);
+
   return (
-    <div className="mx-auto max-w-3xl px-5 py-8 md:px-10 md:py-10">
-      <header className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">Devices</h1>
-        <p className="mt-1 text-muted">Phones that upload your location to Matka.</p>
-      </header>
+    <Page width="narrow">
+      <PageHeader
+        title="Devices"
+        subtitle="Phones that upload your location to Matka."
+        back={{ href: "/settings", label: "Settings" }}
+      />
 
       <PairDevice insecure={!isDeviceSafeUrl(appUrl())} />
 
-      <section className="mt-6 flex flex-col gap-2">
+      <section className="mt-8">
+        <SectionHeader
+          title="Paired devices"
+          description={devices.length > 0 ? `${active.length} active${revoked.length ? `, ${revoked.length} revoked` : ""}` : undefined}
+        />
         {devices.length === 0 ? (
-          <p className="px-1 text-sm text-muted">No devices paired yet.</p>
+          <EmptyState
+            icon={Smartphone}
+            title="No devices paired yet"
+            description="Give your phone a name above, then scan the QR code with the Matka app."
+          />
         ) : (
-          devices.map((d) => <DeviceRow key={d.id} device={d} tz={user.timezone} />)
+          <CardList>
+            {[...active, ...revoked].map((d) => (
+              <DeviceRow key={d.id} device={d} tz={user.timezone} />
+            ))}
+          </CardList>
         )}
       </section>
-    </div>
+    </Page>
   );
 }
 
-const HEALTH_CLASS: Record<Health["tone"], string> = {
-  ok: "text-primary",
-  warn: "text-amber-500",
-  bad: "font-medium text-red-500",
-  muted: "text-muted",
+const HEALTH: Record<Health["tone"], { cls: string; icon: LucideIcon }> = {
+  ok: { cls: "text-success", icon: CircleCheck },
+  warn: { cls: "text-warn", icon: TriangleAlert },
+  bad: { cls: "text-danger font-medium", icon: CircleAlert },
+  muted: { cls: "text-muted", icon: CircleDashed },
 };
 
 function DeviceRow({ device: d, tz }: { device: Device; tz: string }) {
   const revoked = d.revoked_at != null;
   // Recording health from the app's heartbeats (null for older apps).
   const health = revoked ? null : deviceHealth(d);
+  const h = health ? HEALTH[health.tone] : null;
   return (
-    <div className="mk-card flex items-center gap-4 px-5 py-4">
-      <div className={`min-w-0 flex-1 ${revoked ? "opacity-60" : ""}`}>
-        <div className="truncate font-medium">{d.name}</div>
-        <div className="text-sm text-muted">
+    <li className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
+      <IconTile icon={Smartphone} className={revoked ? "opacity-60" : undefined} />
+      <div className={cx("min-w-0 flex-1", revoked && "opacity-70")}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-label text-text">{d.name}</span>
+          {revoked && <Badge>Revoked</Badge>}
+        </div>
+        <div className="mt-0.5 text-meta text-muted">
           {revoked
             ? `Revoked ${fmt(d.revoked_at!, tz)}`
             : d.last_seen_at
               ? `Last upload ${fmt(d.last_seen_at, tz)}`
               : `Paired ${fmt(d.created_at, tz)} · not seen yet`}
         </div>
-        {health ? <div className={`text-sm ${HEALTH_CLASS[health.tone]}`}>{health.text}</div> : null}
+        {health && h ? (
+          <div className={cx("mt-1 flex items-start gap-1.5 text-meta", h.cls)}>
+            <h.icon size={16} strokeWidth={1.75} aria-hidden className="mt-0.5 shrink-0" />
+            <span>{health.text}</span>
+          </div>
+        ) : null}
       </div>
       {revoked ? (
         <form action={remove}>
           <input type="hidden" name="id" value={d.id} />
-          <button
-            type="submit"
-            title="Remove from this list. Its location history stays."
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:border-red-500 hover:text-red-500"
-          >
+          <Button type="submit" size="sm" variant="ghost" icon={Trash2} title="Remove from this list. Its location history stays.">
             Remove
-          </button>
+          </Button>
         </form>
       ) : (
         <form action={revoke}>
           <input type="hidden" name="id" value={d.id} />
-          <button
-            type="submit"
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted hover:border-red-500 hover:text-red-500"
-          >
+          <Button type="submit" size="sm" variant="danger" icon={Ban}>
             Revoke
-          </button>
+          </Button>
         </form>
       )}
-    </div>
+    </li>
   );
 }

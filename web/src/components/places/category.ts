@@ -1,101 +1,5 @@
-// Maps an OSM category (geodata->properties->osm_value) to a display icon + label.
-// Keep this the single source of truth for place iconography.
-
-const ICONS: Record<string, string> = {
-  // food & drink
-  cafe: "☕",
-  restaurant: "🍽️",
-  fast_food: "🍔",
-  bar: "🍸",
-  pub: "🍺",
-  biergarten: "🍺",
-  bakery: "🥐",
-  ice_cream: "🍦",
-  food_court: "🍽️",
-
-  // education
-  school: "🏫",
-  university: "🎓",
-  college: "🎓",
-  kindergarten: "🧸",
-  library: "📚",
-
-  // health
-  hospital: "🏥",
-  clinic: "🏥",
-  doctors: "🩺",
-  dentist: "🦷",
-  pharmacy: "💊",
-  veterinary: "🐾",
-
-  // shops
-  supermarket: "🛒",
-  convenience: "🏪",
-  mall: "🛍️",
-  department_store: "🛍️",
-  marketplace: "🧺",
-  clothes: "👕",
-  hairdresser: "💈",
-  florist: "💐",
-
-  // money
-  bank: "🏦",
-  atm: "🏧",
-  bureau_de_change: "💱",
-
-  // lodging & travel
-  hotel: "🏨",
-  hostel: "🛏️",
-  guest_house: "🛏️",
-  motel: "🛏️",
-  fuel: "⛽",
-  charging_station: "🔌",
-  parking: "🅿️",
-  station: "🚉",
-  bus_station: "🚌",
-  bus_stop: "🚏",
-  aerodrome: "✈️",
-  airport: "✈️",
-  ferry_terminal: "⛴️",
-
-  // leisure & culture
-  park: "🌳",
-  garden: "🌷",
-  playground: "🛝",
-  pitch: "⚽",
-  stadium: "🏟️",
-  sports_centre: "🏟️",
-  fitness_centre: "🏋️",
-  gym: "🏋️",
-  swimming_pool: "🏊",
-  cinema: "🎬",
-  theatre: "🎭",
-  museum: "🏛️",
-  gallery: "🖼️",
-  attraction: "📸",
-  viewpoint: "🔭",
-  nightclub: "🪩",
-
-  // worship & civic
-  place_of_worship: "⛪",
-  church: "⛪",
-  mosque: "🕌",
-  synagogue: "🕍",
-  townhall: "🏛️",
-  police: "🚓",
-  fire_station: "🚒",
-  post_office: "📮",
-
-  // work & home
-  office: "🏢",
-  coworking_space: "🏢",
-  house: "🏠",
-  residential: "🏠",
-  apartments: "🏢",
-  detached: "🏡",
-  industrial: "🏭",
-  warehouse: "📦",
-};
+// Labels for OSM categories (geodata->properties->osm_value). Their icons are
+// in components/ui/icons.tsx (placeIconFor).
 
 const LABELS: Record<string, string> = {
   fast_food: "Fast food",
@@ -112,10 +16,6 @@ const LABELS: Record<string, string> = {
   bureau_de_change: "Currency exchange",
 };
 
-export function categoryIcon(osmValue: string | null | undefined): string {
-  if (!osmValue) return "📍";
-  return ICONS[osmValue] ?? "📍";
-}
 
 export function categoryLabel(osmValue: string | null | undefined): string {
   if (!osmValue) return "Place";

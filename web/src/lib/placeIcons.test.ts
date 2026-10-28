@@ -35,9 +35,9 @@ describe("placeIconGroup", () => {
     expect(placeIconGroup(null, null, null)).toBe("other");
     expect(placeIconGroup(null, "constructor")).toBe("other");
   });
-  it("has an emoji and an app icon for every group", () => {
+  it("has a label and an app icon for every group", () => {
     for (const g of PLACE_ICON_GROUPS) {
-      expect(PLACE_ICONS[g].emoji).toBeTruthy();
+      expect(PLACE_ICONS[g].label).toBeTruthy();
       expect(PLACE_ICONS[g].mci).toMatch(/^[a-z-]+$/);
     }
     expect(placeIcon(null, "cafe").label).toBe("Food & café");

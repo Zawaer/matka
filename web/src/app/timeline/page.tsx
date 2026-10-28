@@ -1,4 +1,5 @@
 import { Timeline } from "@/components/timeline/Timeline";
+import { Page } from "@/components/ui";
 
 export const metadata = {
   title: "Timeline · Matka",
@@ -12,8 +13,8 @@ export default async function TimelinePage({
   const { date } = await searchParams;
   const initial = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
   return (
-    <div className="mx-auto max-w-3xl px-5 py-8 md:px-10">
+    <Page width="narrow">
       <Timeline key={initial ?? "latest"} initialDate={initial} />
-    </div>
+    </Page>
   );
 }

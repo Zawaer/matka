@@ -9,6 +9,9 @@
 
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { Maximize } from "lucide-react";
+import { PLACE_GROUP_ICONS } from "@/components/ui/icons";
 import type { LngLatBoundsLike, Map as MlMap, Marker } from "maplibre-gl";
 import { computeDark, modeColorExpression, resolveColor, styleUrl } from "@/components/map/mapStyle";
 import type { TimelineDay } from "@/lib/types";
@@ -116,18 +119,18 @@ function ensureLayers(m: MlMap, tracks: FC) {
 }
 
 const MARKER_CLASS =
-  "group relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-primary bg-surface text-[15px] leading-none shadow-md transition-[scale] data-[sel=true]:scale-115 data-[sel=true]:bg-primary";
+  "group relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-primary bg-surface text-primary shadow-md transition-[scale] data-[sel=true]:scale-115 data-[sel=true]:bg-primary data-[sel=true]:text-on-primary";
 /** The stop's order number(s), as on the timeline's rows. */
 const BADGE_CLASS =
-  "pointer-events-none absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full border border-primary bg-surface px-1 text-[10px] font-bold leading-none tabular-nums text-primary group-data-[sel=true]:bg-primary group-data-[sel=true]:text-surface group-data-[sel=true]:border-surface";
+  "pointer-events-none absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-primary bg-surface px-1 text-caption font-semibold leading-none tabular-nums text-primary group-data-[sel=true]:bg-primary group-data-[sel=true]:text-on-primary group-data-[sel=true]:border-surface";
 const LABEL_CLASS =
-  "pointer-events-none absolute left-full top-1/2 ml-1.5 hidden data-[flip=true]:left-auto data-[flip=true]:right-full data-[flip=true]:ml-0 data-[flip=true]:mr-1.5 max-w-44 -translate-y-1/2 truncate rounded-lg border border-border bg-surface px-2 py-0.5 text-xs font-medium text-text shadow-md group-hover:block group-data-[sel=true]:block";
+  "pointer-events-none absolute left-full top-1/2 ml-1.5 hidden data-[flip=true]:left-auto data-[flip=true]:right-full data-[flip=true]:ml-0 data-[flip=true]:mr-1.5 max-w-44 -translate-y-1/2 truncate rounded-md border border-border bg-surface px-2 py-0.5 text-caption font-medium text-text shadow-md group-hover:block group-data-[sel=true]:block";
 
 /**
  * A stop's marker: MapLibre positions the outer element with `transform`, so
  * the look (and the scale-up when selected) lives on the inner button.
  */
-function markerElement(stop: Stop): { root: HTMLElement; button: HTMLElement } {
+function markerElement(stop: Stop): { root: HTMLElement; button: HTMLElement; glyph: Root } {
   const root = document.createElement("div");
   const el = document.createElement("button");
   el.type = "button";
@@ -136,7 +139,11 @@ function markerElement(stop: Stop): { root: HTMLElement; button: HTMLElement } {
   el.setAttribute("aria-label", `${stop.numbers.join(", ")}. ${stop.name} (${icon.label})`);
   const glyph = document.createElement("span");
   glyph.setAttribute("aria-hidden", "true");
-  glyph.textContent = icon.emoji;
+  glyph.className = "flex";
+  // The category's Lucide icon, drawn by a tiny React root of its own.
+  const glyphRoot = createRoot(glyph);
+  const G = PLACE_GROUP_ICONS[stop.icon];
+  glyphRoot.render(<G size={16} strokeWidth={1.75} aria-hidden />);
   el.appendChild(glyph);
   const badge = document.createElement("span");
   badge.className = BADGE_CLASS;
@@ -147,14 +154,17 @@ function markerElement(stop: Stop): { root: HTMLElement; button: HTMLElement } {
   label.textContent = stop.name;
   el.appendChild(label);
   root.appendChild(el);
-  return { root, button: el };
+  return { root, button: el, glyph: glyphRoot };
 }
+
+/** Unmounts a marker's icon root after the current render (React can't unmount mid-commit). */
+const dropGlyph = (r: Root) => setTimeout(() => r.unmount(), 0);
 
 /**
  * Fills the selected stop's marker and lifts it above its neighbours; its
  * name goes on whichever side of it has more room.
  */
-function markSelected(m: MlMap, markers: { marker: Marker; el: HTMLElement; stop: Stop }[], key: string | null) {
+function markSelected(m: MlMap, markers: { marker: Marker; el: HTMLElement; stop: Stop; glyph: Root }[], key: string | null) {
   const w = m.getContainer().clientWidth;
   for (const mk of markers) {
     const on = key != null && mk.stop.keys.includes(key);
@@ -185,7 +195,7 @@ function photoElement(p: PhotoPoint, count: number): HTMLElement {
   if (count > 1) {
     const badge = document.createElement("span");
     badge.className =
-      "pointer-events-none absolute -bottom-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-text px-1 text-[10px] font-bold leading-none tabular-nums text-bg";
+      "pointer-events-none absolute -bottom-1.5 -right-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-text px-1 text-caption font-bold leading-none tabular-nums text-bg";
     badge.textContent = String(count);
     el.appendChild(badge);
   }
@@ -230,7 +240,7 @@ export default function DayMap({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
   const mlRef = useRef<typeof import("maplibre-gl") | null>(null);
-  const markersRef = useRef<{ marker: Marker; el: HTMLElement; stop: Stop }[]>([]);
+  const markersRef = useRef<{ marker: Marker; el: HTMLElement; stop: Stop; glyph: Root }[]>([]);
   const photoMarkersRef = useRef<Marker[]>([]);
   const shownRef = useRef<Shown | null>(null);
   const fittedRef = useRef<string | null>(null);
@@ -313,7 +323,10 @@ export default function DayMap({
     return () => {
       cancelled = true;
       if (onTheme) mql.removeEventListener("change", onTheme);
-      for (const mk of markersRef.current) mk.marker.remove();
+      for (const mk of markersRef.current) {
+        mk.marker.remove();
+        dropGlyph(mk.glyph);
+      }
       markersRef.current = [];
       for (const mk of photoMarkersRef.current) mk.remove();
       photoMarkersRef.current = [];
@@ -356,15 +369,18 @@ export default function DayMap({
     ensureLayers(m, shown.tracks);
     (m.getSource("day-tracks") as { setData?: (d: FC) => void } | undefined)?.setData?.(shown.tracks);
 
-    for (const mk of markersRef.current) mk.marker.remove();
+    for (const mk of markersRef.current) {
+      mk.marker.remove();
+      dropGlyph(mk.glyph);
+    }
     markersRef.current = shown.stops.map((stop) => {
-      const { root, button } = markerElement(stop);
+      const { root, button, glyph } = markerElement(stop);
       button.addEventListener("click", (e) => {
         e.stopPropagation();
         onSelectRef.current(nextStopKey(stop, selectedRef.current));
       });
       const marker = new ml.Marker({ element: root, anchor: "center" }).setLngLat([stop.lon, stop.lat]).addTo(m);
-      return { marker, el: button, stop };
+      return { marker, el: button, stop, glyph };
     });
 
     // Fit once per day; a refetch of the same day leaves the view alone.
@@ -442,7 +458,7 @@ export default function DayMap({
       className={
         fill
           ? "relative h-full w-full overflow-hidden"
-          : "mk-card relative h-[260px] w-full overflow-hidden shadow-sm md:h-[340px]"
+          : "relative h-[260px] w-full overflow-hidden rounded-card border border-border bg-surface-2 shadow-card md:h-[340px]"
       }
     >
       <div ref={containerRef} className="h-full w-full" />
@@ -459,11 +475,9 @@ export default function DayMap({
             const m = mapRef.current;
             if (m && shownRef.current) fit(m, bboxOf(shownRef.current.tracks, shownRef.current.stops), true);
           }}
-          className="absolute left-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface/90 text-muted shadow-md backdrop-blur hover:text-text"
+          className="absolute left-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-control border border-border bg-surface/95 text-secondary shadow-card backdrop-blur transition-colors hover:text-text"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            <path d="M4 4h6v2H6v4H4V4Zm10 0h6v6h-2V6h-4V4ZM4 14h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4Z" />
-          </svg>
+          <Maximize size={16} strokeWidth={1.75} aria-hidden />
         </button>
       ) : null}
       {ready && loading ? (

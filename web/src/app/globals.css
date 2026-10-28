@@ -1,19 +1,31 @@
 @import "tailwindcss";
 
 /* ---------- Matka design tokens ----------
-   Mirrors mobile/src/design/tokens.ts ("birch & aurora"). Keep the two in sync.
-   Dark is the default; light follows the OS, or ?theme=light|dark (set on <html>
-   as data-theme by the layout script, used by the mobile app's embedded map). */
+   The web app's design system (docs/REDESIGN.md). Colour roles, not raw
+   colours: surfaces (bg < surface < surface-2 < surface-3), borders, three
+   text levels, one accent (primary), status colours, and the travel-mode
+   palette, which is for data marks only (lines, bars, dots), never for UI
+   chrome or text. The mode palette mirrors mobile/src/design/tokens.ts.
+   Dark is the default; light follows the OS, or ?theme=light|dark (set on
+   <html> as data-theme by the layout script, used by the phone app's embeds). */
 :root {
-  --mk-bg: #0e0f1c;
-  --mk-surface: #171a2b;
-  --mk-surface-2: #1f2338;
-  --mk-border: #2a2f4a;
-  --mk-text: #f2f1fa;
-  --mk-muted: #a0a3be;
-  --mk-primary: #9c8fff;
-  --mk-primary-strong: #b3a9ff;
-  --mk-accent: #ff8a75;
+  --mk-bg: #0c0d13;
+  --mk-surface: #14151d;
+  --mk-surface-2: #1b1d27;
+  --mk-surface-3: #242632;
+  --mk-border: #252734;
+  --mk-border-strong: #353849;
+  --mk-outline: #666a80;
+  --mk-text: #ededf2;
+  --mk-text-2: #b9bbc8;
+  --mk-muted: #8a8c9c;
+  --mk-primary: #9d92ff;
+  --mk-primary-strong: #b6adff;
+  --mk-on-primary: #0c0d13;
+  --mk-success: #4cc38a;
+  --mk-warn: #e9a23b;
+  --mk-danger: #f2756a;
+  --mk-accent: var(--mk-danger);
   --mk-route: #3987e5;
 
   /* travel modes: dataviz categorical slots (validated, fixed order) */
@@ -26,21 +38,30 @@
   --mk-transit: #9085e9;
   --mk-fly: #e66767;
 
-  --mk-radius: 20px;
-  --mk-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.65);
+  --mk-radius: 12px;
+  --mk-shadow-sm: 0 0 0 transparent;
+  --mk-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --mk-bg: #f7f5f0;
+    --mk-bg: #f6f5f2;
     --mk-surface: #ffffff;
-    --mk-surface-2: #f0ede6;
-    --mk-border: #e8e3d9;
-    --mk-text: #16161f;
-    --mk-muted: #62627a;
+    --mk-surface-2: #f2f0ec;
+    --mk-surface-3: #e9e6e0;
+    --mk-border: #e5e2dc;
+    --mk-border-strong: #d2cec6;
+    --mk-outline: #857f75;
+    --mk-text: #18181f;
+    --mk-text-2: #45454f;
+    --mk-muted: #63636f;
     --mk-primary: #5144e8;
     --mk-primary-strong: #4034c9;
-    --mk-accent: #e5483a;
+    --mk-on-primary: #ffffff;
+    --mk-success: #137337;
+    --mk-warn: #9a4f06;
+    --mk-danger: #bd2f25;
     --mk-route: #2a78d6;
     --mk-car: #2a78d6;
     --mk-bike: #eb6834;
@@ -50,21 +71,30 @@
     --mk-boat: #008300;
     --mk-transit: #6250d6;
     --mk-fly: #e34948;
-    --mk-shadow: 0 10px 28px -8px rgba(40, 34, 20, 0.14);
+    --mk-shadow-sm: 0 0 0 transparent;
+    --mk-shadow: 0 12px 32px -8px rgba(40, 34, 20, 0.16), 0 2px 6px rgba(40, 34, 20, 0.06);
+    color-scheme: light;
   }
 }
 
 /* Explicit light override (wins over an OS-dark default). */
 :root[data-theme="light"] {
-  --mk-bg: #f7f5f0;
+  --mk-bg: #f6f5f2;
   --mk-surface: #ffffff;
-  --mk-surface-2: #f0ede6;
-  --mk-border: #e8e3d9;
-  --mk-text: #16161f;
-  --mk-muted: #62627a;
+  --mk-surface-2: #f2f0ec;
+  --mk-surface-3: #e9e6e0;
+  --mk-border: #e5e2dc;
+  --mk-border-strong: #d2cec6;
+    --mk-outline: #857f75;
+  --mk-text: #18181f;
+  --mk-text-2: #45454f;
+  --mk-muted: #63636f;
   --mk-primary: #5144e8;
   --mk-primary-strong: #4034c9;
-  --mk-accent: #e5483a;
+  --mk-on-primary: #ffffff;
+  --mk-success: #137337;
+  --mk-warn: #9a4f06;
+  --mk-danger: #bd2f25;
   --mk-route: #2a78d6;
   --mk-car: #2a78d6;
   --mk-bike: #eb6834;
@@ -74,24 +104,69 @@
   --mk-boat: #008300;
   --mk-transit: #6250d6;
   --mk-fly: #e34948;
-  --mk-shadow: 0 10px 28px -8px rgba(40, 34, 20, 0.14);
+  --mk-shadow-sm: 0 0 0 transparent;
+  --mk-shadow: 0 12px 32px -8px rgba(40, 34, 20, 0.16), 0 2px 6px rgba(40, 34, 20, 0.06);
+  color-scheme: light;
 }
 
-/* expose tokens as Tailwind color/radius utilities */
+/* Expose the tokens as Tailwind utilities: bg-surface-2, text-secondary,
+   border-strong, text-danger, rounded-card, text-title… */
 @theme inline {
   --color-bg: var(--mk-bg);
   --color-surface: var(--mk-surface);
   --color-surface-2: var(--mk-surface-2);
+  --color-surface-3: var(--mk-surface-3);
   --color-border: var(--mk-border);
+  --color-strong: var(--mk-border-strong);
+  --color-outline: var(--mk-outline);
   --color-text: var(--mk-text);
+  --color-secondary: var(--mk-text-2);
   --color-muted: var(--mk-muted);
   --color-primary: var(--mk-primary);
   --color-primary-strong: var(--mk-primary-strong);
+  --color-on-primary: var(--mk-on-primary);
+  --color-success: var(--mk-success);
+  --color-warn: var(--mk-warn);
+  --color-danger: var(--mk-danger);
   --color-accent: var(--mk-accent);
   --color-route: var(--mk-route);
   --radius-mk: var(--mk-radius);
+  --radius-card: var(--mk-radius);
+  --radius-control: 8px;
+  --shadow-card: var(--mk-shadow-sm);
+  --shadow-pop: var(--mk-shadow);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+}
+
+/* Type scale. Pages use these, not ad-hoc sizes:
+   text-title    page title (h1)            24/32 semibold
+   text-heading  section title (h2)         16/24 semibold
+   text-label    card / row title           14/20 medium
+   text-sm       body                       14/20
+   text-meta     secondary lines, captions  13/18
+   text-caption  axis labels, badges        12/16
+   text-stat     big numerals (+ tabular)   24/30 semibold */
+@theme {
+  --text-title: 1.5rem;
+  --text-title--line-height: 2rem;
+  --text-title--letter-spacing: -0.02em;
+  --text-title--font-weight: 600;
+  --text-heading: 1rem;
+  --text-heading--line-height: 1.5rem;
+  --text-heading--letter-spacing: -0.01em;
+  --text-heading--font-weight: 600;
+  --text-label: 0.875rem;
+  --text-label--line-height: 1.25rem;
+  --text-label--font-weight: 500;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.125rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-stat: 1.5rem;
+  --text-stat--line-height: 1.875rem;
+  --text-stat--letter-spacing: -0.02em;
+  --text-stat--font-weight: 600;
 }
 
 html,
@@ -103,7 +178,25 @@ body {
   background: var(--mk-bg);
   color: var(--mk-text);
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* One focus ring for everything focusable by keyboard. */
+:focus-visible {
+  outline: 2px solid var(--mk-primary);
+  outline-offset: 2px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: 0;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--mk-primary) 28%, transparent);
 }
 
 * {
@@ -115,9 +208,48 @@ body {
   background: var(--mk-surface);
   border: 1px solid var(--mk-border);
   border-radius: var(--mk-radius);
+  box-shadow: var(--mk-shadow-sm);
+}
+
+/* On/off switch (components/ui/Form.tsx Toggle): a native checkbox. */
+.mk-switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--mk-surface-3);
+  border: 1px solid var(--mk-outline);
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.mk-switch::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.mk-switch:checked {
+  background: var(--mk-primary);
+  border-color: var(--mk-primary);
+}
+.mk-switch:checked::after {
+  transform: translateX(1rem);
+}
+.mk-switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---------- Embedded in the mobile app (/embed/ pages) ---------- */
+html.embed body > div > .mk-sidebar,
 html.embed body > div > aside,
 html.embed body > div > header,
 html.embed body > div > nav {
@@ -139,8 +271,8 @@ html.embed .map-shell {
 .maplibregl-ctrl.maplibregl-ctrl-group {
   background: var(--mk-surface) !important;
   border: 1px solid var(--mk-border) !important;
-  border-radius: 14px !important;
-  box-shadow: var(--mk-shadow) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--mk-shadow-sm) !important;
   overflow: hidden;
 }
 .maplibregl-ctrl-group button + button {
@@ -152,7 +284,7 @@ html.embed .map-shell {
 .maplibregl-ctrl.maplibregl-ctrl-attrib {
   background: color-mix(in srgb, var(--mk-surface) 88%, transparent) !important;
   color: var(--mk-muted) !important;
-  border-radius: 12px !important;
+  border-radius: 6px !important;
 }
 .maplibregl-ctrl.maplibregl-ctrl-attrib a {
   color: var(--mk-muted) !important;

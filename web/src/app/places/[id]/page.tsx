@@ -1,14 +1,30 @@
-import Link from "next/link";
+import { CalendarDays, Pencil } from "lucide-react";
 import { EscapeBack } from "@/components/EscapeBack";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { formatDateShort, formatDuration, formatTime } from "@/lib/format";
-import { categoryIcon, placeCategoryLine, placeTitle } from "@/components/places/category";
+import { placeCategoryLine, placeTitle } from "@/components/places/category";
+import {
+  Button,
+  Callout,
+  Card,
+  CardList,
+  EmptyState,
+  Field,
+  IconTile,
+  Input,
+  ListRow,
+  Page,
+  PageHeader,
+  SectionHeader,
+  Stat,
+  placeIconFor,
+} from "@/components/ui";
 import { PhotoGallery } from "@/components/places/PhotoGallery";
 import { KindBadge, KindPicker, SizePicker } from "@/components/places/SavedFields";
 import { PLACE_CATEGORY_SQL } from "@/lib/places";
-import { KIND_META, type PlaceKind } from "@/lib/savedPlaces";
+import type { PlaceKind } from "@/lib/savedPlaces";
 import { renamePlace, savePlace, unsavePlace } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -69,95 +85,94 @@ export default async function PlaceDetailPage({
   const what = placeCategoryLine(shown, place.category);
   const locale = [place.city, place.country].filter(Boolean).join(", ");
 
-  return (
-    <div className="mx-auto max-w-5xl px-5 py-8 md:px-10 md:py-10">
-      <EscapeBack fallback="/places" />
-      <Link
-        href="/places"
-        className="mb-6 inline-flex items-center gap-1 text-sm text-muted transition-colors hover:text-text"
-      >
-        ← Places
-      </Link>
+  const dayOf = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  const lastVisit = visits[0]?.started_at ?? null;
 
-      <header className="mb-8 flex items-start gap-4">
-        <span
-          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-surface-2 text-2xl"
-          aria-hidden
-        >
-          {place.kind ? KIND_META[place.kind].icon : categoryIcon(place.category)}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{name}</h1>
-          {!place.custom_name && place.ai_name && (
-            <p className="mt-1 text-xs text-muted">Picked by AI among the places nearby. Rename it if that&rsquo;s wrong.</p>
-          )}
-          {place.kind && (
-            <p className="mt-1.5">
-              <KindBadge kind={place.kind} radius={place.radius_m} />
-            </p>
-          )}
-          {(what || locale) && (
-            <p className="mt-1 text-muted">{[what, locale].filter(Boolean).join(" · ")}</p>
-          )}
-          <p className="mt-2 text-sm text-muted">
-            <span className="font-medium text-text">{visitCount}</span>{" "}
-            {visitCount === 1 ? "visit" : "visits"} · {formatDuration(place.total_time)} total
-          </p>
-          {!place.kind && (
-          <details className="mt-3 text-sm">
-            <summary className="cursor-pointer text-muted hover:text-text">Rename</summary>
-            <form action={renamePlace} className="mt-2 flex max-w-md gap-2">
-              <input type="hidden" name="id" value={place.id} />
-              <input
-                name="name"
-                defaultValue={place.custom_name ?? ""}
-                placeholder={place.ai_name ?? place.geo_name ?? "e.g. Home"}
-                maxLength={120}
-                className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 py-1.5 outline-none focus:border-primary"
-              />
-              <button
-                type="submit"
-                className="rounded-lg bg-primary px-3 py-1.5 font-medium text-white"
-              >
-                Save
-              </button>
-            </form>
-            <p className="mt-1 text-xs text-muted">Leave empty to use the looked-up name.</p>
-          </details>
-          )}
-        </div>
-      </header>
+  return (
+    <Page>
+      <EscapeBack fallback="/places" />
+      <PageHeader
+        back={{ href: "/places", label: "Places" }}
+        leading={
+          <IconTile icon={placeIconFor(place.kind, place.category)} size="lg" tone={place.kind ? "primary" : "neutral"} />
+        }
+        title={name}
+        subtitle={
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {place.kind && <KindBadge kind={place.kind} radius={place.radius_m} />}
+            {(what || locale) && <span>{[what, locale].filter(Boolean).join(" · ")}</span>}
+          </span>
+        }
+      />
+      {!place.custom_name && place.ai_name && (
+        <Callout className="-mt-2 mb-6">Picked by AI among the places nearby. Rename it if that&rsquo;s wrong.</Callout>
+      )}
+
+      <section aria-label="Totals" className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Stat label="Visits" value={visitCount.toLocaleString("en-GB")} />
+        <Stat label="Time spent" value={formatDuration(place.total_time)} />
+        <Stat label="Last visit" value={lastVisit ? formatDateShort(lastVisit, tz) : "—"} className="col-span-2 sm:col-span-1" />
+      </section>
+
+      {!place.kind && (
+        <details className="group mb-6">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-control text-meta font-medium text-secondary hover:text-text [&::-webkit-details-marker]:hidden">
+            <Pencil size={16} strokeWidth={1.75} aria-hidden />
+            Rename
+          </summary>
+          <form action={renamePlace} className="mt-2 flex max-w-md gap-2">
+            <input type="hidden" name="id" value={place.id} />
+            <Input
+              name="name"
+              aria-label="Name"
+              defaultValue={place.custom_name ?? ""}
+              placeholder={place.ai_name ?? place.geo_name ?? "e.g. Home"}
+              maxLength={120}
+              className="flex-1"
+            />
+            <Button type="submit" variant="primary">
+              Save
+            </Button>
+          </form>
+          <p className="mt-1.5 text-meta text-muted">Leave empty to use the looked-up name.</p>
+        </details>
+      )}
 
       <SavePanel place={place} />
 
-      <section className="mb-10">
-        <h2 className="mb-3 text-sm font-semibold text-muted">Photos</h2>
+      <section className="mb-8">
+        <SectionHeader title="Photos" />
         <PhotoGallery placeId={Number(place.id)} />
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-muted">
-          Visits{visitCount > VISIT_LIMIT ? ` (latest ${VISIT_LIMIT})` : ""}
-        </h2>
+        <SectionHeader
+          title={
+            <>
+              Visits{" "}
+              <span className="ml-1 font-normal tabular-nums text-muted">
+                {visitCount > VISIT_LIMIT ? `latest ${VISIT_LIMIT} of ${visitCount}` : visitCount}
+              </span>
+            </>
+          }
+        />
         {visits.length === 0 ? (
-          <p className="text-sm text-muted">No visits recorded yet.</p>
+          <EmptyState icon={CalendarDays} title="No visits recorded yet" />
         ) : (
-          <ul className="mk-card divide-y divide-border">
+          <CardList>
             {visits.map((v) => (
-              <li key={v.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{formatDateShort(v.started_at, tz)}</p>
-                  <p className="text-xs text-muted">
-                    {formatTime(v.started_at, tz)} – {formatTime(v.ended_at, tz)}
-                  </p>
-                </div>
-                <span className="shrink-0 text-sm text-muted">{formatDuration(v.duration)}</span>
-              </li>
+              <ListRow
+                key={v.id}
+                href={`/timeline?date=${dayOf.format(v.started_at)}`}
+                title={formatDateShort(v.started_at, tz)}
+                meta={`${formatTime(v.started_at, tz)} – ${formatTime(v.ended_at, tz)}`}
+                trailing={formatDuration(v.duration)}
+              />
             ))}
-          </ul>
+          </CardList>
         )}
       </section>
-    </div>
+    </Page>
   );
 }
 
@@ -165,12 +180,12 @@ export default async function PlaceDetailPage({
 function SavePanel({ place }: { place: PlaceRow }) {
   const saved = place.kind != null;
   return (
-    <section className="mk-card mb-10 p-5" aria-labelledby="save-place">
+    <Card as="section" className="mb-8" aria-labelledby="save-place">
       <div className="mb-4">
-        <h2 id="save-place" className="font-semibold">
+        <h2 id="save-place" className="text-heading text-text">
           {saved ? "Saved place" : "Save this place"}
         </h2>
-        <p className="mt-0.5 text-sm text-muted">
+        <p className="mt-0.5 text-meta text-muted">
           {saved
             ? "Visits within its size snap here, even across buildings."
             : "Label it Home, Family, School… so visits nearby snap to it and trips know your homes."}
@@ -178,35 +193,29 @@ function SavePanel({ place }: { place: PlaceRow }) {
       </div>
       <form action={savePlace} className="flex max-w-xl flex-col gap-4">
         <input type="hidden" name="id" value={place.id} />
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted">Name</span>
-          <input
+        <Field label="Name" htmlFor="save-name">
+          <Input
+            id="save-name"
             name="name"
             defaultValue={place.custom_name ?? ""}
             placeholder={place.geo_name ?? "e.g. Mom's"}
             maxLength={120}
-            className="rounded-lg border border-border bg-surface-2 px-3 py-2 outline-none focus:border-primary"
           />
-        </label>
+        </Field>
         <KindPicker defaultValue={place.kind} />
         <SizePicker defaultValue={place.radius_m} />
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="submit" className="rounded-lg bg-primary px-4 py-2 font-medium text-white">
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+          <Button type="submit" variant="primary">
             {saved ? "Save changes" : "Save place"}
-          </button>
+          </Button>
           {saved && (
-            <button
-              type="submit"
-              formAction={unsavePlace}
-              formNoValidate
-              className="rounded-lg border border-border px-4 py-2 font-medium text-muted hover:text-text"
-            >
+            <Button type="submit" formAction={unsavePlace} formNoValidate>
               Unsave
-            </button>
+            </Button>
           )}
-          <span className="text-xs text-muted">Changing the size re-sorts your visits in a minute or so.</span>
+          <span className="text-meta text-muted">Changing the size re-sorts your visits in a minute or so.</span>
         </div>
       </form>
-    </section>
+    </Card>
   );
 }

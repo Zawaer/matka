@@ -9,7 +9,8 @@ import useSWR from "swr";
 import { MODE_META } from "@/lib/modes";
 import { DaySummaryStrip } from "./DaySummaryStrip";
 import { edgeGaps, gapBetween, missingTravel, type MissingTravel } from "./gaps";
-import { placeIcon } from "@/lib/placeIcons";
+import { ArrowRight, CalendarX2, ChevronLeft, ChevronRight, CloudOff, MapPinOff, Pencil } from "lucide-react";
+import { Badge, Button, EmptyState, IconButton, ModeGlyph, PlaceGlyph, Skeleton, cx, inputClass, placeIconLabel } from "@/components/ui";
 import { MissingTravelRow, PhotoStrip, PhotoViewer, PlaceQuestion, useDayPhotos, type PhotoSet } from "./TimelineExtras";
 import { dayHasMap, selectionKey } from "./dayMap";
 import type { DayMapSelection } from "./DayMap";
@@ -33,7 +34,7 @@ type TimelineResponse = {
 // MapLibre is big: load the day map only once a day with something to draw shows up.
 const DayMap = dynamic(() => import("./DayMap"), {
   ssr: false,
-  loading: () => <div className="mk-card h-[260px] animate-pulse bg-surface-2/60 md:h-[340px]" aria-hidden />,
+  loading: () => <Skeleton className="h-[260px] rounded-card md:h-[340px]" />,
 });
 
 /** Rows scrolled to from the map stop below the sticky map and above the phone's tab bar. */
@@ -138,7 +139,7 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
         <div
           className={
             showMap
-              ? "sticky top-[49px] z-20 -mx-5 mt-3 bg-bg px-5 pb-1 pt-3 md:top-0 md:-mx-10 md:px-10 md:pt-4"
+              ? "sticky top-[52px] z-20 -mx-4 mt-2 bg-bg px-4 pb-1 pt-3 sm:-mx-6 sm:px-6 md:top-0 md:-mx-10 md:px-10 md:pt-4"
               : "hidden"
           }
         >
@@ -148,19 +149,26 @@ export function Timeline({ initialDate = null }: { initialDate?: string | null }
 
       <div className={showMap ? "mt-4" : "mt-6"}>
         {error ? (
-          <Notice
+          <EmptyState
+            icon={CloudOff}
             title="Couldn't load this day"
-            body="Something went wrong talking to the server. Try again."
+            description="Something went wrong talking to the server."
+            action={
+              <Button size="sm" onClick={() => window.location.reload()}>
+                Try again
+              </Button>
+            }
           />
         ) : isLoading && !data ? (
           <TimelineSkeleton />
         ) : items.length === 0 ? (
-          <Notice
-            title="Nothing here"
-            body={
+          <EmptyState
+            icon={CalendarX2}
+            title={current ? "Nothing recorded" : "No location history yet"}
+            description={
               current
-                ? "No visits or trips recorded on this day."
-                : "No location history yet."
+                ? "No visits or trips on this day. Pick another day with the arrows or the date."
+                : "Pair your phone under Devices; days appear here as soon as it records."
             }
           />
         ) : (
@@ -230,30 +238,24 @@ function DayHeader({
   nextDate: string | null;
   onPick: (d: string) => void;
 }) {
+  const year = date ? new Date(date).toLocaleDateString("en-GB", { year: "numeric" }) : null;
   return (
-    <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        <h1 className="truncate text-2xl font-semibold tracking-tight md:text-3xl">
+        <h1 className="truncate text-title text-text">
           {date ? formatDateLong(date) : "Timeline"}
         </h1>
-        {date && (
-          <p className="mt-0.5 text-sm text-muted">
-            {new Date(date).toLocaleDateString([], { year: "numeric" })}
-          </p>
-        )}
+        {year && <p className="mt-0.5 text-sm text-muted">{year}</p>}
       </div>
 
-      <div className="flex items-center gap-2">
-        <NavButton
+      <div className="flex items-center gap-1.5">
+        <IconButton
+          icon={ChevronLeft}
           label="Previous day"
+          variant="secondary"
           disabled={!prevDate}
           onClick={() => prevDate && onPick(prevDate)}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            <path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z" />
-          </svg>
-        </NavButton>
-
+        />
         <label className="relative">
           <span className="sr-only">Pick a date</span>
           <input
@@ -262,45 +264,18 @@ function DayHeader({
             min={minDate}
             max={maxDate}
             onChange={(e) => e.target.value && onPick(e.target.value)}
-            className="mk-card h-9 cursor-pointer px-3 text-sm text-text [color-scheme:light_dark]"
+            className={cx(inputClass, "w-auto cursor-pointer tabular-nums [color-scheme:light_dark]")}
           />
         </label>
-
-        <NavButton
+        <IconButton
+          icon={ChevronRight}
           label="Next day"
+          variant="secondary"
           disabled={!nextDate}
           onClick={() => nextDate && onPick(nextDate)}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            <path d="M8.6 16.6 10 18l6-6-6-6-1.4 1.4L13.2 12z" />
-          </svg>
-        </NavButton>
+        />
       </div>
     </header>
-  );
-}
-
-function NavButton({
-  children,
-  label,
-  disabled,
-  onClick,
-}: {
-  children: React.ReactNode;
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="mk-card flex h-9 w-9 items-center justify-center text-muted transition-colors hover:text-text enabled:hover:border-primary/60 disabled:cursor-not-allowed disabled:opacity-40"
-    >
-      {children}
-    </button>
   );
 }
 
@@ -361,12 +336,12 @@ function Rail({
   return (
     <div className="relative flex w-10 shrink-0 flex-col items-center">
       <span
-        className={`w-px flex-1 ${topLine ? "bg-border" : "bg-transparent"}`}
+        className={`w-0.5 flex-1 ${topLine ? "bg-strong" : "bg-transparent"}`}
         style={{ minHeight: 10 }}
       />
       {children}
       <span
-        className={`w-px flex-1 ${bottomLine ? "bg-border" : "bg-transparent"}`}
+        className={`w-0.5 flex-1 ${bottomLine ? "bg-strong" : "bg-transparent"}`}
       />
     </div>
   );
@@ -390,7 +365,6 @@ function VisitRow({
   const name = placeTitle(visit.placeName, visit.category);
   const unknown = !visit.placeName;
   const kind = visit.placeKind ? KIND_META[visit.placeKind] : null;
-  const icon = placeIcon(visit.placeKind, visit.category, visit.osmKey);
   // "Visited X?": the name is a guess among several.
   const asking = !!visit.candidates?.length;
 
@@ -402,54 +376,55 @@ function VisitRow({
     >
       <Rail topLine={!isFirst} bottomLine={!isLast}>
         <span
-          className="relative z-10 flex h-8 w-8 items-center justify-center rounded-full border border-primary/40 bg-surface text-primary shadow-sm"
-          title={kind?.label ?? icon.label}
+          className={cx(
+            "relative z-10 flex h-8 w-8 items-center justify-center rounded-full border bg-surface transition-colors",
+            pick.selected ? "border-primary text-primary" : "border-strong text-secondary",
+          )}
+          title={placeIconLabel(visit.placeKind, visit.category, visit.osmKey)}
         >
           {num != null && (
             <span
-              className={`absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums ${
-                pick.selected ? "bg-primary text-surface" : "border border-primary bg-surface text-primary"
+              className={`absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-caption font-semibold leading-none tabular-nums ${
+                pick.selected ? "bg-primary text-on-primary" : "border border-strong bg-surface text-secondary"
               }`}
               aria-label={`Stop ${num}`}
             >
               {num}
             </span>
           )}
-          <span className="text-[15px] leading-none" aria-hidden>
-            {icon.emoji}
-          </span>
+          <PlaceGlyph kind={visit.placeKind} category={visit.category} osmKey={visit.osmKey} size={16} />
         </span>
       </Rail>
 
       <div
-        className={`mk-card my-1.5 flex-1 p-4 transition-shadow ${
-          pick.selected ? "!border-primary ring-2 ring-primary/40" : ""
-        }`}
+        className={cx(
+          "my-1.5 min-w-0 flex-1 rounded-card border bg-surface px-4 py-3 shadow-card transition-colors",
+          pick.selected ? "border-primary ring-1 ring-primary/40" : "border-border",
+          pick.onClick && !pick.selected && "hover:border-strong",
+        )}
       >
         <div className="flex items-start justify-between gap-3">
-          <h3
-            className={`min-w-0 break-words font-medium ${
-              unknown ? "text-muted" : "text-text"
-            }`}
-          >
-            <Link href={`/places/${visit.placeId}`} className="hover:text-primary">
+          <h3 className={`min-w-0 break-words text-label ${unknown ? "text-muted" : "text-text"}`}>
+            <Link href={`/places/${visit.placeId}`} className="hover:text-primary hover:underline">
               {name}
             </Link>
             {asking && (
-              <span className="text-primary" title="Not sure this is the right place">
+              <span className="ml-0.5 text-primary" title="Not sure this is the right place">
                 ?
               </span>
             )}
           </h3>
-          <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-muted">
+          <span className="shrink-0 pt-px text-meta font-medium tabular-nums text-secondary">
             {formatDuration(visit.duration)}
           </span>
         </div>
-        <p className="mt-1 text-sm text-muted">
-          {kind && kind.label !== name && <span className="font-medium text-primary">{kind.label} · </span>}
-          {formatTime(visit.startedAt)}
-          {visit.endedAt ? ` – ${formatTime(visit.endedAt)}` : ""}
-        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta tabular-nums text-muted">
+          {kind && kind.label !== name && <Badge tone="primary">{kind.label}</Badge>}
+          <span>
+            {formatTime(visit.startedAt)}
+            {visit.endedAt ? ` – ${formatTime(visit.endedAt)}` : ""}
+          </span>
+        </div>
         {asking && <PlaceQuestion visit={visit} shownName={name} />}
         {photos}
       </div>
@@ -494,17 +469,26 @@ function subRows(track: TrackSummary & { waits?: Wait[] }): SubRow[] {
 
 function LegLine({ leg: l }: { leg: TransitLeg }) {
   const c = badgeColors(l.kind);
-  const route = [l.fromStop, l.toStop].filter(Boolean).join(" → ");
+  const stops = [l.fromStop, l.toStop].filter(Boolean) as string[];
   return (
-    <div className="flex flex-wrap items-center gap-2 pl-9 text-sm">
+    <div className="flex flex-wrap items-center gap-2 pl-9 text-meta">
       <span
-        className="rounded-md px-2 py-0.5 text-xs font-bold"
+        className="rounded-[5px] px-1.5 py-px text-caption font-semibold"
         style={{ backgroundColor: c.bg, color: c.fg }}
         title={l.lines.length > 1 ? `One of ${l.lines.join(", ")} (they share this stretch)` : undefined}
       >
         {legBadgeText(l.kind, l.lines)}
       </span>
-      {route && <span className="text-muted">{route}</span>}
+      {stops.length > 0 && (
+        <span className="flex min-w-0 flex-wrap items-center gap-1 text-muted">
+          {stops.map((st, i) => (
+            <Fragment key={i}>
+              {i > 0 && <ArrowRight size={16} strokeWidth={1.75} aria-label="to" />}
+              <span>{st}</span>
+            </Fragment>
+          ))}
+        </span>
+      )}
     </div>
   );
 }
@@ -544,45 +528,43 @@ function MoveRow({
       </div>
 
       <div
-        className={`-ml-2 flex flex-1 flex-col gap-1.5 rounded-xl px-2 py-2 transition-colors ${
-          pick.selected ? "bg-surface-2" : pick.onClick ? "hover:bg-surface-2/50" : ""
-        }`}
+        className={cx(
+          "-ml-2 flex min-w-0 flex-1 flex-col gap-1.5 rounded-control px-2 py-2 transition-colors",
+          pick.selected ? "bg-surface-2" : pick.onClick && "hover:bg-surface-2/50",
+        )}
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm"
-            style={{ backgroundColor: `${meta.color}22` }}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2"
+            style={{ color: meta.color }}
             aria-hidden
           >
-            {meta.icon}
+            <ModeGlyph mode={track.mode} size={16} strokeWidth={1.75} />
           </span>
-          <span className="text-sm font-medium" style={{ color: meta.color }}>
-            {meta.label}
-          </span>
+          <span className="text-label text-text">{meta.label}</span>
           {parts.length > 0 && (
-            <span className="whitespace-nowrap text-sm text-muted">· {parts.join(" · ")}</span>
+            <span className="whitespace-nowrap text-meta tabular-nums text-muted">{parts.join(" · ")}</span>
           )}
           {track.correctionId != null && (
-            <span
-              className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-muted"
-              title={track.added ? "You added this trip; nothing was recorded" : "You fixed this trip"}
-            >
-              {track.added ? "added by you" : "edited"}
-            </span>
+            <Badge title={track.added ? "You added this trip; nothing was recorded" : "You fixed this trip"}>
+              {track.added ? "Added by you" : "Edited"}
+            </Badge>
           )}
           {track.mode !== "stationary" && (
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={Pencil}
               onClick={() => onFix(track)}
-              className="ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium text-muted hover:bg-surface-2 hover:text-primary"
+              className="ml-auto h-7 px-2 text-muted"
             >
-              {track.added ? "Edit" : track.correctionId != null ? "Edit fix" : "Fix this trip"}
-            </button>
+              {track.added ? "Edit" : track.correctionId != null ? "Edit fix" : "Fix trip"}
+            </Button>
           )}
         </div>
         {subRows(track).map((r, i) =>
           r.kind === "wait" ? (
-            <div key={i} className="pl-9 text-xs text-muted">
+            <div key={i} className="pl-9 text-caption text-muted">
               {r.stop ? `Waited at ${r.stop}` : "Change"} · {formatDuration(r.secs)}
             </div>
           ) : (
@@ -601,18 +583,23 @@ function GapRow({ from, to }: { from: string; to: string }) {
     <li className="flex gap-3 sm:gap-4">
       <div className="relative flex w-10 shrink-0 flex-col items-center">
         <span
-          className="w-px flex-1"
+          className="w-0.5 flex-1"
           style={{
             backgroundImage: "linear-gradient(currentColor 30%, transparent 0%)",
-            backgroundSize: "1px 6px",
+            backgroundSize: "2px 6px",
             backgroundRepeat: "repeat-y",
             opacity: 0.35,
           }}
         />
       </div>
-      <p className="flex-1 py-2 text-sm italic text-muted">
-        No location recorded · {formatDuration(secs)}
-        <span className="not-italic"> ({formatTime(from)} – {formatTime(to)})</span>
+      <p className="flex flex-1 items-center gap-1.5 py-2.5 text-meta text-muted">
+        <MapPinOff size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+        <span>
+          No location recorded · {formatDuration(secs)}{" "}
+          <span className="tabular-nums">
+            ({formatTime(from)} – {formatTime(to)})
+          </span>
+        </span>
       </p>
     </li>
   );
@@ -620,29 +607,15 @@ function GapRow({ from, to }: { from: string; to: string }) {
 
 /* ---------------- States ---------------- */
 
-function Notice({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="mk-card flex flex-col items-center gap-2 px-6 py-14 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-muted">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-          <path d="M13 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-7-7V3Zm-1 4v6l5 3 .9-1.6-4.9-2.9V7h-1Z" />
-        </svg>
-      </div>
-      <h2 className="font-medium text-text">{title}</h2>
-      <p className="max-w-xs text-sm text-muted">{body}</p>
-    </div>
-  );
-}
-
 function TimelineSkeleton() {
   return (
     <div className="flex flex-col gap-3" aria-hidden>
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex gap-4">
           <div className="flex w-10 justify-center">
-            <span className="h-8 w-8 animate-pulse rounded-full bg-surface-2" />
+            <Skeleton className="h-8 w-8 rounded-full" />
           </div>
-          <div className="mk-card h-20 flex-1 animate-pulse bg-surface-2/40" />
+          <Skeleton className="h-[74px] flex-1 rounded-card" />
         </div>
       ))}
     </div>

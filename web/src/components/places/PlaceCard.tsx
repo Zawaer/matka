@@ -1,31 +1,29 @@
 import Link from "next/link";
 import { formatDuration } from "@/lib/format";
-import { categoryIcon, placeCategoryLine, placeTitle } from "./category";
+import { placeCategoryLine, placeTitle } from "./category";
 import type { PlaceListItem } from "@/lib/places";
 import { KIND_META, formatRadius } from "@/lib/savedPlaces";
+import { cardClass, cx, IconTile, placeIconFor } from "@/components/ui";
 
 export function PlaceCard({ place }: { place: PlaceListItem }) {
   const name = placeTitle(place.name, place.category);
   const what = placeCategoryLine(place.name, place.category);
   const locale = [place.city, place.country].filter(Boolean).join(", ");
+  const unnamed = !place.kind && !what && !locale;
 
   return (
     <Link
       href={`/places/${place.id}`}
-      className="mk-card group flex flex-col gap-3 p-4 transition-colors hover:border-primary/60"
+      className={cx(cardClass({ padding: "sm", interactive: true }), "group flex flex-col gap-3 p-3.5")}
     >
       <div className="flex items-start gap-3">
-        <span
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-xl"
-          aria-hidden
-        >
-          {place.kind ? KIND_META[place.kind].icon : categoryIcon(place.category)}
-        </span>
+        <IconTile
+          icon={placeIconFor(place.kind, place.category)}
+          tone={place.kind ? "primary" : "neutral"}
+        />
         <div className="min-w-0 flex-1">
-          <h3 className="truncate font-medium group-hover:text-primary">
-            {name}
-          </h3>
-          <p className="truncate text-xs text-muted">
+          <h3 className={cx("truncate text-label", place.name ? "text-text" : "text-secondary")}>{name}</h3>
+          <p className="mt-0.5 truncate text-meta text-muted">
             {place.kind ? (
               <span className="font-medium text-primary">
                 {KIND_META[place.kind].label}
@@ -35,17 +33,17 @@ export function PlaceCard({ place }: { place: PlaceListItem }) {
               what
             )}
             {locale ? `${place.kind || what ? " · " : ""}${locale}` : ""}
-            {!place.kind && !what && !locale ? "Not named yet" : ""}
+            {unnamed ? "Not named yet" : ""}
           </p>
         </div>
       </div>
 
-      <div className="mt-auto flex items-center justify-between text-sm">
-        <span className="text-muted">
-          <span className="font-semibold text-text">{place.visitCount}</span>{" "}
+      <div className="mt-auto flex items-center justify-between border-t border-border pt-2.5 text-meta text-muted">
+        <span>
+          <span className="font-medium tabular-nums text-text">{place.visitCount}</span>{" "}
           {place.visitCount === 1 ? "visit" : "visits"}
         </span>
-        <span className="text-muted">{formatDuration(place.totalTime)}</span>
+        <span className="tabular-nums">{formatDuration(place.totalTime)}</span>
       </div>
     </Link>
   );

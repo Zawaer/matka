@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CircleAlert, CircleCheck, Trash2, Upload } from "lucide-react";
 import type { ImportSummary } from "@/lib/google/import";
+import { Button, Callout, buttonClass, cx } from "@/components/ui";
 
 /** Below the proxy's 10 MB request body buffer, and small enough for smooth progress. */
 const CHUNK = 4 * 1024 * 1024;
 
-const button = "rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-60";
 const nf = new Intl.NumberFormat("en-GB");
 
 function day(ts: number, timeZone: string) {
@@ -136,23 +137,32 @@ export function GoogleImport({ initial, timeZone }: { initial: ImportSummary[]; 
 
   const hasPoints = imports.some((i) => i.inserted > 0);
 
+  const done = imports.filter((i) => i.status !== "processing");
+
   return (
-    <div className="flex flex-col gap-3" id="google-import">
-      <p className="text-sm text-muted">
-        Fill the gaps in your history from Google Maps Timeline. Export it on your phone: Android
-        Settings → Location → Location services → Timeline → Export Timeline data (gives
-        Timeline.json), or in Google Maps on iPhone: Settings → Personal content → Export Timeline
-        data. Older Google Takeout files work too: Records.json and the Semantic Location History
-        month files (select several at once).
-      </p>
-      <p className="text-xs text-muted">
-        Only times Matka has no recording of its own are filled; points within 10 minutes of a
-        recorded one are skipped. The file is read on this server and deleted right after; nothing
-        but the added points is kept.
-      </p>
-      <div className="flex flex-wrap items-center gap-3">
-        <label className={`${button} cursor-pointer ${busy ? "pointer-events-none opacity-60" : ""}`}>
-          Import Google Timeline
+    <div className="flex flex-col gap-4" id="google-import">
+      <div className="flex flex-col gap-1.5">
+        <p className="text-sm text-secondary">
+          Export it on your phone: Android Settings → Location → Location services → Timeline → Export Timeline data
+          (gives Timeline.json), or in Google Maps on iPhone: Settings → Personal content → Export Timeline data. Older
+          Google Takeout files work too: Records.json and the Semantic Location History month files (select several at
+          once).
+        </p>
+        <p className="text-meta text-muted">
+          Only times Matka has no recording of its own are filled; points within 10 minutes of a recorded one are
+          skipped. The file is read on this server and deleted right after; nothing but the added points is kept.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label
+          className={cx(
+            buttonClass({ variant: "secondary" }),
+            "cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary",
+            busy && "pointer-events-none opacity-50",
+          )}
+        >
+          <Upload size={16} strokeWidth={1.75} aria-hidden />
+          Choose Timeline files
           <input
             ref={input}
             type="file"
@@ -167,14 +177,9 @@ export function GoogleImport({ initial, timeZone }: { initial: ImportSummary[]; 
           />
         </label>
         {hasPoints && !busy && (
-          <button
-            type="button"
-            onClick={() => void removeAll()}
-            disabled={removing}
-            className="rounded-lg border border-border px-4 py-2 text-sm text-muted hover:border-red-500 hover:text-red-500 disabled:opacity-60"
-          >
-            Remove imported Google points
-          </button>
+          <Button variant="danger" icon={Trash2} onClick={() => void removeAll()} disabled={removing}>
+            Remove imported points
+          </Button>
         )}
       </div>
 
@@ -190,40 +195,62 @@ export function GoogleImport({ initial, timeZone }: { initial: ImportSummary[]; 
           label={`Importing… ${Math.round(phase.progress * 100)}%${phase.inserted ? `, ${nf.format(phase.inserted)} points added so far` : ""}`}
         />
       )}
-      {phase.kind === "error" && <p className="text-sm text-red-500">{phase.message}</p>}
-      {removed && <p className="text-sm text-primary">{removed}</p>}
+      {phase.kind === "error" && (
+        <Callout tone="danger" role="alert" title="Import failed">
+          {phase.message}
+        </Callout>
+      )}
+      {removed && (
+        <Callout tone="success" role="status">
+          {removed}
+        </Callout>
+      )}
 
-      {imports.filter((i) => i.status !== "processing").length > 0 && (
-        <ul className="flex flex-col gap-2 text-sm">
-          {imports
-            .filter((i) => i.status !== "processing")
-            .map((i) => (
-              <li key={i.id} className="rounded-lg border border-border px-3 py-2">
-                <p className={i.status === "failed" ? "text-red-500" : ""}>
-                  {i.status === "failed" ? i.error ?? "Import failed." : importSentence(i, timeZone)}
-                </p>
-                <p className="mt-0.5 text-xs text-muted">
-                  {new Date(i.startedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone })}
-                  {" · "}
-                  {i.files.length === 1 ? i.files[0].name : `${i.files.length} files`} ({mb(i.bytes)})
-                  {i.formats.length > 0 && ` · ${i.formats.join(", ")}`}
-                  {i.status === "failed" && i.inserted > 0 && ` · ${nf.format(i.inserted)} points were added before it stopped`}
-                </p>
-              </li>
-            ))}
-        </ul>
+      {done.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-caption font-medium uppercase tracking-wide text-muted">Earlier imports</h3>
+          <ul className="divide-y divide-border overflow-hidden rounded-control border border-border">
+            {done.map((i) => {
+              const failed = i.status === "failed";
+              const I = failed ? CircleAlert : CircleCheck;
+              return (
+                <li key={i.id} className="flex gap-2.5 px-3 py-2.5">
+                  <I
+                    size={16}
+                    strokeWidth={1.75}
+                    aria-hidden
+                    className={cx("mt-0.5 shrink-0", failed ? "text-danger" : "text-success")}
+                  />
+                  <div className="min-w-0">
+                    <p className={cx("text-sm", failed ? "text-danger" : "text-text")}>
+                      {failed ? i.error ?? "Import failed." : importSentence(i, timeZone)}
+                    </p>
+                    <p className="mt-0.5 text-meta text-muted">
+                      {new Date(i.startedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone })}
+                      {" · "}
+                      {i.files.length === 1 ? i.files[0].name : `${i.files.length} files`} ({mb(i.bytes)})
+                      {i.formats.length > 0 && ` · ${i.formats.join(", ")}`}
+                      {failed && i.inserted > 0 && ` · ${nf.format(i.inserted)} points were added before it stopped`}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </div>
   );
 }
 
 function Progress({ value, label }: { value: number; label: string }) {
+  const pct = Math.round(Math.min(1, value) * 100);
   return (
-    <div>
-      <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-        <div className="h-full bg-primary transition-[width]" style={{ width: `${Math.round(Math.min(1, value) * 100)}%` }} />
+    <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+      <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+        <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
       </div>
-      <p className="mt-1 text-xs text-muted">{label}</p>
+      <p className="mt-1.5 text-meta tabular-nums text-muted">{label}</p>
     </div>
   );
 }

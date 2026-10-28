@@ -6,7 +6,9 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import type { PlaceHit, SearchResult } from "@/lib/placeSearch";
 import { KIND_META } from "@/lib/savedPlaces";
 import { formatDate, formatTimeSpent } from "@/lib/search";
-import { categoryIcon, placeCategoryLine, placeTitle } from "./category";
+import { placeCategoryLine, placeTitle } from "./category";
+import { Building2, Earth, Search, SearchX, X } from "lucide-react";
+import { Callout, cardClass, cx, EmptyState, IconTile, inputClass, placeIconFor, SectionHeader, Skeleton } from "@/components/ui";
 
 const DEBOUNCE_MS = 180;
 
@@ -121,16 +123,12 @@ export function PlaceSearch({ initialQuery, children }: { initialQuery: string; 
   return (
     <>
       <div className="relative mb-6">
-        <svg
-          className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-muted"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="currentColor"
+        <Search
+          size={16}
+          strokeWidth={1.75}
           aria-hidden
-        >
-          <path d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z" />
-        </svg>
+          className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted"
+        />
         <input
           ref={input}
           type="search"
@@ -144,7 +142,7 @@ export function PlaceSearch({ initialQuery, children }: { initialQuery: string; 
           spellCheck={false}
           enterKeyHint="search"
           maxLength={100}
-          className="w-full rounded-xl border border-border bg-surface py-2.5 pr-12 pl-10 text-base outline-none placeholder:text-muted focus:border-primary [&::-webkit-search-cancel-button]:hidden"
+          className={cx(inputClass, "h-10 pr-12 pl-9 text-base sm:text-sm [&::-webkit-search-cancel-button]:hidden")}
         />
         {query ? (
           <button
@@ -153,13 +151,14 @@ export function PlaceSearch({ initialQuery, children }: { initialQuery: string; 
               setQuery("");
               input.current?.focus();
             }}
-            className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md px-2 py-1 text-sm text-muted hover:text-text"
+            className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-text"
             aria-label="Clear search"
+            title="Clear search"
           >
-            ✕
+            <X size={16} strokeWidth={1.75} aria-hidden />
           </button>
         ) : (
-          <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded border border-border px-1.5 text-xs text-muted md:block">
+          <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded border border-border bg-surface-2 px-1.5 font-mono text-caption text-muted md:block">
             /
           </kbd>
         )}
@@ -177,17 +176,20 @@ export function PlaceSearch({ initialQuery, children }: { initialQuery: string; 
           className={pending && shown ? "opacity-60 transition-opacity" : undefined}
         >
           {state.status === "error" && !current ? (
-            <div className="mk-card p-6 text-center text-muted">Search failed. Please try again.</div>
+            <Callout tone="danger" title="Search failed" role="alert">
+              Something went wrong. Please try again.
+            </Callout>
           ) : !shown ? (
-            <p className="px-1 text-sm text-muted">Searching…</p>
+            <SearchSkeleton />
           ) : shown.places.length === 0 && shown.areas.length === 0 ? (
             current ? (
-              <div className="mk-card px-6 py-10 text-center">
-                <p className="font-medium">Nothing matches “{trimmed}”</p>
-                <p className="mt-1 text-sm text-muted">Try part of a name, a street, a city, or a type like “cafe”.</p>
-              </div>
+              <EmptyState
+                icon={SearchX}
+                title={`Nothing matches “${trimmed}”`}
+                description="Try part of a name, a street, a city, or a type like “cafe”."
+              />
             ) : (
-              <p className="px-1 text-sm text-muted">Searching…</p>
+              <SearchSkeleton />
             )
           ) : (
             <SearchResults result={shown} />
@@ -201,10 +203,17 @@ export function PlaceSearch({ initialQuery, children }: { initialQuery: string; 
 function SearchResults({ result }: { result: SearchResult }) {
   const places = result.places.length > 0 && (
     <section>
-      <h2 className="mb-2 text-sm font-semibold text-muted">
-        Places · {result.places.length}
-        {result.places.length >= 30 ? "+" : ""}
-      </h2>
+      <SectionHeader
+        title={
+          <>
+            Places{" "}
+            <span className="ml-1 font-normal tabular-nums text-muted">
+              {result.places.length}
+              {result.places.length >= 30 ? "+" : ""}
+            </span>
+          </>
+        }
+      />
       <ul className="flex flex-col gap-2">
         {result.places.map((p) => (
           <li key={p.id}>
@@ -216,24 +225,22 @@ function SearchResults({ result }: { result: SearchResult }) {
   );
   const areas = result.areas.length > 0 && (
     <section>
-      <h2 className="mb-2 text-sm font-semibold text-muted">Cities and countries</h2>
+      <SectionHeader title="Cities and countries" />
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {result.areas.map((a) => (
           <li key={`${a.type}/${a.name}/${a.country ?? ""}`}>
             <Link
               href={a.href}
               data-result
-              className="mk-card flex items-center gap-3 p-3 outline-none transition-colors hover:border-primary/60 focus-visible:border-primary"
+              className={cx(cardClass({ padding: "sm", interactive: true }), "flex items-center gap-3 focus-visible:border-primary")}
             >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-lg" aria-hidden>
-                {a.type === "city" ? "🏙️" : "🌍"}
-              </span>
+              <IconTile icon={a.type === "city" ? Building2 : Earth} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium">
+                <span className="block truncate text-label text-text">
                   {a.name}
                   {a.country && <span className="font-normal text-muted"> · {a.country}</span>}
                 </span>
-                <span className="block truncate text-xs text-muted">
+                <span className="mt-0.5 block truncate text-meta text-muted">
                   {a.places} {a.places === 1 ? "place" : "places"} · {a.visits} {a.visits === 1 ? "visit" : "visits"}
                   {a.lastVisit ? ` · last ${formatDate(a.lastVisit.slice(0, 10))}` : ""}
                 </span>
@@ -260,19 +267,22 @@ function PlaceResult({ place: p }: { place: PlaceHit }) {
   const locale = [p.city, p.country].filter(Boolean).join(", ");
   const sub = [what, locale].filter(Boolean).join(" · ");
   return (
-    <div className="mk-card flex flex-col gap-2 p-3 transition-colors focus-within:border-primary hover:border-primary/60 sm:flex-row sm:items-center sm:gap-4">
+    <div
+      className={cx(
+        cardClass({ padding: "sm", interactive: true }),
+        "flex flex-col gap-2 focus-within:border-primary sm:flex-row sm:items-center sm:gap-4",
+      )}
+    >
       <Link href={`/places/${p.id}`} data-result className="group flex min-w-0 flex-1 items-center gap-3 outline-none">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-lg" aria-hidden>
-          {p.kind ? KIND_META[p.kind].icon : categoryIcon(p.category)}
-        </span>
+        <IconTile icon={placeIconFor(p.kind, p.category)} tone={p.kind ? "primary" : "neutral"} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium group-hover:text-primary group-focus-visible:text-primary">{name}</span>
-          {sub && <span className="block truncate text-xs text-muted">{sub}</span>}
-          <span className="mt-0.5 block text-sm">
+          <span className="block truncate text-label text-text group-hover:text-primary group-focus-visible:text-primary">{name}</span>
+          {sub && <span className="mt-0.5 block truncate text-meta text-muted">{sub}</span>}
+          <span className="mt-1 block text-meta">
             {p.lastVisitDate ? (
               <>
                 <span className="text-muted">Last visit </span>
-                <span className="font-medium">{formatDate(p.lastVisitDate, true)}</span>
+                <span className="font-medium text-text">{formatDate(p.lastVisitDate, true)}</span>
                 <span className="text-muted">
                   {" "}
                   · {p.visitCount} {p.visitCount === 1 ? "visit" : "visits"} · {formatTimeSpent(p.totalTime)}
@@ -285,12 +295,12 @@ function PlaceResult({ place: p }: { place: PlaceHit }) {
         </span>
       </Link>
       {p.recentDates.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pl-[3.25rem] sm:max-w-[45%] sm:justify-end sm:pl-0" aria-label="Recent visits">
+        <div className="flex flex-wrap gap-1.5 pl-12 sm:max-w-[45%] sm:justify-end sm:pl-0" aria-label="Recent visits">
           {p.recentDates.map((d) => (
             <Link
               key={d}
               href={`/timeline?date=${d}`}
-              className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted transition-colors hover:border-primary/60 hover:text-text focus-visible:border-primary focus-visible:text-text focus-visible:outline-none"
+              className="inline-flex h-6 items-center rounded-full border border-border px-2.5 text-caption tabular-nums text-secondary transition-colors hover:border-strong hover:bg-surface-2 hover:text-text"
               title={`Open ${d} on the timeline`}
             >
               {formatDate(d)}
@@ -298,6 +308,16 @@ function PlaceResult({ place: p }: { place: PlaceHit }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function SearchSkeleton() {
+  return (
+    <div className="flex flex-col gap-2" aria-label="Searching">
+      {[0, 1, 2].map((i) => (
+        <Skeleton key={i} className="h-[66px] rounded-card" />
+      ))}
     </div>
   );
 }

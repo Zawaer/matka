@@ -6,6 +6,8 @@
 // viewer.
 
 import { useEffect, useState } from "react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Plus, Route, X } from "lucide-react";
+import { Button, Input, cx } from "@/components/ui";
 import useSWR, { useSWRConfig } from "swr";
 import { categoryLabel } from "@/components/places/category";
 import type { DayPhotosAnswer } from "@/lib/dayPhotos";
@@ -53,36 +55,37 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
     }
   }
 
-  const chip =
-    "rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted transition-colors hover:border-primary/60 hover:text-text disabled:opacity-50";
   return (
-    <div className="mt-2.5">
+    <div className="mt-3 border-t border-border pt-3">
       <div className="flex flex-wrap items-center gap-1.5">
-        <button type="button" className={chip} disabled={busy} onClick={() => answer({ confirm: true })}>
+        <span className="mr-1 text-meta text-muted">Right place?</span>
+        <Button size="sm" icon={Check} disabled={busy} onClick={() => answer({ confirm: true })} className="h-7">
           Yes
-        </button>
-        <button
-          type="button"
-          className={`${chip} ${open ? "border-primary/60 text-text" : ""}`}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          iconRight={ChevronDown}
           disabled={busy}
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
+          className={cx("h-7", open && "bg-surface-2 text-text")}
         >
           Pick another
-        </button>
+        </Button>
       </div>
       {open && (
-        <ul className="mt-2 overflow-hidden rounded-xl border border-border">
+        <ul className="mt-2 overflow-hidden rounded-control border border-border">
           {others.map((c) => (
             <li key={c.name} className="border-b border-border last:border-b-0">
               <button
                 type="button"
                 disabled={busy}
                 onClick={() => answer({ name: c.name, category: c.category })}
-                className="flex w-full items-baseline gap-1.5 px-3 py-2 text-left text-sm hover:bg-surface-2 disabled:opacity-50"
+                className="flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-2 disabled:opacity-50"
               >
                 <span className="min-w-0 truncate text-text">{c.name}</span>
-                <span className="shrink-0 text-xs text-muted">· {candidateType(c)}</span>
+                <span className="shrink-0 text-meta text-muted">{candidateType(c)}</span>
               </button>
             </li>
           ))}
@@ -95,28 +98,24 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
                   if (name.trim()) void answer({ name: name.trim() });
                 }}
               >
-                <input
+                <Input
                   autoFocus
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   maxLength={120}
                   placeholder="Name of this place"
                   aria-label="Name of this place"
-                  className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-2 py-1 text-sm text-text placeholder:text-muted focus:border-primary focus:outline-none"
+                  className="h-8 flex-1"
                 />
-                <button
-                  type="submit"
-                  disabled={busy || !name.trim()}
-                  className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                >
+                <Button type="submit" size="sm" variant="primary" disabled={busy || !name.trim()}>
                   Save
-                </button>
+                </Button>
               </form>
             ) : (
               <button
                 type="button"
                 onClick={() => setTyping(true)}
-                className="w-full px-3 py-2 text-left text-sm text-muted hover:bg-surface-2 hover:text-text"
+                className="w-full px-3 py-2 text-left text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text"
               >
                 Other name…
               </button>
@@ -125,7 +124,7 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
         </ul>
       )}
       {error && (
-        <p className="mt-1.5 text-xs text-accent" role="alert">
+        <p className="mt-1.5 text-meta text-danger" role="alert">
           Couldn&apos;t save: {error}
         </p>
       )}
@@ -144,34 +143,36 @@ export function MissingTravelRow({ gap, onAdd }: { gap: MissingTravel; onAdd: ()
         <span
           className="w-px flex-1"
           style={{
-            backgroundImage: "linear-gradient(var(--mk-accent) 40%, transparent 0%)",
+            backgroundImage: "linear-gradient(var(--mk-warn) 40%, transparent 0%)",
             backgroundSize: "1px 7px",
             backgroundRepeat: "repeat-y",
-            opacity: 0.7,
+            opacity: 0.8,
           }}
         />
       </div>
-      <div className="my-1 flex flex-1 items-center gap-3 rounded-xl border border-dashed border-accent/50 px-3 py-2">
-        <div className="min-w-0 flex-1 text-sm">
-          <p className="font-medium text-accent">Missing travel</p>
-          <p className="text-muted">
-            {formatDistance(gap.distance)}
-            {gap.secs >= 60 ? ` · ${formatDuration(gap.secs)}` : ""}
+      <div className="my-1.5 flex min-w-0 flex-1 items-center gap-3 rounded-card border border-dashed border-warn/45 bg-warn/5 px-3.5 py-2.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warn/12 text-warn" aria-hidden>
+          <Route size={16} strokeWidth={1.75} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-label text-text">
+            Missing travel
+            <span className="font-normal tabular-nums text-muted">
+              {" "}
+              · {formatDistance(gap.distance)}
+              {gap.secs >= 60 ? ` · ${formatDuration(gap.secs)}` : ""}
+            </span>
           </p>
-          <p className="text-xs text-muted">
+          <p className="mt-0.5 text-meta text-muted">
             {noData ? "No location recorded" : "No trip recorded"} ·{" "}
-            <span className="whitespace-nowrap">
+            <span className="whitespace-nowrap tabular-nums">
               {formatTime(gap.from)} – {formatTime(gap.to)}
             </span>
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="shrink-0 whitespace-nowrap rounded-full border border-border px-3 py-1 text-xs font-semibold text-text hover:border-primary/60 hover:text-primary"
-        >
+        <Button size="sm" icon={Plus} onClick={onAdd}>
           Add travel
-        </button>
+        </Button>
       </div>
     </li>
   );
@@ -219,7 +220,7 @@ export function PhotoStrip({ set, onOpen }: { set: PhotoSet; onOpen: (index: num
             type="button"
             onClick={() => onOpen(i)}
             aria-label={last ? `${more} more photos` : `Photo ${i + 1}`}
-            className="relative aspect-square overflow-hidden rounded-lg bg-surface-2"
+            className="relative aspect-square overflow-hidden rounded-md bg-surface-2 transition-opacity hover:opacity-90"
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- Immich proxy, sized by CSS */}
             <img src={thumb(id)} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -260,7 +261,8 @@ export function PhotoViewer({
     return () => window.removeEventListener("keydown", onKey);
   }, [ids.length, onClose]);
   const id = ids[i];
-  const nav = "flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-xl text-white hover:bg-white/20 disabled:opacity-30";
+  const nav =
+    "flex h-10 w-10 items-center justify-center rounded-control bg-white/10 text-white transition-colors hover:bg-white/20 disabled:opacity-30";
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(0, 0, 0, 0.94)" }} role="dialog" aria-modal="true" aria-label="Photos" onClick={onClose}>
       <div className="flex items-center gap-3 px-4 py-3 text-sm text-white/80" onClick={(e) => e.stopPropagation()}>
@@ -274,13 +276,14 @@ export function PhotoViewer({
             href={`${linkBase}/photos/${encodeURIComponent(id)}`}
             target="_blank"
             rel="noreferrer"
-            className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+            className="inline-flex h-10 items-center gap-1.5 rounded-control bg-white/10 px-3 text-meta font-medium text-white transition-colors hover:bg-white/20"
           >
-            Open in Immich ↗
+            Open in Immich
+            <ExternalLink size={16} strokeWidth={1.75} aria-hidden />
           </a>
         )}
         <button type="button" onClick={onClose} aria-label="Close" className={nav}>
-          ×
+          <X size={20} strokeWidth={1.75} aria-hidden />
         </button>
       </div>
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-2 pb-6" onClick={(e) => e.stopPropagation()}>
@@ -288,7 +291,7 @@ export function PhotoViewer({
         <img key={id} src={thumb(id, "preview")} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
         <div className="pointer-events-none absolute inset-x-3 top-1/2 flex -translate-y-1/2 justify-between">
           <button type="button" className={`${nav} pointer-events-auto`} disabled={i === 0} onClick={() => setI(i - 1)} aria-label="Previous photo">
-            ‹
+            <ChevronLeft size={24} strokeWidth={1.75} aria-hidden />
           </button>
           <button
             type="button"
@@ -297,7 +300,7 @@ export function PhotoViewer({
             onClick={() => setI(i + 1)}
             aria-label="Next photo"
           >
-            ›
+            <ChevronRight size={24} strokeWidth={1.75} aria-hidden />
           </button>
         </div>
       </div>

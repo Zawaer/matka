@@ -4,12 +4,12 @@
 export const PLACE_KINDS = ["home", "family", "school", "work", "other"] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 
-export const KIND_META: Record<PlaceKind, { label: string; icon: string; hint: string }> = {
-  home: { label: "Home", icon: "🏠", hint: "Where you live" },
-  family: { label: "Family", icon: "👪", hint: "A relative's home you also sleep at" },
-  school: { label: "School", icon: "🎓", hint: "School or campus" },
-  work: { label: "Work", icon: "💼", hint: "Workplace" },
-  other: { label: "Other", icon: "⭐", hint: "Anywhere else you care about" },
+export const KIND_META: Record<PlaceKind, { label: string; hint: string }> = {
+  home: { label: "Home", hint: "Where you live" },
+  family: { label: "Family", hint: "A relative's home you also sleep at" },
+  school: { label: "School", hint: "School or campus" },
+  work: { label: "Work", hint: "Workplace" },
+  other: { label: "Other", hint: "Anywhere else you care about" },
 };
 
 export const isPlaceKind = (s: unknown): s is PlaceKind =>

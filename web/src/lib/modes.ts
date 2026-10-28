@@ -1,4 +1,5 @@
 // Transport modes. trips.mode stores these keys; detect.ts assigns them.
+// Icons: components/ui/icons.tsx (MODE_ICONS).
 
 export type ModeKey =
   | "unknown"
@@ -21,19 +22,19 @@ export function isModeKey(s: string): s is ModeKey {
 
 export const MODE_META: Record<
   ModeKey,
-  { label: string; icon: string; color: string }
+  { label: string; color: string }
 > = {
-  unknown: { label: "Move", icon: "•", color: "var(--mk-muted)" },
-  stationary: { label: "Stationary", icon: "⏸", color: "var(--mk-muted)" },
-  walking: { label: "Walk", icon: "🚶", color: "var(--mk-walk)" },
-  running: { label: "Run", icon: "🏃", color: "var(--mk-run)" },
-  cycling: { label: "Cycle", icon: "🚲", color: "var(--mk-bike)" },
-  driving: { label: "Drive", icon: "🚗", color: "var(--mk-car)" },
-  bus: { label: "Bus", icon: "🚌", color: "var(--mk-bus)" },
-  tram: { label: "Tram", icon: "🚋", color: "var(--mk-tram)" },
-  metro: { label: "Metro", icon: "🚇", color: "var(--mk-metro)" },
-  train: { label: "Train", icon: "🚆", color: "var(--mk-transit)" },
-  flying: { label: "Flight", icon: "✈️", color: "var(--mk-fly)" },
-  boat: { label: "Ferry", icon: "⛴️", color: "var(--mk-boat)" },
-  motorcycle: { label: "Motorbike", icon: "🏍️", color: "var(--mk-car)" },
+  unknown: { label: "Move", color: "var(--mk-muted)" },
+  stationary: { label: "Stationary", color: "var(--mk-muted)" },
+  walking: { label: "Walk", color: "var(--mk-walk)" },
+  running: { label: "Run", color: "var(--mk-run)" },
+  cycling: { label: "Cycle", color: "var(--mk-bike)" },
+  driving: { label: "Drive", color: "var(--mk-car)" },
+  bus: { label: "Bus", color: "var(--mk-bus)" },
+  tram: { label: "Tram", color: "var(--mk-tram)" },
+  metro: { label: "Metro", color: "var(--mk-metro)" },
+  train: { label: "Train", color: "var(--mk-transit)" },
+  flying: { label: "Flight", color: "var(--mk-fly)" },
+  boat: { label: "Ferry", color: "var(--mk-boat)" },
+  motorcycle: { label: "Motorbike", color: "var(--mk-car)" },
 };

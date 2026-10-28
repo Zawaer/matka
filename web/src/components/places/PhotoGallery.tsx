@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
+import { ChevronLeft, ChevronRight, ImageOff, Images, X } from "lucide-react";
+import { Callout, EmptyState, Skeleton } from "@/components/ui";
 
 interface Photo {
   id: string;
@@ -57,10 +59,7 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
     return (
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
         {Array.from({ length: 10 }).map((_, i) => (
-          <div
-            key={i}
-            className="aspect-square animate-pulse rounded-lg bg-surface-2"
-          />
+          <Skeleton key={i} className="aspect-square" />
         ))}
       </div>
     );
@@ -68,30 +67,39 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
 
   if (error) {
     return (
-      <p className="text-sm text-muted">Couldn&apos;t load photos right now.</p>
+      <Callout tone="danger" role="alert">
+        Couldn&apos;t load photos right now.
+      </Callout>
     );
   }
 
   if (data && data.configured === false) {
     return (
-      <div className="mk-card p-5 text-sm text-muted">
-        <span className="mr-1" aria-hidden>
-          📷
-        </span>
-        Connect Immich in{" "}
-        <Link href="/settings" className="text-primary hover:underline">
-          Settings
-        </Link>{" "}
-        to see photos from your visits here.
-      </div>
+      <EmptyState
+        icon={Images}
+        title="Photos from your visits"
+        description={
+          <>
+            Connect Immich in{" "}
+            <Link href="/settings" className="font-medium text-primary hover:underline">
+              Settings
+            </Link>{" "}
+            to see the photos you took here.
+          </>
+        }
+        className="py-8"
+      />
     );
   }
 
   if (photos.length === 0) {
     return (
-      <p className="text-sm text-muted">
-        No photos found from the times you visited this place.
-      </p>
+      <EmptyState
+        icon={ImageOff}
+        title="No photos"
+        description="Nothing in Immich from the times you visited this place."
+        className="py-8"
+      />
     );
   }
 
@@ -103,7 +111,7 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
             key={p.id}
             type="button"
             onClick={() => setActive(i)}
-            className="group relative aspect-square overflow-hidden rounded-lg bg-surface-2 ring-primary/60 transition focus:outline-none focus-visible:ring-2"
+            className="group relative aspect-square overflow-hidden rounded-control bg-surface-2"
             aria-label={
               p.takenAt
                 ? `Photo from ${new Date(p.takenAt).toLocaleString()}`
@@ -131,10 +139,10 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
           <button
             type="button"
             onClick={close}
-            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-2xl leading-none text-white hover:bg-white/20"
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-control bg-white/10 text-white transition-colors hover:bg-white/20"
             aria-label="Close"
           >
-            ×
+            <X size={20} strokeWidth={1.75} aria-hidden />
           </button>
 
           {photos.length > 1 && (
@@ -145,10 +153,10 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
                   e.stopPropagation();
                   prev();
                 }}
-                className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-2xl text-white hover:bg-white/20"
+                className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-control bg-white/10 text-white transition-colors hover:bg-white/20"
                 aria-label="Previous photo"
               >
-                ‹
+                <ChevronLeft size={24} strokeWidth={1.75} aria-hidden />
               </button>
               <button
                 type="button"
@@ -156,10 +164,10 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
                   e.stopPropagation();
                   next();
                 }}
-                className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-2xl text-white hover:bg-white/20"
+                className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-control bg-white/10 text-white transition-colors hover:bg-white/20"
                 aria-label="Next photo"
               >
-                ›
+                <ChevronRight size={24} strokeWidth={1.75} aria-hidden />
               </button>
             </>
           )}
@@ -172,10 +180,10 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
             <img
               src={`/api/immich/asset/${photos[active].id}?size=preview`}
               alt=""
-              className="max-h-[80vh] max-w-full rounded-lg object-contain"
+              className="max-h-[80vh] max-w-full rounded-control object-contain"
             />
             {photos[active].takenAt && (
-              <figcaption className="text-sm text-white/70">
+              <figcaption className="text-meta tabular-nums text-white/70">
                 {new Date(photos[active].takenAt as string).toLocaleString()}
               </figcaption>
             )}
