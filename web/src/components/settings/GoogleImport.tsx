@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CircleAlert, CircleCheck, Trash2, Upload } from "lucide-react";
 import type { ImportSummary } from "@/lib/google/import";
+import { formatDateCompact, formatTime } from "@/lib/format";
 import { Button, Callout, buttonClass, cx } from "@/components/ui";
 
 /** Below the proxy's 10 MB request body buffer, and small enough for smooth progress. */
@@ -11,7 +12,7 @@ const CHUNK = 4 * 1024 * 1024;
 const nf = new Intl.NumberFormat("en-GB");
 
 function day(ts: number, timeZone: string) {
-  return new Date(ts * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone });
+  return formatDateCompact(new Date(ts * 1000), timeZone);
 }
 
 function mb(bytes: number) {
@@ -141,18 +142,21 @@ export function GoogleImport({ initial, timeZone }: { initial: ImportSummary[]; 
 
   return (
     <div className="flex flex-col gap-4" id="google-import">
-      <div className="flex flex-col gap-1.5">
-        <p className="text-sm text-secondary">
-          Export it on your phone: Android Settings → Location → Location services → Timeline → Export Timeline data
-          (gives Timeline.json), or in Google Maps on iPhone: Settings → Personal content → Export Timeline data. Older
-          Google Takeout files work too: Records.json and the Semantic Location History month files (select several at
-          once).
+      <ol className="flex list-decimal flex-col gap-1.5 pl-5 text-sm text-secondary marker:text-muted">
+        <li>
+          On Android, open Settings → Location → Location services → Timeline → Export Timeline data. On iPhone, open
+          Google Maps → Settings → Personal content → Export Timeline data.
+        </li>
+        <li>Save the Timeline.json file it gives you (older Takeout files work too: Records.json and the monthly files).</li>
+        <li>Choose the file here. Only times Matka didn&apos;t record itself are filled in.</li>
+      </ol>
+      <details className="text-meta text-muted">
+        <summary className="cursor-pointer font-medium text-secondary hover:text-text">What happens to the file</summary>
+        <p className="mt-1">
+          Points within 10 minutes of one Matka recorded are skipped. The file is read on this server and deleted right
+          after; only the added points are kept.
         </p>
-        <p className="text-meta text-muted">
-          Only times Matka has no recording of its own are filled; points within 10 minutes of a recorded one are
-          skipped. The file is read on this server and deleted right after; nothing but the added points is kept.
-        </p>
-      </div>
+      </details>
       <div className="flex flex-wrap items-center gap-2">
         <label
           className={cx(
@@ -208,7 +212,7 @@ export function GoogleImport({ initial, timeZone }: { initial: ImportSummary[]; 
 
       {done.length > 0 && (
         <div>
-          <h3 className="mb-2 text-caption font-medium uppercase tracking-wide text-muted">Earlier imports</h3>
+          <h3 className="mb-2 text-meta font-medium text-muted">Earlier imports</h3>
           <ul className="divide-y divide-border overflow-hidden rounded-control border border-border">
             {done.map((i) => {
               const failed = i.status === "failed";
@@ -226,7 +230,7 @@ export function GoogleImport({ initial, timeZone }: { initial: ImportSummary[]; 
                       {failed ? i.error ?? "Import failed." : importSentence(i, timeZone)}
                     </p>
                     <p className="mt-0.5 text-meta text-muted">
-                      {new Date(i.startedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone })}
+                      {formatDateCompact(i.startedAt, timeZone)} {formatTime(i.startedAt, timeZone)}
                       {" · "}
                       {i.files.length === 1 ? i.files[0].name : `${i.files.length} files`} ({mb(i.bytes)})
                       {i.formats.length > 0 && ` · ${i.formats.join(", ")}`}

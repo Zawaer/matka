@@ -3,15 +3,22 @@ import { ChevronLeft } from "lucide-react";
 import { cx } from "./cx";
 
 const WIDTHS = {
-  /** Reading width: timeline, settings, a single place. */
+  /** Reading width: settings, devices. */
   narrow: "max-w-3xl",
   /** Most pages. */
   default: "max-w-5xl",
   /** Dense grids: places, insights. */
   wide: "max-w-6xl",
+  /** The whole canvas (the timeline's split view). */
+  full: "max-w-none",
 } as const;
 
-/** The content column every page sits in: one set of widths and gutters. */
+/**
+ * The content column every page sits in: one set of widths and gutters. The
+ * column is anchored 40 px from the sidebar on desktop, never centred, so the
+ * left edge stays put when you switch pages; only the max width differs. The
+ * top padding puts the h1 row at y=40, level with the sidebar's brand.
+ */
 export function Page({
   width = "default",
   className,
@@ -22,7 +29,7 @@ export function Page({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cx("mx-auto w-full px-4 pb-10 pt-5 sm:px-6 md:px-10 md:pb-14 md:pt-9", WIDTHS[width], className)}>
+    <div className={cx("w-full px-4 pb-10 pt-5 sm:px-6 md:px-10 md:pb-14 md:pt-10", WIDTHS[width], className)}>
       {children}
     </div>
   );
@@ -64,7 +71,7 @@ export function PageHeader({
   return (
     <header className={cx("mb-6 md:mb-8", className)}>
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-center gap-3.5">
           {leading}
           <div className="min-w-0">
@@ -72,7 +79,7 @@ export function PageHeader({
             {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
           </div>
         </div>
-        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2 sm:min-h-8">{actions}</div>}
       </div>
     </header>
   );

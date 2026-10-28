@@ -1,5 +1,6 @@
 import { q } from "./db";
-import { PLACE_NAME_SQL } from "./places";
+import { PLACE_CATEGORY_SQL, PLACE_NAME_SQL } from "./places";
+import type { PlaceKind } from "./savedPlaces";
 
 export type Overview = {
   totals: {
@@ -14,8 +15,16 @@ export type Overview = {
   };
   /** Last 12 months, oldest first; distance in metres. */
   months: { year: number; month: number; distance: number }[];
-  topPlaces: { id: number; name: string | null; hours: number }[];
-  recent: { id: number; placeId: number; name: string | null; startedAt: Date; duration: number }[];
+  topPlaces: { id: number; name: string | null; hours: number; kind?: PlaceKind | null; category?: string | null }[];
+  recent: {
+    id: number;
+    placeId: number;
+    name: string | null;
+    startedAt: Date;
+    duration: number;
+    kind?: PlaceKind | null;
+    category?: string | null;
+  }[];
 };
 
 /** Everything the Overview page (and the phone app's overview) shows. */
@@ -50,16 +59,24 @@ export async function getOverview(userId: string, tz: string): Promise<Overview>
        GROUP BY m ORDER BY m`,
       [userId, tz],
     ),
-    q<{ id: string; name: string | null; hours: number }>(
-      `SELECT p.id, ${PLACE_NAME_SQL} AS name,
+    q<{ id: string; name: string | null; hours: number; kind: PlaceKind | null; category: string | null }>(
+      `SELECT p.id, ${PLACE_NAME_SQL} AS name, p.kind, ${PLACE_CATEGORY_SQL} AS category,
               sum(extract(epoch FROM v.ended_at - v.started_at))::float8 / 3600 AS hours
        FROM visits v JOIN places p ON p.id = v.place_id
        WHERE v.user_id = $1
        GROUP BY p.id ORDER BY hours DESC LIMIT 8`,
       [userId],
     ),
-    q<{ id: string; place_id: string; name: string | null; started_at: Date; duration: number }>(
-      `SELECT v.id, v.place_id, ${PLACE_NAME_SQL} AS name, v.started_at,
+    q<{
+      id: string;
+      place_id: string;
+      name: string | null;
+      started_at: Date;
+      duration: number;
+      kind: PlaceKind | null;
+      category: string | null;
+    }>(
+      `SELECT v.id, v.place_id, ${PLACE_NAME_SQL} AS name, v.started_at, p.kind, ${PLACE_CATEGORY_SQL} AS category,
               extract(epoch FROM v.ended_at - v.started_at)::int AS duration
        FROM visits v JOIN places p ON p.id = v.place_id
        WHERE v.user_id = $1
@@ -79,13 +96,15 @@ export async function getOverview(userId: string, tz: string): Promise<Overview>
       last: totals.last,
     },
     months,
-    topPlaces: topPlaces.map((p) => ({ id: Number(p.id), name: p.name, hours: p.hours })),
+    topPlaces: topPlaces.map((p) => ({ id: Number(p.id), name: p.name, hours: p.hours, kind: p.kind, category: p.category })),
     recent: recent.map((r) => ({
       id: Number(r.id),
       placeId: Number(r.place_id),
       name: r.name,
       startedAt: r.started_at,
       duration: r.duration,
+      kind: r.kind,
+      category: r.category,
     })),
   };
 }

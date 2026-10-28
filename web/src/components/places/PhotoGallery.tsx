@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { ChevronLeft, ChevronRight, ImageOff, Images, X } from "lucide-react";
-import { Callout, EmptyState, Skeleton } from "@/components/ui";
+import { Button, Callout, Skeleton } from "@/components/ui";
+import { formatDateCompact, formatTime } from "@/lib/format";
 
 interface Photo {
   id: string;
@@ -18,6 +19,9 @@ interface PhotosResponse {
   error?: string;
 }
 
+/** "28 Oct 2026 · 12:40" in the viewer's zone. */
+const taken = (iso: string) => `${formatDateCompact(iso)} · ${formatTime(iso)}`;
+
 const fetcher = async (url: string): Promise<PhotosResponse> => {
   const res = await fetch(url);
   if (!res.ok && res.status >= 500) throw new Error("Failed to load photos");
@@ -25,7 +29,7 @@ const fetcher = async (url: string): Promise<PhotosResponse> => {
 };
 
 export function PhotoGallery({ placeId }: { placeId: number }) {
-  const { data, error, isLoading } = useSWR<PhotosResponse>(
+  const { data, error, isLoading, mutate } = useSWR<PhotosResponse>(
     `/api/places/${placeId}/photos`,
     fetcher,
     { revalidateOnFocus: false },
@@ -67,39 +71,41 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
 
   if (error) {
     return (
-      <Callout tone="danger" role="alert">
-        Couldn&apos;t load photos right now.
+      <Callout
+        tone="danger"
+        role="alert"
+        title="Couldn't load photos"
+        action={
+          <Button size="sm" onClick={() => void mutate()}>
+            Retry
+          </Button>
+        }
+      >
+        Immich didn&apos;t answer in time.
       </Callout>
     );
   }
 
   if (data && data.configured === false) {
     return (
-      <EmptyState
-        icon={Images}
-        title="Photos from your visits"
-        description={
-          <>
-            Connect Immich in{" "}
-            <Link href="/settings" className="font-medium text-primary hover:underline">
-              Settings
-            </Link>{" "}
-            to see the photos you took here.
-          </>
-        }
-        className="py-8"
-      />
+      <p className="flex items-center gap-2 text-meta text-muted">
+        <Images size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+        <span>
+          <Link href="/settings" className="font-medium text-primary hover:underline">
+            Connect Immich
+          </Link>{" "}
+          to see the photos you took here.
+        </span>
+      </p>
     );
   }
 
   if (photos.length === 0) {
     return (
-      <EmptyState
-        icon={ImageOff}
-        title="No photos"
-        description="Nothing in Immich from the times you visited this place."
-        className="py-8"
-      />
+      <p className="flex items-center gap-2 text-meta text-muted">
+        <ImageOff size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+        No photos in Immich from your visits here.
+      </p>
     );
   }
 
@@ -114,7 +120,7 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
             className="group relative aspect-square overflow-hidden rounded-control bg-surface-2"
             aria-label={
               p.takenAt
-                ? `Photo from ${new Date(p.takenAt).toLocaleString()}`
+                ? `Photo from ${taken(p.takenAt)}`
                 : "Photo"
             }
           >
@@ -184,7 +190,7 @@ export function PhotoGallery({ placeId }: { placeId: number }) {
             />
             {photos[active].takenAt && (
               <figcaption className="text-meta tabular-nums text-white/70">
-                {new Date(photos[active].takenAt as string).toLocaleString()}
+                {taken(photos[active].takenAt as string)}
               </figcaption>
             )}
           </figure>

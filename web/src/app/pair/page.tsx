@@ -13,12 +13,12 @@ export const metadata = {
 
 export default function PairPage() {
   return (
-    <div className="flex min-h-dvh flex-col items-center px-4 py-10 sm:justify-center sm:py-16">
+    <div className="flex min-h-dvh flex-col items-center px-4 pb-10 pt-[8dvh] sm:pt-[14dvh]">
       <div className="w-full max-w-md">
-        <div className="mb-6 flex justify-center">
-          <Wordmark size={28} />
-        </div>
         <Card padding="lg">
+          <div className="-mx-5 mb-5 flex justify-center border-b border-border px-5 pb-4 sm:-mx-6 sm:px-6">
+            <Wordmark size={28} />
+          </div>
           <PairLanding />
         </Card>
       </div>

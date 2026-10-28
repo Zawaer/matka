@@ -14,6 +14,8 @@ const place = (city: string | null, country: string | null, visits: number, hour
   lastVisit: last,
   kind: null,
   radius: null,
+  lat: 60,
+  lon: 24,
 });
 
 const PLACES = [
@@ -46,5 +48,15 @@ describe("world", () => {
   it("lists a city's visited places", () => {
     expect(cityPlaces(PLACES, "Espoo", "Finland").map((p) => p.visitCount)).toEqual([40, 5]);
     expect(cityPlaces(PLACES, "Kitee", "Finland")).toEqual([]);
+  });
+});
+
+describe("countryCode", () => {
+  it("finds ISO codes from names in several languages", async () => {
+    const { countryCode } = await import("./world");
+    expect(countryCode("Finland")).toBe("FI");
+    expect(countryCode("Germany")).toBe("DE");
+    expect(countryCode("Suomi")).toBe("FI");
+    expect(countryCode("Atlantis")).toBeNull();
   });
 });

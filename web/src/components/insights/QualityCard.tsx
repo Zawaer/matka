@@ -1,176 +1,165 @@
-// "Recording quality" card for Insights: how good the phone app's fixes are
-// while moving, per recording-preset period, and Matka's own estimated battery
-// use per preset with the phone's measured draw. Text only, in text tokens;
-// numbers tabular; per-day rows behind a <details> (no client JS).
+// "Recording quality" on the Devices page: how good the phone app's fixes are
+// while moving, per recording preset, and Matka's own estimated battery use
+// per preset. Compact tables (presets as columns, measures as rows), numbers
+// tabular, the methodology behind a "Details" disclosure. No client JS.
 
 import type { CurrentAgg, UsageGroup } from "@/lib/insights/matkaPower";
 import type { QualityInsight } from "@/lib/insights/load";
 import type { QualityStats } from "@/lib/insights/quality";
 import { ChevronRight } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui";
+import { formatCount, formatDate, localDate } from "@/lib/format";
 
 type Period = QualityInsight["periods"][number];
 
 function when(iso: string, tz: string): string {
-  const d = new Date(iso);
-  const day = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: tz });
-  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: tz });
-  return time === "00:00" ? day : `${day} ${time}`;
+  return formatDate(localDate(iso, tz), localDate(new Date(), tz));
 }
 
 function span(p: Period, tz: string): string {
   if (p.start && p.end) return `${when(p.start, tz)} – ${when(p.end, tz)}`;
-  if (p.start) return `from ${when(p.start, tz)}`;
-  if (p.end) return `until ${when(p.end, tz)}`;
-  return "all days";
+  if (p.start) return `Since ${when(p.start, tz)}`;
+  if (p.end) return `Until ${when(p.end, tz)}`;
+  return "All days";
 }
 
-const pct = (v: number | null) => (v == null ? "–" : `${Math.round(v * 100)} %`);
-const m = (v: number | null) => (v == null ? "–" : `${Math.round(v)} m`);
-const s = (v: number) => (v < 90 ? `${Math.round(v)} s` : `${Math.round(v / 60)} min`);
+const pct = (v: number | null | undefined) => (v == null ? "–" : `${Math.round(v * 100)} %`);
+const m = (v: number | null | undefined) => (v == null ? "–" : `${Math.round(v)} m`);
+const s = (v: number | null | undefined) => (v == null ? "–" : v < 90 ? `${Math.round(v)} s` : `${Math.round(v / 60)} min`);
 const dur = (sec: number) => (sec < 5400 ? `${Math.round(sec / 60)} min` : `${(sec / 3600).toFixed(1)} h`);
-const ma = (c: CurrentAgg) => (c.n > 0 && c.median != null ? `~${Math.round(c.median)} mA` : null);
-const dayLabel = (date: string) =>
-  new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+const ma = (c: CurrentAgg) => (c.n > 0 && c.median != null ? `${Math.round(c.median)} mA` : "–");
+const dayLabel = (date: string) => formatDate(date);
 
-/** Three headline figures, then the rest as a small label/value grid. */
-function Figures({ main, more }: { main: [string, string][]; more: [string, string][] }) {
+/** A table with measures as rows and one column per preset. */
+function Table({ columns, rows }: { columns: { key: string; title: string; sub?: string }[]; rows: [string, string[]][] }) {
   return (
-    <>
-      <dl className="grid grid-cols-3 gap-3">
-        {main.map(([k, v]) => (
-          <div key={k} className="min-w-0">
-            <dt className="truncate text-caption text-muted">{k}</dt>
-            <dd className="text-label font-semibold tabular-nums text-text">{v}</dd>
-          </div>
-        ))}
-      </dl>
-      {more.length > 0 && (
-        <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
-          {more.map(([k, v]) => (
-            <div key={k} className="flex min-w-0 items-baseline justify-between gap-2 text-caption">
-              <dt className="truncate text-muted">{k}</dt>
-              <dd className="shrink-0 tabular-nums text-secondary">{v}</dd>
-            </div>
+    <div className="-mx-4 overflow-x-auto px-4 sm:-mx-5 sm:px-5">
+      <table className="w-full min-w-[20rem] border-collapse text-meta">
+        <thead>
+          <tr className="border-b border-border">
+            <th scope="col" className="py-2 pr-3 text-left font-normal text-muted">
+              <span className="sr-only">Measure</span>
+            </th>
+            {columns.map((c) => (
+              <th key={c.key} scope="col" className="py-2 pl-3 text-right align-bottom font-medium text-text">
+                {c.title}
+                {c.sub && <span className="block font-normal text-muted">{c.sub}</span>}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map(([label, values]) => (
+            <tr key={label}>
+              <th scope="row" className="py-2 pr-3 text-left font-normal text-muted">
+                {label}
+              </th>
+              {values.map((v, i) => (
+                <td key={i} className="py-2 pl-3 text-right tabular-nums text-secondary">
+                  {v}
+                </td>
+              ))}
+            </tr>
           ))}
-        </dl>
-      )}
-    </>
-  );
-}
-
-function Numbers({ t }: { t: QualityStats }) {
-  const mv = t.moving;
-  if (!mv) {
-    return (
-      <p className="text-meta text-muted tabular-nums">
-        No movement recorded · {t.fixes.toLocaleString("en-GB")} fixes
-      </p>
-    );
-  }
-  return (
-    <Figures
-      main={[
-        ["Median accuracy", m(mv.accuracyMedian)],
-        ["One fix every", s(mv.secondsPerFix)],
-        ["Fixes over 50 m", pct(mv.over50)],
-      ]}
-      more={[
-        ["p90 accuracy", m(mv.accuracyP90)],
-        ["Interval median", s(mv.intervalMedianS)],
-        ["Interval p90", s(mv.intervalP90S)],
-        ["Within 10 m", pct(mv.within10)],
-        ["Path noise", mv.pathNoise == null ? "–" : `${mv.pathNoise.toFixed(1)} m`],
-        ["Time moving", dur(mv.minutes * 60)],
-        ["Fixes/h overall", String(t.fixesPerHour ?? "–")],
-        ["Standby quality", pct(t.standbyShare)],
-      ]}
-    />
-  );
-}
-
-function Usage({ g }: { g: UsageGroup }) {
-  const draw: [string, string][] = [
-    ["Draw, GPS active", ma(g.current.active)],
-    ["Draw, standby", ma(g.current.standby)],
-    ["Draw, screen on", ma(g.current.screen)],
-  ].filter((x): x is [string, string] => x[1] != null);
-  return (
-    <div className="py-3.5">
-      <p className="mb-2 text-label text-text">{g.label}</p>
-      <Figures
-        main={[
-          ["Per day", `≈ ${Math.round(g.perDay.mAh)} mAh`],
-          ["Of the battery", `${g.perDay.percent.toFixed(1)} %`],
-          ["Days", String(g.perDay.days)],
-        ]}
-        more={[
-          ["GPS active / day", dur(g.perDay.activeS)],
-          ["Standby / day", dur(g.perDay.standbyS)],
-          ...draw,
-          ...(g.dropS > 0
-            ? ([["Charge counter", `−${Math.round(g.dropMah).toLocaleString("en-GB")} mAh / ${dur(g.dropS)}`]] as [string, string][])
-            : []),
-        ]}
-      />
-      <details className="group mt-2.5 text-caption text-muted">
-        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm font-medium text-secondary hover:text-text [&::-webkit-details-marker]:hidden">
-          <ChevronRight size={16} strokeWidth={1.75} aria-hidden className="transition-transform group-open:rotate-90" />
-          Per day
-        </summary>
-        <ul className="mt-1.5 space-y-0.5 pl-5 tabular-nums">
-          {g.days.map((d) => (
-            <li key={d.day}>
-              <span className="text-secondary">{dayLabel(d.day)}</span>: ≈ {d.estimate.mAh.toFixed(0)} mAh (
-              {d.estimate.percent.toFixed(2)} %) · GPS {dur(d.activeS)} · standby {dur(d.standbyS)} · {d.fixes} fixes
-              {ma(d.current.active) && ` · draw GPS ${ma(d.current.active)}`}
-              {ma(d.current.standby) && ` · standby ${ma(d.current.standby)}`}
-              {d.dropS > 0 && ` · −${Math.round(d.dropMah)} mAh/${dur(d.dropS)}`}
-            </li>
-          ))}
-        </ul>
-      </details>
+        </tbody>
+      </table>
     </div>
   );
 }
+
+function Details({ summary = "Details", children }: { summary?: string; children: React.ReactNode }) {
+  return (
+    <details className="group mt-3 text-caption text-muted">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm font-medium text-secondary hover:text-text [&::-webkit-details-marker]:hidden">
+        <ChevronRight size={16} strokeWidth={1.75} aria-hidden className="transition-transform group-open:rotate-90" />
+        {summary}
+      </summary>
+      <div className="mt-1.5 pl-5">{children}</div>
+    </details>
+  );
+}
+
+const qualityRows = (ts: QualityStats[]): [string, string[]][] => [
+  ["Typical accuracy", ts.map((t) => m(t.moving?.accuracyMedian))],
+  ["9 in 10 fixes within", ts.map((t) => m(t.moving?.accuracyP90))],
+  ["One fix every", ts.map((t) => s(t.moving?.secondsPerFix))],
+  ["Fixes off by over 50 m", ts.map((t) => pct(t.moving?.over50))],
+  ["Fixes within 10 m", ts.map((t) => pct(t.moving?.within10))],
+  ["Wobble along the path", ts.map((t) => (t.moving?.pathNoise == null ? "–" : `${t.moving.pathNoise.toFixed(1)} m`))],
+  ["Time moving", ts.map((t) => (t.moving ? dur(t.moving.minutes * 60) : "–"))],
+  ["Fixes per hour", ts.map((t) => (t.fixesPerHour == null ? "–" : formatCount(t.fixesPerHour)))],
+];
+
+const usageRows = (gs: UsageGroup[]): [string, string[]][] => [
+  ["Per day", gs.map((g) => `${formatCount(g.perDay.mAh)} mAh`)],
+  ["Of the battery", gs.map((g) => `${g.perDay.percent.toFixed(1)} %`)],
+  ["GPS on per day", gs.map((g) => dur(g.perDay.activeS))],
+  ["Standby per day", gs.map((g) => dur(g.perDay.standbyS))],
+  ["Phone draw, GPS on", gs.map((g) => ma(g.current.active))],
+  ["Phone draw, standby", gs.map((g) => ma(g.current.standby))],
+  ["Days measured", gs.map((g) => String(g.perDay.days))],
+];
 
 export function QualityCard({ data, tz }: { data: QualityInsight; tz: string }) {
   const periods = data.periods.filter((p) => p.total.fixes > 0);
   if (periods.length === 0 && data.usage.length === 0) return null;
   return (
-    <Card as="section" className="mt-4">
-      <CardHeader title="Recording quality" description="Phone app fixes while moving, by recording preset" />
-      <div className="divide-y divide-border border-t border-border">
-        {periods.map((p) => (
-          <div key={`${p.label}${p.start}`} className="py-3.5">
-            <p className="mb-2 flex flex-wrap items-baseline gap-x-2">
-              <span className="text-label text-text">{p.label}</span>
-              <span className="text-meta text-muted">{span(p, tz)}</span>
+    <>
+      {periods.length > 0 && (
+        <Card as="section">
+          <CardHeader title="Location fixes while moving" description="How exact and how frequent, by recording setting" />
+          <Table
+            columns={periods.map((p) => ({ key: `${p.label}${p.start}`, title: p.label, sub: span(p, tz) }))}
+            rows={qualityRows(periods.map((p) => p.total))}
+          />
+          <Details>
+            <p>
+              Only moving stretches count: fixes at most 5 minutes apart at over 1 m/s, over 30 m a minute, or while the
+              phone reports a moving activity. The wobble is how far a fix sits from the line between its neighbours.
+              {periods.some((p) => p.total.standbyShare != null) && (
+                <>
+                  {" "}
+                  Standby quality:{" "}
+                  {periods.map((p, i) => (
+                    <span key={i} className="tabular-nums">
+                      {i > 0 && ", "}
+                      {p.label} {pct(p.total.standbyShare)}
+                    </span>
+                  ))}
+                  .
+                </>
+              )}
             </p>
-            <Numbers t={p.total} />
-          </div>
-        ))}
-      </div>
-
-      <h3 className="mt-5 text-label font-semibold text-text">Matka&apos;s own battery use</h3>
-      <p className="text-meta text-muted">Estimated per recording preset</p>
-      {data.usage.length ? (
-        <div className="mt-1 divide-y divide-border">
-          {data.usage.map((g) => (
-            <Usage key={g.preset} g={g} />
-          ))}
-        </div>
-      ) : (
-        <p className="mt-2 text-meta text-muted">Appears once the phone app reports what the recorder did (newer app build).</p>
+          </Details>
+        </Card>
       )}
 
-      <p className="mt-4 border-t border-border pt-3 text-caption text-muted">
-        Quality counts only moving stretches (fixes ≤ 5 min apart at over 1 m/s, over 30 m a minute, or a moving
-        activity); path noise is how far a fix sits from the line between its neighbours. Matka&apos;s use is
-        modelled from GPS-active time, standby time and fixes, calibrated on a {data.model.device} on{" "}
-        {data.model.calibrated} ({data.model.batteryMah.toLocaleString("en-GB")} mAh battery); the phone draw figures
-        are whole-phone measurements. The whole phone&apos;s drain is in the Phone battery card.
-      </p>
-    </Card>
+      {data.usage.length > 0 && (
+        <Card as="section">
+          <CardHeader title="Matka's battery use" description="Estimated per recording setting" />
+          <Table columns={data.usage.map((g) => ({ key: g.preset, title: g.label }))} rows={usageRows(data.usage)} />
+          <Details>
+            <p>
+              Estimated from the time the GPS was on, time in standby and the number of fixes, using a model measured on
+              a {data.model.device} ({formatCount(data.model.batteryMah)} mAh battery, {data.model.calibrated}). The
+              phone draw figures are measurements of the whole phone.
+            </p>
+            {data.usage.map((g) => (
+              <div key={g.preset} className="mt-2">
+                <p className="font-medium text-secondary">{g.label}, per day</p>
+                <ul className="mt-0.5 space-y-0.5 tabular-nums">
+                  {g.days.map((d) => (
+                    <li key={d.day}>
+                      {dayLabel(d.day)}: {formatCount(d.estimate.mAh)} mAh ({d.estimate.percent.toFixed(1)} %) · GPS{" "}
+                      {dur(d.activeS)} · standby {dur(d.standbyS)} · {formatCount(d.fixes)} fixes
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </Details>
+        </Card>
+      )}
+    </>
   );
 }

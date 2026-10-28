@@ -77,7 +77,7 @@ Import from `@/components/ui`. They work in both server and client components
 
 | Primitive | What it is |
 |---|---|
-| `Page` | The content column: `width="narrow" \| "default" \| "wide"` (3xl / 5xl / 6xl), with the same gutters everywhere |
+| `Page` | The content column: `width="narrow" \| "default" \| "wide" \| "full"` (3xl / 5xl / 6xl / none). Left-anchored 40 px from the sidebar on desktop (never centred), h1 row at y=40 level with the sidebar brand |
 | `PageHeader` | h1, a subtitle line, optional `back` link, a `leading` tile and `actions` on the right |
 | `BackLink` | "‹ Places" |
 | `SectionHeader` | h2, an optional description and an action on the right |
@@ -88,10 +88,11 @@ Import from `@/components/ui`. They work in both server and client components
 | `Badge` | A small status label in a tone: `neutral / primary / success / warn / danger` |
 | `Chip` | A compact value pill ("● 412 km") |
 | `Segmented` | Mutually exclusive options as links (server) or buttons (client) |
-| `Stat` | Label on top, a tabular figure below, optional hint |
-| `EmptyState` | Icon, title, one sentence, one action |
+| `Stat`, `StatStrip` | Label on top, a tabular figure below; `StatStrip` puts several in one card split by hairlines (2×2 on phones) |
+| `DatePicker`, `MonthSelect`, `Combobox` | Styled popover controls (`Pickers.tsx`, client): a calendar marking days with data (Monday first, day-month order), a month grid between ‹ › arrows, and a searchable listbox. Keyboard-complete, ARIA dialog/grid/combobox |
+| `EmptyState` | Icon, title, one sentence, one action (plus an optional secondary); frameless, never a dashed box |
 | `Skeleton` | A loading block |
-| `Callout` | Inline info, success, warning or error message with an icon |
+| `Callout` | Inline info, success, warning or error message with an icon; `action` for a Retry |
 | `Input`, `Select`, `Textarea`, `Field`, `Toggle`, `inputClass`, `checkClass` | Form controls with one look. `Toggle` is a native checkbox styled as a switch (`.mk-switch`) |
 | `IconTile` | An icon on a quiet square (sm 28, md 36, lg 48). `color` tints only the glyph |
 | `CopyField` | A label, the value in monospace, and a Copy button |
@@ -315,3 +316,95 @@ in the preview before) and draws a quiet street-grid placeholder.
   border on inputs.
 - The Map tab and the day map are the web app's page; their chrome is the web
   redesign's.
+
+### Round 2 (web)
+
+Driven by the independent critique [redesign/critique-web-r2.md](redesign/critique-web-r2.md).
+Screenshots: `/tmp/shots/redesign/r2/web/review/` (before) and
+`/tmp/shots/redesign/r2/web/after/` (after, with `--extras`; the empty-database
+user is in `after/empty/`). The shared palette and formatting rules, also used
+by the phone app, are in [redesign/palette.md](redesign/palette.md).
+
+- **Layout:** every page's column is left-anchored 40 px from the sidebar
+  (only the max width varies) and the sidebar brand sits on the h1 row, so
+  switching tabs no longer jumps sideways. The phone tab bar has five items
+  (Timeline, Map, Places, Insights, More); More holds Overview, Devices,
+  Settings and Sign out, and the top bar is the brand only. Devices is top
+  level everywhere.
+- **Timeline:** a split view from 1200 px (a `split:` breakpoint): the day
+  in a 480 px list on the left and a full-height sticky map on the right;
+  phones keep the stacked layout. The h1 is "Friday 4 September 2026" on one
+  line with a styled date button opening a calendar of days with data. Visits
+  are borderless rows (a card only when selected) with the rail glyph on the
+  title line; travel rows are one muted line with a 20 px mode glyph, and
+  "Fix trip" shows on hover/focus on desktop and as a ⋯ button on phones.
+  Overnight visits read "Since 16:58 yesterday" / "until 09:45 tomorrow".
+  "Right place?" shows the guess as the title ("Café Maiasmokk?"), "Or: …" in
+  the meta line and `[Yes] [Something else ▾]` under it. Missing travel
+  stacks on phones. A wait between transit legs only appears between two rides
+  (`legs.ts`, tested). The summary chips wrap; the skeleton includes the map
+  and the chips; an error is a danger Callout with a real Retry (SWR mutate);
+  an empty day offers "Go to the nearest day"; a new user gets "Pair your
+  phone" and "Import from Google Timeline". The photo viewer is opaque, says
+  "1 of 14", captions time and place, hides the arrows at the ends and has a
+  thumbnail rail on desktop. The trip editor sheet has a drag handle and says
+  "detected: cycling".
+- **Maps:** one control style (32 px surface buttons with a hairline and
+  `shadow-pop`, top-right), compact text attribution, Latin-only labels and
+  regular-weight muted place names (`tameBasemap`). Stops closer than 36 px
+  merge into one "1–4" marker that zooms in on click. A lazy `GeoMap`
+  (`components/map/LazyGeoMap.tsx`) adds maps to the place page (pin and
+  size circle), trip page (routes and numbered overnight stays), city page
+  (places) and World (visited countries filled from a 58 KB gzipped Natural
+  Earth file in `public/geo/`, with city dots sized by time). The Map page
+  has Routes/Heatmap toggles (routes by default), a 30 days / Year / All
+  range, a legend of the modes present (collapsible on phones) and an empty
+  state.
+- **Places:** one list of 64 px rows with a sort (most time, visits, recent,
+  A–Z), saved places first and unnamed places collapsed at the end (5,300 px
+  on a phone, from 12,600). The place page is a read view with a map header;
+  Edit/Rename/Save open a dialog (a sheet on phones); visits are grouped by
+  month with "Show all".
+- **Trips:** every card has a 16:9 cover, either the Immich photo or a
+  server-drawn sketch of the routes in their mode colours (`routeSketch.ts`,
+  tested), with the title on a scrim. Trip detail has a route map, a
+  two-figure stat strip, and "Day 1 · Wednesday 30 September" rows. World
+  has the map, ISO-code tiles, a Countries/Cities toggle and a sort menu.
+- **Palette:** Train/Metro moved to a slate off the accent, Flight to a plum
+  off danger, and Ferry to a teal apart from Walk. The light Bus, Walk and Run
+  are darker, to reach at least 3:1. Saved-kind badges are neutral, and the
+  "Most time spent" bars are neutral.
+- **Glyph spacing ("Ho tel", "Se ttings"):** it wasn't the font features.
+  Removing `cv11`/`ss01` didn't change it. Chrome on Linux at 2x rounds each
+  glyph advance to the hinting grid. `text-rendering: geometricPrecision` on
+  `body` fixes it, as verified in an A/B render and the phone shots. Real
+  phones with subpixel positioning probably never showed it.
+- **Formatting:** one module (`lib/format.ts`, tested):
+  - totals as `6 h 34 min` / `12 d 3 h` / `46 d`
+  - distances `1,137 km`
+  - recent dates relative ("Today", "Mon")
+  - no year inside the current year
+  - always `Sep`
+- **Insights, Devices, Settings:**
+  - Insights → Travel has a styled month picker, a stat strip, saved places
+    as rows, and small multiples from the first data month.
+  - Battery and recording quality moved to Devices → "Recording quality",
+    with plain metric names, presets as table columns, and one sentence plus
+    "Details".
+  - Settings is an inset-grouped list. Toggles and the searchable time zone
+    save immediately. An unavailable feature shows off and "Not available on
+    this server", with no env var names.
+- **States:** the dashed empty box is gone everywhere (frameless icon, line
+  and action). Errors are Callouts with Retry. The Overview and Timeline share
+  one onboarding state.
+- **Overview:**
+  - Stats are a stat strip, and the subtitle reads "Since 29 July 2026 · 92
+    days".
+  - The month chart starts at the first data month (at least six) and labels
+    the current month's value.
+  - Recent trips show as covers, and recent visits are grouped by day with
+    place icons.
+- **Auth, pair, 404:** the sign-in card sits optically higher, a wrong key
+  turns the field red and reselects it, and the copy has no env var names. The
+  pair page has its logo inside the card, and the 404 eyebrow is no longer
+  spaced caps.

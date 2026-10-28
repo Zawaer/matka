@@ -45,6 +45,13 @@
 //   --schemes l,d    light (l) and/or dark (d) (default both)
 //   --dates a,b      extra /timeline?date= days (YYYY-MM-DD); by default the
 //                    harness picks the days of the first trip it finds
+//   --extras         also shoot states the demo data can't reach, by mocking
+//                    API answers in the browser (no app code changes): an
+//                    uncertain "Visited X?" visit, Missing travel, transit
+//                    legs, a very long place name, Immich photos and the
+//                    photo viewer, the trip editor, the timeline skeleton and
+//                    its error state. Point --base at a server with an empty
+//                    database (and --only) for the empty states.
 //
 // Files are named <state>-<m|d>-<light|dark>.png. Pages that need ids (a
 // place, a trip, a city) are found by following the first matching link.
@@ -66,6 +73,7 @@ const { values: args, positionals } = parseArgs({
     sizes: { type: "string", default: "m,d" },
     schemes: { type: "string", default: "l,d" },
     dates: { type: "string" },
+    extras: { type: "boolean", default: false },
   },
 });
 const out = positionals[0];
@@ -123,6 +131,105 @@ const tripDays = trip ? await firstLink(probe, trip, /^\/timeline\?date=/) : [];
 await probe.close();
 const dates = args.dates ? args.dates.split(",").map((d) => `/timeline?date=${d}`) : tripDays.slice(0, 2);
 
+// ------------------------------------------------------------------ extras
+// Fake photos: a few gradients rendered once, served for every Immich asset.
+let PHOTOS = [];
+async function makePhotos() {
+  const page = await browser.newPage({ viewport: { width: 640, height: 480 } });
+  const grads = [
+    "linear-gradient(160deg,#9cc3e6 0%,#f2d7a7 55%,#6a8f5a 100%)",
+    "linear-gradient(200deg,#2b3a55 0%,#c86b4a 60%,#f0c27b 100%)",
+    "linear-gradient(120deg,#d7e1ec 0%,#7d8ca3 50%,#3d4a5c 100%)",
+    "linear-gradient(180deg,#87b5d1 0%,#e9eef2 50%,#4f6d3a 100%)",
+  ];
+  for (const g of grads) {
+    await page.setContent(`<body style="margin:0;height:100vh;background:${g}"></body>`);
+    PHOTOS.push(await page.screenshot({ type: "jpeg", quality: 80 }));
+  }
+  await page.close();
+}
+const EXTRA_DATE = args.dates?.split(",")[0] ?? "2026-09-04";
+const LONG_NAME = "Tallinna Ülikooli Akadeemiline Raamatukogu ja Kultuurikeskus, Narva maantee 25";
+
+/** Rewrites /api/timeline answers: a guessed visit, a missing trip, transit legs, a long name; plus Immich photos. */
+async function mockDay(page) {
+  await page.route(/\/api\/timeline\?date=/, async (route) => {
+    const res = await route.fetch();
+    const j = await res.json();
+    const items = j.day?.items ?? [];
+    const visits = items.filter((i) => i.kind === "visit");
+    if (visits[1]) visits[1].visit.candidates = [
+      { name: "Café Maiasmokk", category: "cafe", address: false },
+      { name: "Kehrwieder", category: "cafe", address: false },
+      { name: "Pikk 16", category: null, address: true },
+    ];
+    if (visits[2]) visits[2].visit.placeName = LONG_NAME;
+    const moves = items.filter((i) => i.kind === "move" && i.track.mode !== "stationary");
+    const tram = moves[1]?.track;
+    if (tram) {
+      tram.mode = "tram";
+      tram.legs = [
+        { kind: "tram", lines: ["4"], fromStop: "Viru", toStop: "Hobujaama", startedAt: tram.startedAt, endedAt: tram.startedAt, distance: 900 },
+        { kind: "bus", lines: ["2", "49"], fromStop: "Hobujaama", toStop: "Kadriorg", startedAt: tram.endedAt, endedAt: tram.endedAt, distance: 1200 },
+      ];
+    }
+    // Drop the last trip between two visits: the day then has a "Missing travel".
+    const idx = items.findLastIndex((it, i) => it.kind === "move" && items[i - 1]?.kind === "visit" && items[i + 1]?.kind === "visit" && it.track.distance > 1500);
+    if (idx > 0) items.splice(idx, 1);
+    await route.fulfill({ response: res, json: j });
+  });
+  await page.route(/\/api\/timeline\/photos/, async (route) => {
+    const r = await page.request.get(route.request().url().replace("/photos", ""));
+    const items = (await r.json()).day?.items ?? [];
+    const keys = items.map((it) => (it.kind === "visit" ? `v-${it.visit.id}` : `m-${it.track.id}`));
+    const ids = (n, p) => Array.from({ length: n }, (_, i) => `${p}${i}`);
+    await route.fulfill({
+      json: {
+        configured: true, pending: false, linkBase: "https://immich.example",
+        items: [
+          { key: keys[0], ids: ids(6, "a"), total: 14 },
+          ...(keys[1] ? [{ key: keys[1], ids: ids(2, "b"), total: 2 }] : []),
+        ],
+        points: [],
+      },
+    });
+  });
+  await page.route(/\/api\/immich\/asset\//, (route) => {
+    const n = [...route.request().url()].reduce((a, c) => a + c.charCodeAt(0), 0);
+    return route.fulfill({ contentType: "image/jpeg", body: PHOTOS[n % PHOTOS.length] });
+  });
+}
+
+const EXTRAS = args.extras
+  ? [
+      { name: "x-timeline-mocked", url: `/timeline?date=${EXTRA_DATE}`, before: mockDay, wait: 2000 },
+      { name: "x-timeline-photo-viewer", url: `/timeline?date=${EXTRA_DATE}`, before: mockDay, full: false, act: async (p) => {
+          await p.locator("button[aria-label^='Photo']").first().click();
+          await p.waitForTimeout(800);
+        } },
+      { name: "x-timeline-trip-editor", url: `/timeline?date=${EXTRA_DATE}`, full: false, act: async (p) => {
+          await p.getByRole("button", { name: /Fix trip/ }).first().click();
+          await p.waitForTimeout(800);
+        } },
+      { name: "x-timeline-add-travel", url: `/timeline?date=${EXTRA_DATE}`, before: mockDay, full: false, act: async (p) => {
+          await p.getByRole("button", { name: /Add travel/ }).first().click();
+          await p.waitForTimeout(800);
+        } },
+      { name: "x-timeline-loading", url: `/timeline?date=${EXTRA_DATE}`, waitUntil: "domcontentloaded", wait: 1500, full: false,
+        before: (p) => p.route(/\/api\/timeline\?/, () => {}) },
+      { name: "x-timeline-error", url: `/timeline?date=${EXTRA_DATE}`, wait: 6000, full: false,
+        before: (p) => p.route(/\/api\/timeline\?/, (r) => r.fulfill({ status: 500, body: "boom" })) },
+      { name: "x-timeline-empty-day", url: "/timeline?date=2026-07-20", full: false },
+      { name: "x-places-search", url: "/places", full: false, act: async (p) => {
+          const input = p.locator("input[type=search], input[name=q], input[placeholder]").first();
+          await input.fill("zzzz-nothing").catch(() => {});
+          await input.press("Enter").catch(() => {});
+          await p.waitForTimeout(1500);
+        } },
+    ]
+  : [];
+if (args.extras) await makePhotos();
+
 /** name, url, and optionally `auth: false`, `act(page)` for a state after load, `full: false` for the viewport only. */
 const STATES = [
   { name: "auth-key", url: "/auth/key", auth: false },
@@ -147,6 +254,7 @@ const STATES = [
   { name: "devices", url: "/devices" },
   { name: "settings", url: "/settings" },
   { name: "not-found", url: "/no-such-page" },
+  ...EXTRAS,
 ].filter((s) => !only || only.some((o) => s.name.includes(o)));
 
 let n = 0;
@@ -157,8 +265,9 @@ for (const size of sizes) {
     const anon = await context(size, scheme);
     for (const s of STATES) {
       const page = await (s.auth === false ? anon : authed).newPage();
+      if (s.before) await s.before(page);
       try {
-        await page.goto(`${BASE}${s.url}`, { waitUntil: "networkidle", timeout: 30000 });
+        await page.goto(`${BASE}${s.url}`, { waitUntil: s.waitUntil ?? "networkidle", timeout: 30000 });
       } catch {
         // Long-polling or slow tiles: shoot what is there.
       }

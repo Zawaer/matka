@@ -1,14 +1,22 @@
-import { CalendarDays, Pencil } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays } from "lucide-react";
 import { EscapeBack } from "@/components/EscapeBack";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { q } from "@/lib/db";
-import { formatDateShort, formatDuration, formatTime } from "@/lib/format";
+import {
+  formatDateShort,
+  formatDuration,
+  formatLongDuration,
+  formatMonth,
+  formatRelativeInstant,
+  formatTime,
+  localDate,
+} from "@/lib/format";
 import { placeCategoryLine, placeTitle } from "@/components/places/category";
 import {
   Button,
   Callout,
-  Card,
   CardList,
   EmptyState,
   Field,
@@ -18,17 +26,22 @@ import {
   Page,
   PageHeader,
   SectionHeader,
-  Stat,
+  StatStrip,
   placeIconFor,
 } from "@/components/ui";
+import { LazyGeoMap } from "@/components/map/LazyGeoMap";
 import { PhotoGallery } from "@/components/places/PhotoGallery";
-import { KindBadge, KindPicker, SizePicker } from "@/components/places/SavedFields";
+import { PlaceDialog } from "@/components/places/PlaceDialog";
+import { KindPicker, SizePicker } from "@/components/places/SavedFields";
+import { visitsLabel } from "@/components/places/PlaceList";
 import { PLACE_CATEGORY_SQL } from "@/lib/places";
-import type { PlaceKind } from "@/lib/savedPlaces";
+import { DEFAULT_RADIUS_M, KIND_META, type PlaceKind } from "@/lib/savedPlaces";
 import { renamePlace, savePlace, unsavePlace } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+/** Visits shown before "Show all". */
+const FIRST_VISITS = 10;
 // Long histories: show the most recent visits, but count them all.
 const VISIT_LIMIT = 200;
 
@@ -42,8 +55,11 @@ type PlaceRow = {
   category: string | null;
   kind: PlaceKind | null;
   radius_m: number | null;
+  lat: number;
+  lon: number;
   visit_count: string;
   total_time: number;
+  last_visit: Date | null;
 };
 
 type VisitRow = {
@@ -55,19 +71,24 @@ type VisitRow = {
 
 export default async function PlaceDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ all?: string }>;
 }) {
   const user = await requireUser();
   const tz = user.timezone;
   const { id } = await params;
+  const showAll = (await searchParams).all === "1";
   if (!/^\d+$/.test(id)) notFound();
 
   const [place] = await q<PlaceRow>(
     `SELECT p.id, p.custom_name, p.geo_name, p.ai_name, p.city, p.country, ${PLACE_CATEGORY_SQL} AS category, p.kind, p.radius_m,
+            ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lon,
             (SELECT count(*) FROM visits v WHERE v.place_id = p.id) AS visit_count,
             (SELECT COALESCE(sum(extract(epoch FROM v.ended_at - v.started_at)), 0)::float8
-               FROM visits v WHERE v.place_id = p.id) AS total_time
+               FROM visits v WHERE v.place_id = p.id) AS total_time,
+            (SELECT max(v.started_at) FROM visits v WHERE v.place_id = p.id) AS last_visit
      FROM places p WHERE p.id = $1 AND p.user_id = $2`,
     [id, user.id],
   );
@@ -76,7 +97,7 @@ export default async function PlaceDetailPage({
   const visits = await q<VisitRow>(
     `SELECT id, started_at, ended_at, extract(epoch FROM ended_at - started_at)::int AS duration
      FROM visits WHERE place_id = $1 ORDER BY started_at DESC LIMIT $2`,
-    [id, VISIT_LIMIT],
+    [id, showAll ? VISIT_LIMIT : FIRST_VISITS],
   );
 
   const visitCount = Number(place.visit_count);
@@ -84,9 +105,16 @@ export default async function PlaceDetailPage({
   const name = placeTitle(shown, place.category);
   const what = placeCategoryLine(shown, place.category);
   const locale = [place.city, place.country].filter(Boolean).join(", ");
+  const meta = [place.kind ? KIND_META[place.kind].label : null, what, locale].filter(Boolean).join(" · ");
+  const last = place.last_visit ? formatRelativeInstant(place.last_visit, tz) : null;
+  const radius = place.radius_m ?? DEFAULT_RADIUS_M;
 
-  const dayOf = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
-  const lastVisit = visits[0]?.started_at ?? null;
+  // Visits by month, newest first.
+  const months = new Map<string, VisitRow[]>();
+  for (const v of visits) {
+    const m = localDate(v.started_at, tz).slice(0, 7);
+    months.set(m, [...(months.get(m) ?? []), v]);
+  }
 
   return (
     <Page>
@@ -94,51 +122,55 @@ export default async function PlaceDetailPage({
       <PageHeader
         back={{ href: "/places", label: "Places" }}
         leading={
-          <IconTile icon={placeIconFor(place.kind, place.category)} size="lg" tone={place.kind ? "primary" : "neutral"} />
+          <IconTile icon={placeIconFor(place.kind, place.category)} size="lg" className="hidden sm:flex" />
         }
         title={name}
         subtitle={
-          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {place.kind && <KindBadge kind={place.kind} radius={place.radius_m} />}
-            {(what || locale) && <span>{[what, locale].filter(Boolean).join(" · ")}</span>}
-          </span>
+          <>
+            {meta && <span className="block">{meta}</span>}
+            {last && <span className="block">Last visited {last === "Today" || last === "Yesterday" ? last.toLowerCase() : last}</span>}
+          </>
+        }
+        actions={
+          place.kind ? (
+            <PlaceDialog label="Edit" icon="edit" title="Saved place" description="Visits within its size count as this place.">
+              <SaveForm place={place} />
+            </PlaceDialog>
+          ) : (
+            <>
+              <PlaceDialog label="Rename" icon="edit" title="Rename" description="Leave it empty to use the looked-up name.">
+                <RenameForm place={place} />
+              </PlaceDialog>
+              <PlaceDialog
+                label="Save place"
+                icon="save"
+                title="Save this place"
+                description="Label it Home, Family, School… so visits nearby count as this place, and trips know your homes."
+              >
+                <SaveForm place={place} />
+              </PlaceDialog>
+            </>
+          )
         }
       />
       {!place.custom_name && place.ai_name && (
         <Callout className="-mt-2 mb-6">Picked by AI among the places nearby. Rename it if that&rsquo;s wrong.</Callout>
       )}
 
-      <section aria-label="Totals" className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Stat label="Visits" value={visitCount.toLocaleString("en-GB")} />
-        <Stat label="Time spent" value={formatDuration(place.total_time)} />
-        <Stat label="Last visit" value={lastVisit ? formatDateShort(lastVisit, tz) : "—"} className="col-span-2 sm:col-span-1" />
-      </section>
+      <LazyGeoMap
+        label={`Map of ${name}${place.kind ? `, with its ${radius} m size` : ""}`}
+        circle={{ lon: place.lon, lat: place.lat, radius }}
+        zoom={15}
+        className="mb-4 h-60 md:h-80"
+      />
 
-      {!place.kind && (
-        <details className="group mb-6">
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-control text-meta font-medium text-secondary hover:text-text [&::-webkit-details-marker]:hidden">
-            <Pencil size={16} strokeWidth={1.75} aria-hidden />
-            Rename
-          </summary>
-          <form action={renamePlace} className="mt-2 flex max-w-md gap-2">
-            <input type="hidden" name="id" value={place.id} />
-            <Input
-              name="name"
-              aria-label="Name"
-              defaultValue={place.custom_name ?? ""}
-              placeholder={place.ai_name ?? place.geo_name ?? "e.g. Home"}
-              maxLength={120}
-              className="flex-1"
-            />
-            <Button type="submit" variant="primary">
-              Save
-            </Button>
-          </form>
-          <p className="mt-1.5 text-meta text-muted">Leave empty to use the looked-up name.</p>
-        </details>
-      )}
-
-      <SavePanel place={place} />
+      <StatStrip
+        className="mb-8"
+        items={[
+          { label: "Visits", value: visitCount.toLocaleString("en-GB") },
+          { label: "Time spent", value: formatLongDuration(place.total_time) },
+        ]}
+      />
 
       <section className="mb-8">
         <SectionHeader title="Photos" />
@@ -149,73 +181,106 @@ export default async function PlaceDetailPage({
         <SectionHeader
           title={
             <>
-              Visits{" "}
-              <span className="ml-1 font-normal tabular-nums text-muted">
-                {visitCount > VISIT_LIMIT ? `latest ${VISIT_LIMIT} of ${visitCount}` : visitCount}
-              </span>
+              Visits <span className="ml-1 font-normal tabular-nums text-muted">{visitCount.toLocaleString("en-GB")}</span>
             </>
           }
         />
         {visits.length === 0 ? (
-          <EmptyState icon={CalendarDays} title="No visits recorded yet" />
+          <EmptyState icon={CalendarDays} title="No visits recorded yet" className="py-8" />
         ) : (
-          <CardList>
-            {visits.map((v) => (
-              <ListRow
-                key={v.id}
-                href={`/timeline?date=${dayOf.format(v.started_at)}`}
-                title={formatDateShort(v.started_at, tz)}
-                meta={`${formatTime(v.started_at, tz)} – ${formatTime(v.ended_at, tz)}`}
-                trailing={formatDuration(v.duration)}
-              />
+          <div className="flex flex-col gap-5">
+            {[...months].map(([month, list]) => (
+              <div key={month}>
+                <h3 className="mb-2 text-meta font-medium text-muted">
+                  {formatMonth(month)}
+                </h3>
+                <CardList>
+                  {list.map((v) => (
+                    <ListRow
+                      key={v.id}
+                      href={`/timeline?date=${localDate(v.started_at, tz)}`}
+                      title={formatDateShort(v.started_at, tz)}
+                      meta={
+                        <span className="tabular-nums">
+                          {formatTime(v.started_at, tz)} – {formatTime(v.ended_at, tz)}
+                        </span>
+                      }
+                      trailing={formatDuration(v.duration)}
+                      className="min-h-14"
+                    />
+                  ))}
+                </CardList>
+              </div>
             ))}
-          </CardList>
+          </div>
+        )}
+        {!showAll && visitCount > visits.length && (
+          <Link
+            href={`/places/${place.id}?all=1`}
+            scroll={false}
+            className="mt-3 inline-flex h-9 items-center rounded-control px-1 text-sm font-medium text-primary hover:underline"
+          >
+            Show all {visitsLabel(visitCount)}
+          </Link>
+        )}
+        {showAll && visitCount > VISIT_LIMIT && (
+          <p className="mt-3 text-meta text-muted">The latest {VISIT_LIMIT} of {visitsLabel(visitCount)} are shown.</p>
         )}
       </section>
     </Page>
   );
 }
 
-/** Save (or edit, or unsave) the place: its name, kind and size. */
-function SavePanel({ place }: { place: PlaceRow }) {
+function RenameForm({ place }: { place: PlaceRow }) {
+  return (
+    <form action={renamePlace} className="flex flex-col gap-4">
+      <input type="hidden" name="id" value={place.id} />
+      <Field label="Name" htmlFor="rename-name">
+        <Input
+          id="rename-name"
+          name="name"
+          defaultValue={place.custom_name ?? ""}
+          placeholder={place.ai_name ?? place.geo_name ?? "e.g. Mom's"}
+          maxLength={120}
+        />
+      </Field>
+      <div className="flex justify-end">
+        <Button type="submit" variant="primary">
+          Save name
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Save (or edit, or remove from saved) the place: its name, kind and size. */
+function SaveForm({ place }: { place: PlaceRow }) {
   const saved = place.kind != null;
   return (
-    <Card as="section" className="mb-8" aria-labelledby="save-place">
-      <div className="mb-4">
-        <h2 id="save-place" className="text-heading text-text">
-          {saved ? "Saved place" : "Save this place"}
-        </h2>
-        <p className="mt-0.5 text-meta text-muted">
-          {saved
-            ? "Visits within its size snap here, even across buildings."
-            : "Label it Home, Family, School… so visits nearby snap to it and trips know your homes."}
-        </p>
-      </div>
-      <form action={savePlace} className="flex max-w-xl flex-col gap-4">
-        <input type="hidden" name="id" value={place.id} />
-        <Field label="Name" htmlFor="save-name">
-          <Input
-            id="save-name"
-            name="name"
-            defaultValue={place.custom_name ?? ""}
-            placeholder={place.geo_name ?? "e.g. Mom's"}
-            maxLength={120}
-          />
-        </Field>
-        <KindPicker defaultValue={place.kind} />
-        <SizePicker defaultValue={place.radius_m} />
-        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-          <Button type="submit" variant="primary">
-            {saved ? "Save changes" : "Save place"}
+    <form action={savePlace} className="flex flex-col gap-4">
+      <input type="hidden" name="id" value={place.id} />
+      <Field label="Name" htmlFor={`save-name-${saved ? "edit" : "new"}`}>
+        <Input
+          id={`save-name-${saved ? "edit" : "new"}`}
+          name="name"
+          defaultValue={place.custom_name ?? ""}
+          placeholder={place.geo_name ?? "e.g. Mom's"}
+          maxLength={120}
+        />
+      </Field>
+      <KindPicker defaultValue={place.kind} />
+      <SizePicker defaultValue={place.radius_m} />
+      <p className="text-meta text-muted">A new size re-sorts your visits within a minute or so.</p>
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+        {saved && (
+          <Button type="submit" variant="ghost" formAction={unsavePlace} formNoValidate className="mr-auto text-danger hover:text-danger">
+            Remove from saved
           </Button>
-          {saved && (
-            <Button type="submit" formAction={unsavePlace} formNoValidate>
-              Unsave
-            </Button>
-          )}
-          <span className="text-meta text-muted">Changing the size re-sorts your visits in a minute or so.</span>
-        </div>
-      </form>
-    </Card>
+        )}
+        <Button type="submit" variant="primary">
+          {saved ? "Save changes" : "Save place"}
+        </Button>
+      </div>
+    </form>
   );
 }

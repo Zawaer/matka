@@ -1,231 +1,269 @@
 "use client";
 
-import { useActionState } from "react";
-import { CircleAlert, CircleCheck, RefreshCw } from "lucide-react";
+import { startTransition, useActionState, useState } from "react";
+import { ChevronRight, CircleAlert, CircleCheck, RefreshCw } from "lucide-react";
 import { checkDawarich, saveAiPlaces, saveImmich, saveImmichLink, savePhotoPoints, saveTimezone, saveTransit, type FormResult } from "@/app/settings/actions";
-import { Button, Field, Input, Select, Toggle, cx } from "@/components/ui";
+import { Button, Combobox, Input, Toggle, cx, type ComboOption } from "@/components/ui";
+import { SettingRow } from "./Layout";
+import { formatDateShort, formatTime } from "@/lib/format";
 
-/** A form action's answer, next to its button. */
-export function Result({ r }: { r: FormResult }) {
+/** A form action's answer: a short line under the setting. */
+export function Result({ r, pending }: { r: FormResult; pending?: boolean }) {
+  if (pending) return <p className="mt-1 text-meta text-muted">Saving…</p>;
   if (!r) return null;
   const I = r.ok ? CircleCheck : CircleAlert;
   return (
     <p
       role={r.ok ? "status" : "alert"}
-      className={cx("flex min-w-0 items-center gap-1.5 text-meta", r.ok ? "text-success" : "text-danger")}
+      className={cx("mt-1 flex min-w-0 items-start gap-1.5 text-meta", r.ok ? "text-success" : "text-danger")}
     >
-      <I size={16} strokeWidth={1.75} aria-hidden className="shrink-0" />
+      <I size={16} strokeWidth={1.75} aria-hidden className="mt-px shrink-0" />
       <span className="min-w-0">{r.message}</span>
     </p>
   );
 }
 
-/** The row under a form: its buttons, then the result. */
-function Actions({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{children}</div>;
-}
-
-/** A switch with its title and explanation: the whole row is the label. */
-function ToggleRow({
-  name,
-  on,
-  disabled,
-  title,
-  children,
-}: {
-  name: string;
-  on: boolean;
-  disabled?: boolean;
-  title: string;
-  children: React.ReactNode;
-}) {
+/** "What is sent ▸": the long explanation behind a disclosure. */
+export function More({ summary = "Details", children }: { summary?: string; children: React.ReactNode }) {
   return (
-    <label className={cx("flex items-start justify-between gap-4", disabled ? "cursor-not-allowed" : "cursor-pointer")}>
-      <span className="min-w-0">
-        <span className="block text-label text-text">{title}</span>
-        <span className="mt-1 block text-meta text-muted">{children}</span>
-      </span>
-      <Toggle name={name} defaultChecked={on} disabled={disabled} className="mt-0.5" />
-    </label>
+    <details className="group mt-1.5 text-meta text-muted">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-0.5 rounded-sm font-medium text-secondary hover:text-text [&::-webkit-details-marker]:hidden">
+        <ChevronRight size={16} strokeWidth={1.75} aria-hidden className="transition-transform group-open:rotate-90" />
+        {summary}
+      </summary>
+      <div className="mt-1 pl-[18px]">{children}</div>
+    </details>
   );
 }
 
-export function TimezoneForm({ current, zones }: { current: string; zones: string[] }) {
-  const [r, action, pending] = useActionState<FormResult, FormData>(saveTimezone, null);
+type Action = (prev: FormResult, form: FormData) => Promise<FormResult>;
+
+/** A switch that saves the moment it changes; the answer shows under its label. */
+function AutoToggle({
+  action,
+  name,
+  on,
+  disabled,
+  label,
+  hint,
+  details,
+}: {
+  action: Action;
+  name: string;
+  on: boolean;
+  disabled?: boolean;
+  label: string;
+  hint: React.ReactNode;
+  details?: React.ReactNode;
+}) {
+  const [r, dispatch, pending] = useActionState<FormResult, FormData>(action, null);
+  const [checked, setChecked] = useState(on);
+  const id = `setting-${name}`;
   return (
-    <form action={action} className="flex flex-col gap-4">
-      <Field label="Time zone" htmlFor="timezone" hint="Decides where days start on the timeline.">
-        <Select id="timezone" name="timezone" defaultValue={current} className="sm:max-w-sm">
-          {zones.map((z) => (
-            <option key={z}>{z}</option>
-          ))}
-        </Select>
-      </Field>
-      <Actions>
-        <Button type="submit" disabled={pending}>
-          Save
-        </Button>
-        <Result r={r} />
-      </Actions>
-    </form>
+    <SettingRow
+      label={<label htmlFor={id}>{label}</label>}
+      hint={hint}
+      below={
+        <>
+          {details}
+          <Result r={r} pending={pending} />
+        </>
+      }
+      control={
+        <Toggle
+          id={id}
+          checked={disabled ? false : checked}
+          disabled={disabled || pending}
+          onChange={(e) => {
+            const v = e.target.checked;
+            setChecked(v);
+            const fd = new FormData();
+            if (v) fd.set(name, "on");
+            startTransition(() => dispatch(fd));
+          }}
+        />
+      }
+    />
+  );
+}
+
+export function TimezoneRow({ current, zones }: { current: string; zones: ComboOption[] }) {
+  const [r, dispatch, pending] = useActionState<FormResult, FormData>(saveTimezone, null);
+  const [value, setValue] = useState(current);
+  return (
+    <SettingRow
+      stack
+      label="Time zone"
+      hint="Decides where days start on the timeline."
+      below={<Result r={r} pending={pending} />}
+      control={
+        <Combobox
+          label="Time zone"
+          placeholder="Search, e.g. Helsinki"
+          value={value}
+          options={zones}
+          disabled={pending}
+          className="w-full sm:w-80"
+          onChange={(v) => {
+            setValue(v);
+            const fd = new FormData();
+            fd.set("timezone", v);
+            startTransition(() => dispatch(fd));
+          }}
+        />
+      }
+    />
+  );
+}
+
+export function TransitRow({ on, available }: { on: boolean; available: boolean }) {
+  return (
+    <AutoToggle
+      action={saveTransit}
+      name="transit_lines"
+      on={on}
+      disabled={!available}
+      label="Public transport lines"
+      hint={
+        available
+          ? "Shows the bus, tram, metro or train line you rode, like “Bus 159, Leppävaara → Matinkylä”."
+          : "Not available on this server."
+      }
+      details={
+        available ? (
+          <More>Trips are matched against published routes (HSL in the Helsinki region) on this server; nothing is sent anywhere.</More>
+        ) : null
+      }
+    />
+  );
+}
+
+export function AiPlacesRow({ on }: { on: boolean }) {
+  return (
+    <AutoToggle
+      action={saveAiPlaces}
+      name="ai_places"
+      on={on}
+      label="Let AI pick between nearby places"
+      hint="Claude guesses between nearby venues. Only names and visit patterns are sent."
+      details={
+        <More summary="What is sent">
+          For places with several shops, cafés or venues next to each other, Claude (Anthropic&rsquo;s AI, through this
+          server&rsquo;s account) gets the candidates&rsquo; names, types and distances in metres, whether a street
+          address is an option, and your visits there in local time: how many, the usual start hour and length, and how
+          many fall on weekends or at night. Never coordinates, addresses, dates or your tracks. Saved and renamed places
+          are left out, bars, clinics and places of worship are never suggested, and only confident picks are used.
+          Turning this off removes the picks.
+        </More>
+      }
+    />
+  );
+}
+
+export function PhotoPointsRow({ on }: { on: boolean }) {
+  return (
+    <AutoToggle
+      action={savePhotoPoints}
+      name="photo_points"
+      on={on}
+      label="Fill gaps from photo locations"
+      hint="Where nothing was recorded, the places your photos were taken are added to your history."
+      details={
+        <More>
+          This covers time before you used Matka or with the phone off. Screenshots and saved images are ignored.
+          Turning this off removes those points again.
+        </More>
+      }
+    />
   );
 }
 
 export function ImmichForm({ url, connected }: { url: string | null; connected: boolean }) {
   const [r, action, pending] = useActionState<FormResult, FormData>(saveImmich, null);
   return (
-    <form action={action} className="flex flex-col gap-4">
-      <Field label="Server URL" htmlFor="immich-url">
-        <Input id="immich-url" name="url" defaultValue={url ?? ""} placeholder="http://immich_server:2283" />
-      </Field>
-      <Field
-        label="API key"
-        htmlFor="immich-key"
-        hint={
-          <>
-            Create a key in Immich under Account settings → API keys with the permissions asset.read and asset.view.
-            It is stored encrypted and only used by the server.
-          </>
-        }
-      >
-        <Input
-          id="immich-key"
-          name="key"
-          type="password"
-          autoComplete="off"
-          placeholder={connected ? "Stored. Enter a new key to replace it" : ""}
-        />
-      </Field>
-      <Actions>
-        <Button type="submit" disabled={pending}>
+    <form action={action} className="flex flex-col gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-meta font-medium text-secondary">Server address</span>
+          <Input name="url" defaultValue={url ?? ""} placeholder="http://immich_server:2283" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-meta font-medium text-secondary">API key</span>
+          <Input
+            name="key"
+            type="password"
+            autoComplete="off"
+            placeholder={connected ? "Stored. Enter a new key to replace it" : ""}
+          />
+        </label>
+      </div>
+      <p className="text-meta text-muted">
+        Create a key in Immich under Account settings → API keys, with the permissions asset.read and asset.view.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="submit" variant={connected ? "secondary" : "primary"} disabled={pending}>
           {connected ? "Update" : "Connect"}
         </Button>
         {connected && (
-          <Button type="submit" name="disconnect" value="1" variant="danger" disabled={pending}>
+          <Button type="submit" name="disconnect" value="1" variant="ghost" disabled={pending}>
             Disconnect
           </Button>
         )}
-        <Result r={r} />
-      </Actions>
+      </div>
+      <Result r={r} pending={pending} />
     </form>
   );
 }
 
-export function ImmichLinkForm({ url }: { url: string | null }) {
+export function ImmichLinkRow({ url }: { url: string | null }) {
   const [r, action, pending] = useActionState<FormResult, FormData>(saveImmichLink, null);
   return (
-    <form action={action} className="flex flex-col gap-4">
-      <Field
-        label={
-          <>
-            Immich address for links <span className="font-normal text-muted">(optional)</span>
-          </>
-        }
-        htmlFor="immich-link"
-        hint={
-          <>
-            Where you open Immich in your browser. Photos on the timeline link there; leave it empty to view them in
-            Matka only. The server URL above is often a container address your devices can&apos;t open.
-          </>
-        }
-      >
-        <Input id="immich-link" name="link_url" defaultValue={url ?? ""} placeholder="https://immich.lan" />
-      </Field>
-      <Actions>
-        <Button type="submit" disabled={pending}>
-          Save
-        </Button>
-        <Result r={r} />
-      </Actions>
-    </form>
-  );
-}
-
-export function TransitForm({ on, available }: { on: boolean; available: boolean }) {
-  const [r, action, pending] = useActionState<FormResult, FormData>(saveTransit, null);
-  return (
-    <form action={action} className="flex flex-col gap-4">
-      <ToggleRow name="transit_lines" on={on} disabled={!available} title="Show public transport lines">
-        Matches your trips against published routes (HSL in the Helsinki region) and shows the bus, tram, metro or
-        train line you rode, like &ldquo;Bus 159, Leppävaara &rarr; Matinkylä&rdquo;. Matching happens on this server;
-        nothing about your trips is sent anywhere.
-      </ToggleRow>
-      {!available && <p className="text-meta text-muted">Turned off for this server (MATKA_TRANSIT_FEEDS=off).</p>}
-      <Actions>
-        <Button type="submit" disabled={pending || !available}>
-          Save
-        </Button>
-        <Result r={r} />
-      </Actions>
-    </form>
-  );
-}
-
-export function AiPlacesForm({ on }: { on: boolean }) {
-  const [r, action, pending] = useActionState<FormResult, FormData>(saveAiPlaces, null);
-  return (
-    <form action={action} className="flex flex-col gap-4">
-      <ToggleRow name="ai_places" on={on} title="Let AI pick between nearby places">
-        Where several shops, cafés or venues are next to each other, Claude (Anthropic&rsquo;s AI, through this
-        server&rsquo;s shared account) guesses which one you were at from when and how long you stay. It is sent only
-        the candidates&rsquo; names, types and distances in metres, whether a street address is an option (not the
-        address), and your visits there in local time: how many, the usual start hour and length, and how many fall on
-        weekends or at night. Never coordinates, addresses, dates or your tracks. Saved and renamed places are left
-        out, bars, clinics and places of worship are never suggested, and only confident picks are used. Turning this
-        off removes the picks.
-      </ToggleRow>
-      <Actions>
-        <Button type="submit" disabled={pending}>
-          Save
-        </Button>
-        <Result r={r} />
-      </Actions>
-    </form>
-  );
-}
-
-export function PhotoPointsForm({ on }: { on: boolean }) {
-  const [r, action, pending] = useActionState<FormResult, FormData>(savePhotoPoints, null);
-  return (
-    <form action={action} className="flex flex-col gap-4">
-      <ToggleRow name="photo_points" on={on} title="Fill gaps from photo locations">
-        A geotagged photo shows where you were when you took it. Where nothing was recorded (before you used Matka, or
-        with the phone off), those spots are added to your history. Screenshots and saved images are ignored. Turning
-        this off removes them again.
-      </ToggleRow>
-      <Actions>
-        <Button type="submit" disabled={pending}>
-          Save
-        </Button>
-        <Result r={r} />
-      </Actions>
-    </form>
+    <SettingRow
+      stack
+      label="Address for opening photos"
+      hint="Where you open Immich in your browser. Leave it empty to view photos in Matka only."
+      below={<Result r={r} pending={pending} />}
+      control={
+        <form action={action} className="flex w-full gap-2 sm:w-80">
+          <Input name="link_url" aria-label="Immich address for links" defaultValue={url ?? ""} placeholder="https://immich.lan" />
+          <Button type="submit" disabled={pending}>
+            Save
+          </Button>
+        </form>
+      }
+    />
   );
 }
 
 export function DawarichForm({ lastCheck, ready, timeZone }: { lastCheck: string | null; ready: boolean; timeZone: string }) {
   const [r, action, pending] = useActionState<FormResult, FormData>(checkDawarich, null);
   return (
-    <form action={action} className="flex flex-col gap-4">
-      <div>
-        <p className="text-sm text-secondary">
-          Your Dawarich history was copied in once. Points Dawarich records later are added once a day where Matka has
-          nothing of its own within 10 minutes; Dawarich is only read.
-        </p>
-        <p className="mt-1.5 text-meta text-muted">
-          {!ready
-            ? "The first import is still running."
-            : lastCheck
-              ? `Last checked ${new Date(lastCheck).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone })}.`
-              : "Not checked for new points yet."}
-        </p>
-      </div>
-      <Actions>
-        <Button type="submit" icon={RefreshCw} disabled={pending || !ready}>
-          {pending ? "Checking…" : "Check for new points"}
-        </Button>
-        <Result r={r} />
-      </Actions>
-    </form>
+    <SettingRow
+      stack
+      label="Dawarich"
+      hint={
+        !ready
+          ? "The first import is still running."
+          : lastCheck
+            ? `New points are added once a day. Last checked ${formatDateShort(lastCheck, timeZone)} ${formatTime(lastCheck, timeZone)}.`
+            : "New points are added once a day."
+      }
+      below={
+        <>
+          <More>
+            Your Dawarich history was copied in once. Points Dawarich records later are added where Matka has nothing of
+            its own within 10 minutes; Dawarich is only read.
+          </More>
+          <Result r={r} pending={false} />
+        </>
+      }
+      control={
+        <form action={action}>
+          <Button type="submit" icon={RefreshCw} disabled={pending || !ready}>
+            {pending ? "Checking…" : "Check now"}
+          </Button>
+        </form>
+      }
+    />
   );
 }

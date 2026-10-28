@@ -7,10 +7,21 @@ import type { Map as MlMap, LngLatBoundsLike, Marker } from "maplibre-gl";
 import { createSavedPlace } from "@/app/places/actions";
 import { KindPicker, SizePicker } from "@/components/places/SavedFields";
 import { MODE_META, type ModeKey } from "@/lib/modes";
-import { computeDark, extendBounds, modeColorExpression, resolveColor, styleUrl } from "./mapStyle";
+import { computeDark, extendBounds, modeColorExpression, resolveColor, styleUrl, tameBasemap } from "./mapStyle";
 import { PLACE_SIZES } from "@/lib/savedPlaces";
-import { Check, CircleCheck, Crosshair, Flame, type LucideIcon, MapPinPlus, Route as RouteIcon, X } from "lucide-react";
-import { Button, Callout, cx, IconButton, Input } from "@/components/ui";
+import { Check, CircleCheck, Crosshair, Flame, type LucideIcon, MapPinPlus, Route as RouteIcon, Smartphone, X } from "lucide-react";
+import { Button, ButtonLink, Callout, cx, IconButton, Input, Segmented } from "@/components/ui";
+
+/** The time range shown: the last 30 days, this year, or everything. */
+type Range = "30d" | "year" | "all";
+const RANGES: { key: Range; label: string }[] = [
+  { key: "30d", label: "30 days" },
+  { key: "year", label: "Year" },
+  { key: "all", label: "All" },
+];
+const rangeFrom = (r: Range) =>
+  r === "all" ? null : r === "30d" ? Math.floor(Date.now() / 1000) - 30 * 86_400 : Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime() / 1000);
+const q = (r: Range) => (rangeFrom(r) == null ? "" : `?from=${rangeFrom(r)}`);
 
 type FC = GeoJSON.FeatureCollection;
 
@@ -76,14 +87,19 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
   const mapRef = useRef<MlMap | null>(null);
   const pointsRef = useRef<FC | null>(null);
   const tracksRef = useRef<FC | null>(null);
-  const showHeatRef = useRef(true);
+  const showHeatRef = useRef(false);
   const showRoutesRef = useRef(true);
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [showHeat, setShowHeat] = useState(true);
+  // Routes by default; the heatmap is a second look, not both at once.
+  const [showHeat, setShowHeat] = useState(false);
+  const [range, setRange] = useState<Range>("all");
+  const rangeRef = useRef<Range>("all");
+  const [modes, setModes] = useState<ModeKey[]>([]);
+  const [isEmpty, setIsEmpty] = useState(false);
   const [showRoutes, setShowRoutes] = useState(true);
 
   // "Save a place": tap the map to drop a pin, then name it.
@@ -131,7 +147,7 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
         style: styleUrl(dark),
         center: FALLBACK_CENTER,
         zoom: FALLBACK_ZOOM,
-        attributionControl: { compact: true },
+        attributionControl: { compact: false },
       });
       map = m;
       mapRef.current = m;
@@ -238,9 +254,7 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
         if (cancelled) return;
         // MapLibre opens the compact attribution at first; start it folded to
         // the (i) button, which still shows the credits on tap.
-        container
-          .querySelector(".maplibregl-ctrl-attrib")
-          ?.classList.remove("maplibregl-compact-show");
+        tameBasemap(m, dark);
         try {
           const [pointsRes, tracksRes] = await data;
           if (!pointsRes.ok || !tracksRes.ok) {
@@ -255,6 +269,8 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
           pointsRef.current = points;
           tracksRef.current = tracks;
           addDataLayers();
+          setModes(modesOf(tracks));
+          setIsEmpty(points.features.length === 0 && tracks.features.length === 0);
 
           m.resize();
           let bbox = extendBounds(null, tracks);
@@ -283,7 +299,9 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
         dark = computeDark();
         m.setStyle(styleUrl(dark));
         m.once("styledata", () => {
-          if (!cancelled) addDataLayers();
+          if (cancelled) return;
+          tameBasemap(m, dark);
+          addDataLayers();
         });
       };
       mql.addEventListener("change", onThemeChange);
@@ -348,6 +366,33 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
     }
   }
 
+  // A new range: fetch both layers for it, swap the data and fit to it.
+  useEffect(() => {
+    if (rangeRef.current === range) return;
+    rangeRef.current = range;
+    const m = mapRef.current;
+    if (!m || status !== "ready") return;
+    const ctl = new AbortController();
+    (async () => {
+      try {
+        const [p, t] = await Promise.all([
+          fetch(`/api/points${q(range)}`, { signal: ctl.signal }).then((r) => r.json() as Promise<FC>),
+          fetch(`/api/tracks/geojson${q(range)}`, { signal: ctl.signal }).then((r) => r.json() as Promise<FC>),
+        ]);
+        pointsRef.current = p;
+        tracksRef.current = t;
+        (m.getSource("points") as { setData?: (d: FC) => void } | undefined)?.setData?.(p);
+        (m.getSource("tracks") as { setData?: (d: FC) => void } | undefined)?.setData?.(t);
+        setModes(modesOf(t));
+        const b = extendBounds(extendBounds(null, t), p);
+        if (b) m.fitBounds(b as LngLatBoundsLike, { padding: 48, duration: 500, maxZoom: 15 });
+      } catch {
+        // Aborted, or offline: the previous range stays on the map.
+      }
+    })();
+    return () => ctl.abort();
+  }, [range, status]);
+
   useEffect(() => {
     showHeatRef.current = showHeat;
     const map = mapRef.current;
@@ -374,12 +419,22 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
     <div className="relative h-full w-full overflow-hidden">
       <div ref={containerRef} className="h-full w-full" />
 
-      <div className="pointer-events-none absolute left-3 right-14 top-3 z-10 flex flex-wrap gap-2">
-        <div role="group" aria-label="Layers" className={cx(PANEL, "pointer-events-auto flex gap-0.5 p-1")}>
-          <ToggleButton active={showHeat} onClick={() => setShowHeat((v) => !v)} label="Heatmap" icon={Flame} />
-          <ToggleButton active={showRoutes} onClick={() => setShowRoutes((v) => !v)} label="Routes" icon={RouteIcon} />
+      {/* One bar: layers and range on the left, "Save a place" on the right (an icon on phones). */}
+      <div className="pointer-events-none absolute left-3 right-14 top-3 z-10 flex flex-wrap items-start gap-2">
+        <div className={cx(PANEL, "pointer-events-auto flex flex-wrap items-center gap-1 p-1")}>
+          <div role="group" aria-label="Layers" className="flex gap-0.5">
+            <ToggleButton active={showRoutes} onClick={() => setShowRoutes((v) => !v)} label="Routes" icon={RouteIcon} />
+            <ToggleButton active={showHeat} onClick={() => setShowHeat((v) => !v)} label="Heatmap" icon={Flame} />
+          </div>
+          <span aria-hidden className="mx-0.5 hidden h-5 w-px bg-border sm:block" />
+          <Segmented
+            label="Time range"
+            size="sm"
+            value={range}
+            items={RANGES.map((r) => ({ key: r.key, label: r.label, onClick: () => setRange(r.key) }))}
+          />
         </div>
-        <div className={cx(PANEL, "pointer-events-auto flex p-1")}>
+        <div className={cx(PANEL, "pointer-events-auto ml-auto flex p-1 sm:ml-0")}>
           <ToggleButton
             active={saveMode}
             onClick={() => {
@@ -390,9 +445,22 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
             }}
             label={saveMode ? "Done" : "Save a place"}
             icon={saveMode ? Check : MapPinPlus}
+            compact
           />
         </div>
       </div>
+
+      {isEmpty && status === "ready" && (
+        <div className="absolute inset-x-3 top-1/3 z-10 mx-auto max-w-xs">
+          <div className={cx(PANEL, "flex flex-col items-center px-5 py-5 text-center")}>
+            <p className="text-label text-text">Nothing to map yet</p>
+            <p className="mt-1 text-meta text-muted">Your routes and the places you spend time show up here.</p>
+            <ButtonLink href="/devices" variant="primary" size="sm" icon={Smartphone} className="mt-3">
+              Pair a device
+            </ButtonLink>
+          </div>
+        </div>
+      )}
 
       {saveMode && !pin && (
         <div className="absolute inset-x-3 bottom-3 z-10 mx-auto max-w-sm sm:left-3 sm:right-auto sm:top-16 sm:bottom-auto sm:mx-0 sm:w-[22rem]">
@@ -447,18 +515,24 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
         </div>
       )}
 
-      {showRoutes && !saveMode && (
-        <div
-          aria-label="Route colours"
-          className={cx(PANEL, "absolute bottom-3 left-3 z-10 hidden max-w-[70%] flex-wrap gap-x-3.5 gap-y-1 px-3 py-2 text-caption text-secondary sm:flex")}
+      {showRoutes && !saveMode && modes.length > 0 && (
+        <details
+          open
+          className={cx(PANEL, "group absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)] text-caption text-secondary sm:max-w-[70%]")}
         >
-          {(["walking", "cycling", "driving", "train", "bus"] as ModeKey[]).map((k) => (
-            <span key={k} className="flex items-center gap-1.5">
-              <span className="inline-block h-[3px] w-3.5 rounded-full" style={{ background: MODE_META[k].color }} />
-              {MODE_META[k].label}
-            </span>
-          ))}
-        </div>
+          <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 px-3 font-medium text-text sm:hidden [&::-webkit-details-marker]:hidden">
+            <RouteIcon size={16} strokeWidth={1.75} aria-hidden className="text-muted" />
+            Legend
+          </summary>
+          <div aria-label="Route colours" className="flex flex-wrap gap-x-3.5 gap-y-1 px-3 pb-2 pt-0 sm:py-2">
+            {modes.map((k) => (
+              <span key={k} className="flex items-center gap-1.5">
+                <span className="inline-block h-[3px] w-3.5 rounded-full" style={{ background: MODE_META[k].color }} />
+                {MODE_META[k].label}
+              </span>
+            ))}
+          </div>
+        </details>
       )}
 
       {status === "loading" && (
@@ -483,24 +557,37 @@ function ToggleButton({
   onClick,
   label,
   icon: I,
+  compact,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   icon: LucideIcon;
+  /** Icon only on phones. */
+  compact?: boolean;
 }) {
+  // A layer that can be on alongside the other: a check when on, neutral either way (not the accent).
+  const Glyph = active && !compact ? Check : I;
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      aria-label={compact ? label : undefined}
+      title={compact ? label : undefined}
       className={cx(
         "inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-meta font-medium transition-colors",
-        active ? "bg-primary/12 text-primary" : "text-secondary hover:bg-surface-2 hover:text-text",
+        active ? "bg-surface-2 text-text" : "text-muted hover:bg-surface-2 hover:text-text",
       )}
     >
-      <I size={16} strokeWidth={1.75} aria-hidden />
-      {label}
+      <Glyph size={16} strokeWidth={1.75} aria-hidden className={active && !compact ? "text-primary" : undefined} />
+      <span className={compact ? "hidden sm:inline" : undefined}>{label}</span>
     </button>
   );
+}
+
+/** The modes present in a set of tracks, in the palette's order. */
+function modesOf(fc: FC): ModeKey[] {
+  const seen = new Set(fc.features.map((f) => f.properties?.mode as ModeKey));
+  return (Object.keys(MODE_META) as ModeKey[]).filter((k) => seen.has(k) && k !== "stationary");
 }

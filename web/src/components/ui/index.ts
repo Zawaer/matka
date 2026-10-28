@@ -6,7 +6,7 @@ export { Card, CardHeader, CardList, ListRow, cardClass } from "./Card";
 export { Button, ButtonLink, IconButton, buttonClass, iconButtonClass } from "./Button";
 export { Badge, Chip } from "./Badge";
 export { Segmented, type SegmentItem } from "./Segmented";
-export { Stat } from "./Stat";
+export { Stat, StatStrip } from "./Stat";
 export { EmptyState, Skeleton, Callout } from "./States";
 export { Input, Select, Textarea, Field, Toggle, inputClass, checkClass } from "./Form";
 export { IconTile } from "./IconTile";
@@ -24,3 +24,4 @@ export {
   placeIconLabel,
 } from "./icons";
 export { CopyField } from "./CopyField";
+export { DatePicker, MonthPicker as MonthSelect, Combobox, formatPickerDate, type ComboOption } from "./Pickers";

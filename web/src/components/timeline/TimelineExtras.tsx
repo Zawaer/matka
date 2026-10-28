@@ -25,9 +25,24 @@ const refreshDay = (mutate: ReturnType<typeof useSWRConfig>["mutate"]) =>
 export const candidateType = (c: PlaceCandidate) => (c.address ? "address" : c.category ? categoryLabel(c.category).toLowerCase() : "place");
 
 /**
- * Under a visit whose name is a guess: "Yes · Pick another". Yes keeps the
- * name; Pick another lists the nearby candidates and "Other name…". The
- * answer goes to the place, so every visit there changes with it.
+ * The name to show for a guessed visit, and the other candidates for the
+ * meta line: "Café Maiasmokk?" / "Or: Kehrwieder · Pikk 16". When the place
+ * has no name of its own, the top candidate is the guess.
+ */
+export function questionGuess(visit: Visit): { name: string; others: string[]; fromCandidates: boolean } | null {
+  const cands = visit.candidates ?? [];
+  if (!cands.length) return null;
+  const own = visit.placeName && visit.placeName !== "Unknown Location" ? visit.placeName : null;
+  const name = own ?? cands[0].name;
+  const others = cands.filter((c) => c.name.toLowerCase() !== name.toLowerCase()).slice(0, 2).map((c) => c.name);
+  return { name, others, fromCandidates: !own };
+}
+
+/**
+ * Under a visit whose name is a guess: [Yes] [Something else ▾], aligned with
+ * the title. Yes keeps the guess; Something else lists the nearby candidates
+ * and "Other name…". The answer goes to the place, so every visit there
+ * changes with it.
  */
 export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: string }) {
   const { mutate } = useSWRConfig();
@@ -36,7 +51,9 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const others = (visit.candidates ?? []).filter((c) => c.name.toLowerCase() !== shownName.toLowerCase());
+  const cands = visit.candidates ?? [];
+  const others = cands.filter((c) => c.name.toLowerCase() !== shownName.toLowerCase());
+  const guess = questionGuess(visit);
 
   async function answer(body: { confirm: true } | { name: string; category?: string | null }) {
     setBusy(true);
@@ -55,11 +72,17 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
     }
   }
 
+  const yes = () => {
+    // A guess taken from the candidates is a pick; the place's own name is a confirmation.
+    const top = cands.find((c) => c.name === shownName);
+    if (guess?.fromCandidates && top) void answer({ name: top.name, category: top.category });
+    else void answer({ confirm: true });
+  };
+
   return (
-    <div className="mt-3 border-t border-border pt-3">
+    <div className="mt-2.5">
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-meta text-muted">Right place?</span>
-        <Button size="sm" icon={Check} disabled={busy} onClick={() => answer({ confirm: true })} className="h-7">
+        <Button size="sm" icon={Check} disabled={busy} onClick={yes} className="h-7" aria-label={`Yes, it was ${shownName}`}>
           Yes
         </Button>
         <Button
@@ -69,13 +92,13 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
           disabled={busy}
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className={cx("h-7", open && "bg-surface-2 text-text")}
+          className={cx("h-7 bg-surface-2/60", open && "bg-surface-2 text-text")}
         >
-          Pick another
+          Something else
         </Button>
       </div>
       {open && (
-        <ul className="mt-2 overflow-hidden rounded-control border border-border">
+        <ul className="mt-2 overflow-hidden rounded-control border border-border bg-surface">
           {others.map((c) => (
             <li key={c.name} className="border-b border-border last:border-b-0">
               <button
@@ -134,11 +157,14 @@ export function PlaceQuestion({ visit, shownName }: { visit: Visit; shownName: s
 
 /* ---------------- Missing travel ---------------- */
 
-/** "Missing travel · 9.5 km · 17 min" between two rows that are far apart, with "Add travel". */
+/**
+ * "Missing travel · 9.5 km · 17 min" between two rows that are far apart,
+ * with "Add travel": stacked on phones (title, meta, button), one row from sm.
+ */
 export function MissingTravelRow({ gap, onAdd }: { gap: MissingTravel; onAdd: () => void }) {
   const noData = gap.secs >= 30 * 60;
   return (
-    <li className="flex gap-3 sm:gap-4">
+    <li className="flex gap-2 sm:gap-3">
       <div className="relative flex w-10 shrink-0 flex-col items-center">
         <span
           className="w-px flex-1"
@@ -150,15 +176,12 @@ export function MissingTravelRow({ gap, onAdd }: { gap: MissingTravel; onAdd: ()
           }}
         />
       </div>
-      <div className="my-1.5 flex min-w-0 flex-1 items-center gap-3 rounded-card border border-dashed border-warn/45 bg-warn/5 px-3.5 py-2.5">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-warn/12 text-warn" aria-hidden>
-          <Route size={16} strokeWidth={1.75} />
-        </span>
+      <div className="mb-1 flex min-w-0 flex-1 flex-col gap-2.5 rounded-card border border-warn/30 bg-warn/5 px-3 py-2.5 sm:flex-row sm:items-center sm:gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-label text-text">
+            <Route size={16} strokeWidth={1.75} aria-hidden className="mr-1.5 inline-block align-[-3px] text-warn" />
             Missing travel
             <span className="font-normal tabular-nums text-muted">
-              {" "}
               · {formatDistance(gap.distance)}
               {gap.secs >= 60 ? ` · ${formatDuration(gap.secs)}` : ""}
             </span>
@@ -170,7 +193,7 @@ export function MissingTravelRow({ gap, onAdd }: { gap: MissingTravel; onAdd: ()
             </span>
           </p>
         </div>
-        <Button size="sm" icon={Plus} onClick={onAdd}>
+        <Button size="sm" icon={Plus} onClick={onAdd} className="self-start sm:self-center">
           Add travel
         </Button>
       </div>
@@ -236,17 +259,24 @@ export function PhotoStrip({ set, onOpen }: { set: PhotoSet; onOpen: (index: num
   );
 }
 
-/** Full-screen viewer for one item's photos: arrows/swipe-free buttons, Esc closes, a link to Immich when set up. */
+/**
+ * Full-screen viewer for one item's photos: a caption with the time and
+ * place, arrows (hidden at the ends), a thumbnail rail on desktop, Esc
+ * closes, and a link to Immich when set up.
+ */
 export function PhotoViewer({
   ids,
   total,
   start,
+  caption,
   linkBase,
   onClose,
 }: {
   ids: string[];
   total: number;
   start: number;
+  /** "12:40 · Kotikatu 12". */
+  caption?: string;
   linkBase: string | null;
   onClose: () => void;
 }) {
@@ -262,48 +292,75 @@ export function PhotoViewer({
   }, [ids.length, onClose]);
   const id = ids[i];
   const nav =
-    "flex h-10 w-10 items-center justify-center rounded-control bg-white/10 text-white transition-colors hover:bg-white/20 disabled:opacity-30";
+    "pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full bg-white/12 text-white backdrop-blur transition-colors hover:bg-white/24";
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(0, 0, 0, 0.94)" }} role="dialog" aria-modal="true" aria-label="Photos" onClick={onClose}>
-      <div className="flex items-center gap-3 px-4 py-3 text-sm text-white/80" onClick={(e) => e.stopPropagation()}>
-        <span className="tabular-nums">
-          {i + 1} / {ids.length}
-          {total > ids.length ? ` (of ${total})` : ""}
-        </span>
+    <div className="fixed inset-0 z-50 flex flex-col bg-black" role="dialog" aria-modal="true" aria-label="Photos" onClick={onClose}>
+      <div className="flex items-center gap-3 px-4 py-3 text-sm text-white" onClick={(e) => e.stopPropagation()}>
+        <div className="min-w-0">
+          <p className="font-medium tabular-nums">
+            {i + 1} of {Math.max(total, ids.length)}
+          </p>
+          {caption && <p className="truncate text-meta text-white/70">{caption}</p>}
+        </div>
         <span className="flex-1" />
         {linkBase && (
           <a
             href={`${linkBase}/photos/${encodeURIComponent(id)}`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-10 items-center gap-1.5 rounded-control bg-white/10 px-3 text-meta font-medium text-white transition-colors hover:bg-white/20"
+            className="inline-flex h-10 items-center gap-1.5 rounded-control bg-white/12 px-3 text-meta font-medium text-white transition-colors hover:bg-white/24"
           >
             Open in Immich
             <ExternalLink size={16} strokeWidth={1.75} aria-hidden />
           </a>
         )}
-        <button type="button" onClick={onClose} aria-label="Close" className={nav}>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex h-10 w-10 items-center justify-center rounded-control bg-white/12 text-white transition-colors hover:bg-white/24"
+        >
           <X size={20} strokeWidth={1.75} aria-hidden />
         </button>
       </div>
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-2 pb-6" onClick={(e) => e.stopPropagation()}>
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-2 pb-4" onClick={(e) => e.stopPropagation()}>
         {/* eslint-disable-next-line @next/next/no-img-element -- Immich proxy */}
         <img key={id} src={thumb(id, "preview")} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
         <div className="pointer-events-none absolute inset-x-3 top-1/2 flex -translate-y-1/2 justify-between">
-          <button type="button" className={`${nav} pointer-events-auto`} disabled={i === 0} onClick={() => setI(i - 1)} aria-label="Previous photo">
-            <ChevronLeft size={24} strokeWidth={1.75} aria-hidden />
-          </button>
-          <button
-            type="button"
-            className={`${nav} pointer-events-auto`}
-            disabled={i >= ids.length - 1}
-            onClick={() => setI(i + 1)}
-            aria-label="Next photo"
-          >
-            <ChevronRight size={24} strokeWidth={1.75} aria-hidden />
-          </button>
+          {i > 0 ? (
+            <button type="button" className={nav} onClick={() => setI(i - 1)} aria-label="Previous photo">
+              <ChevronLeft size={24} strokeWidth={1.75} aria-hidden />
+            </button>
+          ) : (
+            <span />
+          )}
+          {i < ids.length - 1 && (
+            <button type="button" className={nav} onClick={() => setI(i + 1)} aria-label="Next photo">
+              <ChevronRight size={24} strokeWidth={1.75} aria-hidden />
+            </button>
+          )}
         </div>
       </div>
+      {ids.length > 1 && (
+        <div className="hidden justify-center gap-1.5 px-4 pb-4 sm:flex" onClick={(e) => e.stopPropagation()}>
+          {ids.map((pid, j) => (
+            <button
+              key={pid}
+              type="button"
+              onClick={() => setI(j)}
+              aria-label={`Photo ${j + 1}`}
+              aria-current={j === i ? "true" : undefined}
+              className={cx(
+                "h-12 w-12 overflow-hidden rounded-md transition-opacity",
+                j === i ? "opacity-100 ring-2 ring-white" : "opacity-50 hover:opacity-80",
+              )}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- Immich proxy */}
+              <img src={thumb(pid)} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

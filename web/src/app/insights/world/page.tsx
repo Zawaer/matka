@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { InsightsHeader } from "@/components/insights/InsightsHeader";
-import { Building2, ChevronRight, Earth, Flag } from "lucide-react";
-import { BackLink, EmptyState, IconTile, Page, Segmented, Stat, cardClass, cx } from "@/components/ui";
+import { SortMenu } from "@/components/insights/SortMenu";
+import { ChevronRight, Earth } from "lucide-react";
+import { BackLink, EmptyState, Page, Segmented, StatStrip, cardClass, cx } from "@/components/ui";
 import { COVER_BACKDROP, CoverPhoto } from "@/components/insights/Cover";
+import { LazyGeoMap } from "@/components/map/LazyGeoMap";
 import { requireUser } from "@/lib/auth";
 import { getCovers } from "@/lib/covers";
-import { formatDateCompact, formatLongDuration } from "@/lib/format";
+import { formatCount, formatLongDuration, formatRelativeInstant } from "@/lib/format";
 import { cityCoverSpecs, cityKey } from "@/lib/insights/coverSpecs";
 import { getWorld } from "@/lib/insights/load";
-import { type WorldEntry, type WorldSort, isWorldSort } from "@/lib/insights/world";
+import { type WorldEntry, type WorldSort, countryCode, isWorldSort } from "@/lib/insights/world";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,9 @@ function href(p: Params) {
   return `/insights/world${s ? `?${s}` : ""}`;
 }
 
+const cityHref = (e: Pick<WorldEntry, "name" | "country">) =>
+  `/insights/world/city?name=${encodeURIComponent(e.name)}${e.country ? `&country=${encodeURIComponent(e.country)}` : ""}`;
+
 export default async function WorldPage({ searchParams }: { searchParams: Promise<Params> }) {
   const user = await requireUser();
   const tz = user.timezone;
@@ -54,87 +59,89 @@ export default async function WorldPage({ searchParams }: { searchParams: Promis
     : new Map();
 
   const sortParam = (s: WorldSort) => (s === "visits" ? undefined : s);
+  const empty = world.countries.length === 0 && world.cities.length === 0;
+  const maxCity = Math.max(1, ...world.cities.map((c) => c.duration));
 
   return (
     <Page width="wide">
       <InsightsHeader active="world" subtitle="The cities and countries your places are in." />
 
-      <section aria-label="World totals" className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="Countries" value={String(world.countries.length)} />
-        <Stat label="Cities" value={String(world.cities.length)} />
-        <Stat
-          className="col-span-2 md:col-span-1"
-          label="Places"
-          value={world.cities.reduce((a, c) => a + c.places, 0).toLocaleString("en-GB")}
-        />
-      </section>
-
-      <section className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Segmented
-          label="Show"
-          value={view}
-          className="self-start"
-          items={(["countries", "cities"] as const).map((v) => ({
-            key: v,
-            label: v === "cities" ? "Cities" : "Countries",
-            href: href({ view: v === "cities" ? "cities" : undefined, sort: sortParam(sort) }),
-          }))}
-        />
-        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          <span className="shrink-0 text-meta text-muted">Sort by</span>
-          <Segmented
-            label="Sort by"
-            size="sm"
-            value={sort}
-            items={(Object.keys(SORT_LABEL) as WorldSort[]).map((s) => ({
-              key: s,
-              label: SORT_LABEL[s],
-              href: href({ view: view === "cities" && !country ? "cities" : undefined, country, sort: sortParam(s) }),
-            }))}
-          />
-        </div>
-      </section>
-
-      {country && (
-        <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <BackLink href={href({ sort: sortParam(sort) })} className="mb-0">
-            All countries
-          </BackLink>
-          <h2 className="text-heading text-text">Cities in {country}</h2>
-        </div>
-      )}
-
-      {list.length === 0 ? (
+      {empty ? (
         <EmptyState
-          className="mt-4"
           icon={Earth}
           title="No cities yet"
-          description="They appear as places get their addresses from the geocoder."
+          description="Cities and countries appear once your places have addresses, a few minutes after they are first visited."
         />
       ) : (
-        <ul className={cx(cardClass({ padding: "none" }), "mt-4 divide-y divide-border overflow-hidden")}>
-          {list.map((e) => (
-            <li key={`${e.name}/${e.country ?? ""}`}>
-              <Row
-                entry={e}
-                tz={tz}
-                href={
-                  view === "cities"
-                    ? `/insights/world/city?name=${encodeURIComponent(e.name)}${e.country ? `&country=${encodeURIComponent(e.country)}` : ""}`
-                    : href({ country: e.name, sort: sortParam(sort) })
-                }
-                isCity={view === "cities"}
-                showCountry={view === "cities" && !country}
-                thumb={covers.size > 0 ? (covers.get(cityKey(e.name, e.country))?.assetId ?? null) : undefined}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-      {world.unplaced > 0 && (
-        <p className="mt-3 text-caption text-muted">
-          {world.unplaced} {world.unplaced === 1 ? "place has" : "places have"} no address yet.
-        </p>
+        <>
+          <LazyGeoMap
+            label={`Map of the ${world.countries.length} countries you have visited`}
+            countries={world.countries.map((c) => c.name)}
+            points={world.cities.map((c) => ({
+              lat: c.lat,
+              lon: c.lon,
+              weight: Math.sqrt(c.duration / maxCity),
+              label: `${c.name} · ${formatLongDuration(c.duration)}`,
+              href: cityHref(c),
+            }))}
+            padding={32}
+            className="h-64 md:h-96"
+          />
+
+          <StatStrip
+            className="mt-4"
+            items={[
+              { label: "Countries", value: formatCount(world.countries.length) },
+              { label: "Cities", value: formatCount(world.cities.length) },
+              { label: "Places", value: formatCount(world.cities.reduce((a, c) => a + c.places, 0)) },
+            ]}
+          />
+
+          <div className="mt-8 flex items-center justify-between gap-3">
+            <Segmented
+              label="Show"
+              value={view}
+              size="sm"
+              items={(["countries", "cities"] as const).map((v) => ({
+                key: v,
+                label: v === "cities" ? "Cities" : "Countries",
+                href: href({ view: v === "cities" ? "cities" : undefined, sort: sortParam(sort) }),
+              }))}
+            />
+            <SortMenu
+              value={sort}
+              options={(Object.keys(SORT_LABEL) as WorldSort[]).map((s) => ({
+                key: s,
+                label: SORT_LABEL[s],
+                href: href({ view: view === "cities" && !country ? "cities" : undefined, country, sort: sortParam(s) }),
+              }))}
+            />
+          </div>
+
+          {country && (
+            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <BackLink href={href({ sort: sortParam(sort) })} className="mb-0">
+                All countries
+              </BackLink>
+              <h2 className="text-heading text-text">Cities in {country}</h2>
+            </div>
+          )}
+
+          <ul className={cx(cardClass({ padding: "none" }), "mt-3 divide-y divide-border overflow-hidden")}>
+            {list.map((e) => (
+              <li key={`${e.name}/${e.country ?? ""}`}>
+                <Row
+                  entry={e}
+                  tz={tz}
+                  href={view === "cities" ? cityHref(e) : href({ country: e.name, sort: sortParam(sort) })}
+                  isCity={view === "cities"}
+                  showCountry={view === "cities" && !country}
+                  thumb={covers.get(cityKey(e.name, e.country))?.assetId ?? null}
+                />
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </Page>
   );
@@ -153,23 +160,29 @@ function Row({
   href: string;
   isCity: boolean;
   showCountry: boolean;
-  /** Cover asset id; null or undefined for none. */
-  thumb?: string | null;
+  /** City cover asset id, or null. */
+  thumb: string | null;
 }) {
   const counts = [
     e.cities != null ? `${e.cities} ${e.cities === 1 ? "city" : "cities"}` : null,
     `${e.places} ${e.places === 1 ? "place" : "places"}`,
-    `${e.visits.toLocaleString("en-GB")} ${e.visits === 1 ? "visit" : "visits"}`,
+    `${formatCount(e.visits)} ${e.visits === 1 ? "visit" : "visits"}`,
   ].filter(Boolean);
+  const code = isCity ? null : (countryCode(e.name) ?? e.name.slice(0, 2).toUpperCase());
   return (
     <Link href={href} className="flex min-h-16 items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/60 sm:px-5">
-      {thumb ? (
+      {code ? (
+        <span
+          aria-hidden
+          className="flex size-9 shrink-0 items-center justify-center rounded-control bg-surface-2 text-meta font-semibold tracking-wide text-secondary"
+        >
+          {code}
+        </span>
+      ) : thumb ? (
         <div aria-hidden className={`relative size-9 shrink-0 overflow-hidden rounded-control ${COVER_BACKDROP}`}>
           <CoverPhoto assetId={thumb} size="thumbnail" />
         </div>
-      ) : (
-        <IconTile icon={isCity ? Building2 : Flag} />
-      )}
+      ) : null}
       <div className="min-w-0 flex-1">
         <p className="truncate text-label text-text">
           {e.name}
@@ -179,7 +192,12 @@ function Row({
       </div>
       <div className="shrink-0 text-right">
         <p className="text-label tabular-nums text-text">{formatLongDuration(e.duration)}</p>
-        <p className="text-meta text-muted">Last {formatDateCompact(e.lastVisit, tz)}</p>
+        {e.lastVisit && (
+          <p className="text-meta text-muted">
+            <span className="sr-only">Last visit </span>
+            {formatRelativeInstant(e.lastVisit, tz)}
+          </p>
+        )}
       </div>
       <ChevronRight size={16} strokeWidth={1.75} aria-hidden className="-mr-1 hidden shrink-0 text-muted sm:block" />
     </Link>

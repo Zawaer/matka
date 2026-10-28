@@ -4,10 +4,11 @@ import { cx } from "./cx";
 export const inputClass = cx(
   "h-9 w-full min-w-0 rounded-control border border-outline bg-surface px-3 text-sm text-text transition-colors",
   "placeholder:text-muted hover:border-outline focus:border-primary focus:outline-none focus-visible:outline-2 focus-visible:outline-primary/40",
+  "aria-invalid:border-danger aria-invalid:focus:border-danger aria-invalid:focus-visible:outline-danger/40",
   "disabled:cursor-not-allowed disabled:opacity-60",
 );
 
-export function Input({ className, ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...rest }: React.ComponentProps<"input">) {
   return <input className={cx(inputClass, className)} {...rest} />;
 }
 

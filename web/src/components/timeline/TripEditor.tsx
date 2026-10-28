@@ -37,6 +37,18 @@ function initialLegs(track: TrackSummary): DraftLeg[] {
   }));
 }
 
+/** How a detected mode reads in a sentence: "detected: cycling". */
+const DETECTED: Partial<Record<string, string>> = {
+  walking: "walking",
+  running: "running",
+  cycling: "cycling",
+  driving: "driving",
+  flying: "flight",
+  boat: "ferry",
+  motorcycle: "motorbike",
+  unknown: "unclear",
+};
+
 export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: () => void }) {
   const { mutate } = useSWRConfig();
   const [mode, setMode] = useState<Mode>((MODES as readonly string[]).includes(track.mode) ? (track.mode as Mode) : "bus");
@@ -116,10 +128,11 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
       onClick={() => !busy && onClose()}
     >
       <div
-        className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-card border border-border bg-surface shadow-pop sm:max-w-md sm:rounded-card"
+        className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-surface shadow-pop sm:max-w-md sm:rounded-card"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 pb-3 pt-4">
+        <span aria-hidden className="mx-auto mt-2 h-1 w-8 shrink-0 rounded-full bg-strong sm:hidden" />
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 pb-3 pt-2 sm:pt-4">
           <div className="min-w-0">
             <h2 id={`${ids}-title`} className="text-heading text-text">
               {track.added ? (track.correctionId != null ? "Trip you added" : "Add travel") : "Fix this trip"}
@@ -130,7 +143,7 @@ export function TripEditor({ track, onClose }: { track: TrackSummary; onClose: (
                 ? " in a straight line"
                 : track.correctionId != null
                   ? " · edited"
-                  : ` · shown as ${MODE_META[track.mode].label}`}
+                  : ` · detected: ${DETECTED[track.mode] ?? MODE_META[track.mode].label.toLowerCase()}`}
             </p>
           </div>
           <IconButton icon={X} label="Close" onClick={onClose} className="-mr-2" />

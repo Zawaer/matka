@@ -1,12 +1,16 @@
 import type { LucideIcon } from "lucide-react";
 import { Ban, CircleAlert, CircleCheck, CircleDashed, Smartphone, Trash2, TriangleAlert } from "lucide-react";
-import { Badge, Button, CardList, EmptyState, IconTile, Page, PageHeader, SectionHeader, cx } from "@/components/ui";
+import { Badge, Button, CardList, IconTile, Page, PageHeader, SectionHeader, cx } from "@/components/ui";
+import { BatteryCard } from "@/components/insights/BatteryCard";
+import { QualityCard } from "@/components/insights/QualityCard";
+import { getBatteryInsight, getQualityInsight } from "@/lib/insights/load";
 import { PairDevice } from "@/components/devices/PairDevice";
 import { appUrl, isDeviceSafeUrl } from "@/lib/appUrl";
 import { requireUser } from "@/lib/auth";
 import { listDevices, type Device } from "@/lib/devices";
 import { deviceHealth, type Health } from "@/lib/heartbeat";
 import { remove, revoke } from "./actions";
+import { formatRelativeInstant, formatTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +18,23 @@ export const metadata = {
   title: "Devices — Matka",
 };
 
-const fmt = (d: Date, timeZone: string) =>
-  d.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone });
+const fmt = (d: Date, timeZone: string) => `${formatRelativeInstant(d, timeZone)} ${formatTime(d, timeZone)}`;
 
 export default async function DevicesPage() {
   const user = await requireUser();
-  const devices = await listDevices(user.id);
+  const [devices, battery, quality] = await Promise.all([
+    listDevices(user.id),
+    getBatteryInsight(user, 60).catch((err) => {
+      console.error("[devices] battery failed:", err);
+      return null;
+    }),
+    getQualityInsight(user, 30).catch((err) => {
+      console.error("[devices] quality failed:", err);
+      return null;
+    }),
+  ]);
+  const hasBattery = !!battery?.days.some((d) => d.rate != null);
+  const hasQuality = !!quality && (quality.periods.some((p) => p.total.fixes > 0) || quality.usage.length > 0);
 
   const active = devices.filter((d) => d.revoked_at == null);
   const revoked = devices.filter((d) => d.revoked_at != null);
@@ -28,31 +43,34 @@ export default async function DevicesPage() {
     <Page width="narrow">
       <PageHeader
         title="Devices"
-        subtitle="Phones that upload your location to Matka."
-        back={{ href: "/settings", label: "Settings" }}
+        subtitle="Phones that record your location, and how well they do it."
       />
 
       <PairDevice insecure={!isDeviceSafeUrl(appUrl())} />
 
-      <section className="mt-8">
-        <SectionHeader
-          title="Paired devices"
-          description={devices.length > 0 ? `${active.length} active${revoked.length ? `, ${revoked.length} revoked` : ""}` : undefined}
-        />
-        {devices.length === 0 ? (
-          <EmptyState
-            icon={Smartphone}
-            title="No devices paired yet"
-            description="Give your phone a name above, then scan the QR code with the Matka app."
+      {devices.length > 0 && (
+        <section className="mt-8">
+          <SectionHeader
+            title="Paired devices"
+            description={`${active.length} active${revoked.length ? `, ${revoked.length} revoked` : ""}`}
           />
-        ) : (
           <CardList>
             {[...active, ...revoked].map((d) => (
               <DeviceRow key={d.id} device={d} tz={user.timezone} />
             ))}
           </CardList>
-        )}
-      </section>
+        </section>
+      )}
+
+      {(hasBattery || hasQuality) && (
+        <section className="mt-8">
+          <SectionHeader title="Recording quality" description="How exact your phone's locations are, and what recording costs in battery." />
+          <div className="flex flex-col gap-4">
+            {battery && hasBattery && <BatteryCard days={battery.days} annotations={battery.annotations} tz={user.timezone} />}
+            {quality && hasQuality && <QualityCard data={quality} tz={user.timezone} />}
+          </div>
+        </section>
+      )}
     </Page>
   );
 }

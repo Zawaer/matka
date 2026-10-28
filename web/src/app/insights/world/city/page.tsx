@@ -1,12 +1,13 @@
 import { EscapeBack } from "@/components/EscapeBack";
 import { notFound } from "next/navigation";
-import { Building2 } from "lucide-react";
-import { BackLink, IconTile, Page, PageHeader, SectionHeader, Stat } from "@/components/ui";
-import { PlaceCard } from "@/components/places/PlaceCard";
+import { BackLink, Page, PageHeader, SectionHeader, StatStrip } from "@/components/ui";
+import { PlaceList, PlaceRow } from "@/components/places/PlaceList";
+import { placeTitle } from "@/components/places/category";
+import { LazyGeoMap } from "@/components/map/LazyGeoMap";
 import { CoverHeader } from "@/components/insights/Cover";
 import { requireUser } from "@/lib/auth";
 import { getCovers } from "@/lib/covers";
-import { formatDateShort, formatLongDuration } from "@/lib/format";
+import { formatLongDuration, formatRelativeInstant } from "@/lib/format";
 import { cityCoverSpecs, cityKey } from "@/lib/insights/coverSpecs";
 import { getCity } from "@/lib/insights/load";
 
@@ -30,7 +31,16 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
     cityKey(name, coverCountry),
   );
   const cover = spec ? (await getCovers(user.id, [spec], { budgetMs: 4000 })).get(spec.key) : undefined;
-  const subtitle = `${country ? `${country} · ` : ""}last visited ${formatDateShort(last, user.timezone)}`;
+  const lastText = last ? formatRelativeInstant(last, user.timezone) : null;
+  const subtitle = [
+    country,
+    lastText ? `last visited ${lastText === "Today" || lastText === "Yesterday" ? lastText.toLowerCase() : lastText}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+    .replace(/^./, (c) => c.toUpperCase());
+  const maxTime = Math.max(1, ...places.map((p) => p.totalTime));
+  const sorted = [...places].sort((a, b) => b.totalTime - a.totalTime);
   const backHref = country ? `/insights/world?country=${encodeURIComponent(country)}` : "/insights/world?view=cities";
 
   return (
@@ -47,24 +57,37 @@ export default async function CityPage({ searchParams }: { searchParams: Promise
       ) : (
         <PageHeader
           back={{ href: backHref, label: country ? `Cities in ${country}` : "Cities" }}
-          leading={<IconTile icon={Building2} size="lg" />}
           title={name}
           subtitle={subtitle}
         />
       )}
 
-      <section aria-label="City totals" className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="Places" value={String(places.length)} />
-        <Stat label="Visits" value={visits.toLocaleString("en-GB")} />
-        <Stat className="col-span-2 md:col-span-1" label="Time spent" value={formatLongDuration(time)} />
-      </section>
+      <StatStrip
+        items={[
+          { label: "Places", value: String(places.length) },
+          { label: "Visits", value: visits.toLocaleString("en-GB") },
+          { label: "Time spent", value: formatLongDuration(time) },
+        ]}
+      />
+
+      <LazyGeoMap
+        label={`Map of your places in ${name}`}
+        points={sorted.map((p) => ({
+          lon: p.lon,
+          lat: p.lat,
+          label: placeTitle(p.name, p.category),
+          weight: Math.sqrt(p.totalTime / maxTime),
+          href: `/places/${p.id}`,
+        }))}
+        className="mt-4 h-60 md:h-96"
+      />
 
       <SectionHeader title="Places" className="mt-8" />
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {places.map((p) => (
-          <PlaceCard key={p.id} place={p} />
+      <PlaceList>
+        {sorted.map((p) => (
+          <PlaceRow key={p.id} place={p} showCity={false} />
         ))}
-      </section>
+      </PlaceList>
     </Page>
   );
 }

@@ -28,15 +28,20 @@
   --mk-accent: var(--mk-danger);
   --mk-route: #3987e5;
 
-  /* travel modes: dataviz categorical slots (validated, fixed order) */
-  --mk-car: #3987e5;
-  --mk-bike: #d95926;
-  --mk-walk: #199e70;
-  --mk-bus: #c98500;
-  --mk-run: #d55181;
-  --mk-boat: #008300;
-  --mk-transit: #9085e9;
-  --mk-fly: #e66767;
+  /* Travel modes (data marks only). Round 2: rebuilt so every mark is >= 3:1
+     on bg, surface and surface-2 in its theme, Train/Metro sit on a slate
+     away from the accent, Flight on a plum away from danger, and Ferry on a
+     teal clearly apart from Walk (normal-vision dE >= 11, OKLab x100). The
+     remaining close pairs under colour-blindness (bike/bus, bike/run) always
+     come with the mode glyph and label. See docs/REDESIGN.md, round 2. */
+  --mk-car: #3d86e0;
+  --mk-bike: #e0782f;
+  --mk-walk: #36b27a;
+  --mk-bus: #d6a52a;
+  --mk-run: #e8679f;
+  --mk-boat: #4cb8d0;
+  --mk-transit: #8f93b3;
+  --mk-fly: #b45fd0;
 
   --mk-radius: 12px;
   --mk-shadow-sm: 0 0 0 transparent;
@@ -63,14 +68,14 @@
     --mk-warn: #9a4f06;
     --mk-danger: #bd2f25;
     --mk-route: #2a78d6;
-    --mk-car: #2a78d6;
-    --mk-bike: #eb6834;
-    --mk-walk: #1baf7a;
-    --mk-bus: #eda100;
-    --mk-run: #e87ba4;
-    --mk-boat: #008300;
-    --mk-transit: #6250d6;
-    --mk-fly: #e34948;
+    --mk-car: #2a6fdb;
+    --mk-bike: #c4620f;
+    --mk-walk: #1d8a5a;
+    --mk-bus: #9c7a00;
+    --mk-run: #cc4a86;
+    --mk-boat: #0b5e7a;
+    --mk-transit: #686b8f;
+    --mk-fly: #8c3aa3;
     --mk-shadow-sm: 0 0 0 transparent;
     --mk-shadow: 0 12px 32px -8px rgba(40, 34, 20, 0.16), 0 2px 6px rgba(40, 34, 20, 0.06);
     color-scheme: light;
@@ -85,7 +90,7 @@
   --mk-surface-3: #e9e6e0;
   --mk-border: #e5e2dc;
   --mk-border-strong: #d2cec6;
-    --mk-outline: #857f75;
+  --mk-outline: #857f75;
   --mk-text: #18181f;
   --mk-text-2: #45454f;
   --mk-muted: #63636f;
@@ -96,14 +101,14 @@
   --mk-warn: #9a4f06;
   --mk-danger: #bd2f25;
   --mk-route: #2a78d6;
-  --mk-car: #2a78d6;
-  --mk-bike: #eb6834;
-  --mk-walk: #1baf7a;
-  --mk-bus: #eda100;
-  --mk-run: #e87ba4;
-  --mk-boat: #008300;
-  --mk-transit: #6250d6;
-  --mk-fly: #e34948;
+  --mk-car: #2a6fdb;
+  --mk-bike: #c4620f;
+  --mk-walk: #1d8a5a;
+  --mk-bus: #9c7a00;
+  --mk-run: #cc4a86;
+  --mk-boat: #0b5e7a;
+  --mk-transit: #686b8f;
+  --mk-fly: #8c3aa3;
   --mk-shadow-sm: 0 0 0 transparent;
   --mk-shadow: 0 12px 32px -8px rgba(40, 34, 20, 0.16), 0 2px 6px rgba(40, 34, 20, 0.06);
   color-scheme: light;
@@ -148,6 +153,8 @@
    text-caption  axis labels, badges        12/16
    text-stat     big numerals (+ tabular)   24/30 semibold */
 @theme {
+  /* The timeline's split view (list left, map right): 1200 px. */
+  --breakpoint-split: 75rem;
   --text-title: 1.5rem;
   --text-title--line-height: 2rem;
   --text-title--letter-spacing: -0.02em;
@@ -181,7 +188,10 @@ body {
   font-size: 0.875rem;
   line-height: 1.25rem;
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "cv11", "ss01";
+  /* Glyph advances at their true (fractional) widths. Without this, Chrome on
+     Linux at 2x rounds each advance to the hinting grid and Geist shows gaps
+     inside words ("Ho tel", "Se ttings"); verified in r2 phone shots. */
+  text-rendering: geometricPrecision;
 }
 
 /* One focus ring for everything focusable by keyboard. */
@@ -267,30 +277,71 @@ html.embed .map-shell {
 }
 
 /* ---------- MapLibre chrome follows the theme tokens ----------
+   One control style on every map: 32 px surface buttons with a hairline and
+   the pop shadow, stacked top-right (.mk-map-btn is the same look for our own
+   buttons). The attribution is compact text, bottom-right, muted.
    MapLibre's own stylesheet loads after this one, so these are !important. */
 .maplibregl-ctrl.maplibregl-ctrl-group {
   background: var(--mk-surface) !important;
   border: 1px solid var(--mk-border) !important;
   border-radius: 8px !important;
-  box-shadow: var(--mk-shadow-sm) !important;
+  box-shadow: var(--mk-shadow) !important;
   overflow: hidden;
+}
+.maplibregl-ctrl-group button {
+  width: 32px !important;
+  height: 32px !important;
 }
 .maplibregl-ctrl-group button + button {
   border-top: 1px solid var(--mk-border) !important;
 }
+.maplibregl-ctrl-group button:not(:disabled):hover {
+  background: var(--mk-surface-2) !important;
+}
 .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
   filter: var(--mk-icon-filter, none);
 }
-.maplibregl-ctrl.maplibregl-ctrl-attrib {
-  background: color-mix(in srgb, var(--mk-surface) 88%, transparent) !important;
+.maplibregl-ctrl-top-right .maplibregl-ctrl {
+  margin: 10px 10px 0 0 !important;
+}
+.maplibregl-ctrl.maplibregl-ctrl-attrib,
+.maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact,
+.maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact-show {
+  background: color-mix(in srgb, var(--mk-surface) 72%, transparent) !important;
   color: var(--mk-muted) !important;
-  border-radius: 6px !important;
+  font-size: 11px !important;
+  line-height: 16px !important;
+  padding: 0 6px !important;
+  margin: 0 !important;
+  border-radius: 6px 0 0 0 !important;
+  min-height: 0 !important;
+  box-shadow: none !important;
 }
 .maplibregl-ctrl.maplibregl-ctrl-attrib a {
   color: var(--mk-muted) !important;
 }
 .maplibregl-ctrl-attrib-button {
-  filter: var(--mk-icon-filter, none);
+  display: none !important;
+}
+.maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-inner {
+  display: block !important;
+}
+.mk-map-btn {
+  display: flex;
+  height: 32px;
+  width: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--mk-border);
+  background: var(--mk-surface);
+  color: var(--mk-text-2);
+  box-shadow: var(--mk-shadow);
+  transition: background-color 0.15s, color 0.15s;
+}
+.mk-map-btn:hover {
+  background: var(--mk-surface-2);
+  color: var(--mk-text);
 }
 :root:not([data-theme="light"]) {
   --mk-icon-filter: invert(1) brightness(1.1);
@@ -300,10 +351,29 @@ html.embed .map-shell {
     --mk-icon-filter: none;
   }
 }
+:root[data-theme="light"] {
+  --mk-icon-filter: none;
+}
 
 /* Tram shares the bus slot and metro the rail slot: the mode palette stays within
    its 8 validated colours; timeline rows and line badges carry the name. */
 :root {
   --mk-tram: var(--mk-bus);
   --mk-metro: var(--mk-transit);
+}
+
+/* Hover labels on GeoMap dots. */
+.mk-map-tip .maplibregl-popup-content {
+  background: var(--mk-surface);
+  color: var(--mk-text);
+  border: 1px solid var(--mk-border);
+  border-radius: 6px;
+  box-shadow: var(--mk-shadow);
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.mk-map-tip .maplibregl-popup-tip {
+  display: none;
 }

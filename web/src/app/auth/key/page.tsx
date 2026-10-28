@@ -15,7 +15,7 @@ export default async function KeyLoginPage({ searchParams }: { searchParams: Pro
   if (await getUser()) redirect(next);
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
+    <div className="flex min-h-dvh flex-col items-center px-4 pb-10 pt-[12dvh] sm:pt-[16dvh]">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
           <Logo size={40} />
@@ -27,8 +27,8 @@ export default async function KeyLoginPage({ searchParams }: { searchParams: Pro
             <KeyForm next={next} />
           ) : (
             <Callout tone="danger" title="Sign-in isn’t set up" role="alert">
-              MATKA_LOGIN_KEY isn&apos;t set (or is shorter than 32 characters) on this server, so nobody can sign in
-              yet.
+              This server has no login key yet (or one shorter than 32 characters), so nobody can sign in. Whoever
+              runs it can set one in the server&apos;s settings.
             </Callout>
           )}
         </Card>

@@ -13,7 +13,7 @@ export default async function TimelinePage({
   const { date } = await searchParams;
   const initial = typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
   return (
-    <Page width="narrow">
+    <Page width="narrow" className="split:max-w-none split:p-0">
       <Timeline key={initial ?? "latest"} initialDate={initial} />
     </Page>
   );

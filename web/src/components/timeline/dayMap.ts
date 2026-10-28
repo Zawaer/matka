@@ -64,6 +64,23 @@ export function stopLabel(numbers: number[]): string {
   return `${numbers[0]}·${numbers[1]}…`;
 }
 
+/**
+ * The label of several stops drawn as one marker (they are too close to
+ * tell apart at this zoom): "1–4" for a run, "2·5" for two, "1–3·7" otherwise.
+ */
+export function clusterLabel(numbers: number[]): string {
+  const ns = [...new Set(numbers)].sort((a, b) => a - b);
+  const runs: string[] = [];
+  for (let i = 0; i < ns.length; ) {
+    let j = i;
+    while (j + 1 < ns.length && ns[j + 1] === ns[j] + 1) j++;
+    runs.push(j > i ? `${ns[i]}–${ns[j]}` : String(ns[i]));
+    i = j + 1;
+  }
+  const label = runs.join("·");
+  return label.length > 7 ? `${ns[0]}–${ns.at(-1)}` : label;
+}
+
 /** Whether there is anything to draw: a stop, or a trip that went somewhere. */
 export function dayHasMap(items: TimelineItem[]): boolean {
   return items.some((it) =>

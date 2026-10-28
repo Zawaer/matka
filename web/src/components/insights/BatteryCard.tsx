@@ -1,20 +1,18 @@
-// "Phone battery" card for Insights: average unplugged drain per day, with a
+// "Phone battery" card (Devices → Recording quality): average unplugged drain per day, with a
 // marker where the recorder changed. One neutral hue for the bars, numbers in
 // text tokens, CSS tooltips (hover or keyboard focus), no client JS.
 
 import type { BatteryDay, Drain } from "@/lib/insights/battery";
 import { startOfDay } from "@/lib/insights/time";
+import { ChevronRight } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui";
+import { formatDate } from "@/lib/format";
 
 type Annotation = { at: number; label: string; date: string; before: Drain; after: Drain };
 
+const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const dayLabel = (date: string, weekday = true) =>
-  new Date(`${date}T00:00:00Z`).toLocaleDateString("en-GB", {
-    ...(weekday ? { weekday: "short" } : {}),
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+  `${weekday ? `${WD[new Date(`${date}T12:00:00Z`).getUTCDay()]} ` : ""}${formatDate(date)}`;
 const rate = (r: number | null) => (r == null ? "–" : `${r.toFixed(1)} %/h`);
 
 export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; annotations: Annotation[]; tz: string }) {
@@ -32,8 +30,8 @@ export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; ann
   const compare = marks.find((m) => m.before.rate != null || m.after.rate != null);
 
   return (
-    <Card as="section" className="mt-4">
-      <CardHeader title="Phone battery" description="Drain while unplugged, % per hour" />
+    <Card as="section">
+      <CardHeader title="Phone battery" description="How fast the whole phone drains while unplugged, % per hour" />
       {compare && (
         <dl className="mb-2 flex flex-wrap items-end gap-x-8 gap-y-2">
           <div>
@@ -106,10 +104,16 @@ export function BatteryCard({ days, annotations, tz }: { days: BatteryDay[]; ann
         <span>{dayLabel(days[n - 1].date, false)}</span>
       </div>
 
-      <p className="mt-4 border-t border-border pt-3 text-caption text-muted">
-        The whole phone&apos;s drain (screen, other apps), measured from the battery level the app reports with each
-        point. Charging and gaps over 3 h are left out; days follow your time zone.
-      </p>
+      <details className="group mt-4 text-caption text-muted">
+        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm font-medium text-secondary hover:text-text [&::-webkit-details-marker]:hidden">
+          <ChevronRight size={16} strokeWidth={1.75} aria-hidden className="transition-transform group-open:rotate-90" />
+          Details
+        </summary>
+        <p className="mt-1.5 pl-5">
+          This includes the screen and other apps. It is measured from the battery level the app reports with each
+          point; charging and gaps over 3 hours are left out, and days follow your time zone.
+        </p>
+      </details>
     </Card>
   );
 }

@@ -77,12 +77,16 @@ export function SizePicker({ defaultValue, compact }: { defaultValue?: number | 
   );
 }
 
-/** "Home · 250 m" badge (with the kind's icon) for a saved place. */
+/**
+ * "Home" badge (with the kind's icon) for a saved place: neutral, since a
+ * kind is a label, not a selection. The size is shown where it matters (the
+ * place page's map), not in every row.
+ */
 export function KindBadge({ kind, radius }: { kind: PlaceKind; radius?: number | null }) {
   return (
-    <Badge tone="primary" icon={KIND_ICONS[kind]}>
+    <Badge tone="neutral" icon={KIND_ICONS[kind]}>
       {KIND_META[kind].label}
-      {radius ? <span className="opacity-75">· {formatRadius(radius)}</span> : null}
+      {radius ? <span className="text-muted">· {formatRadius(radius)}</span> : null}
     </Badge>
   );
 }

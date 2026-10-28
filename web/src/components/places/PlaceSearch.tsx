@@ -5,10 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { PlaceHit, SearchResult } from "@/lib/placeSearch";
 import { KIND_META } from "@/lib/savedPlaces";
-import { formatDate, formatTimeSpent } from "@/lib/search";
+import { formatDate, formatLongDuration } from "@/lib/format";
 import { placeCategoryLine, placeTitle } from "./category";
-import { Building2, Earth, Search, SearchX, X } from "lucide-react";
-import { Callout, cardClass, cx, EmptyState, IconTile, inputClass, placeIconFor, SectionHeader, Skeleton } from "@/components/ui";
+import { PlaceList, PlaceTile, rowClass, visitsLabel } from "./PlaceList";
+import { Building2, ChevronRight, Earth, Search, SearchX, X } from "lucide-react";
+import { Callout, cx, EmptyState, inputClass, placeIconFor, Skeleton } from "@/components/ui";
 
 const DEBOUNCE_MS = 180;
 
@@ -177,7 +178,7 @@ export function PlaceSearch({ initialQuery, children }: { initialQuery: string; 
         >
           {state.status === "error" && !current ? (
             <Callout tone="danger" title="Search failed" role="alert">
-              Something went wrong. Please try again.
+              Something went wrong on the server. Change the search to try again.
             </Callout>
           ) : !shown ? (
             <SearchSkeleton />
@@ -203,52 +204,43 @@ export function PlaceSearch({ initialQuery, children }: { initialQuery: string; 
 function SearchResults({ result }: { result: SearchResult }) {
   const places = result.places.length > 0 && (
     <section>
-      <SectionHeader
-        title={
-          <>
-            Places{" "}
-            <span className="ml-1 font-normal tabular-nums text-muted">
-              {result.places.length}
-              {result.places.length >= 30 ? "+" : ""}
-            </span>
-          </>
-        }
-      />
-      <ul className="flex flex-col gap-2">
+      <h2 className="mb-3 text-heading text-text">
+        Places{" "}
+        <span className="ml-1 font-normal tabular-nums text-muted">
+          {result.places.length}
+          {result.places.length >= 30 ? "+" : ""}
+        </span>
+      </h2>
+      <PlaceList>
         {result.places.map((p) => (
-          <li key={p.id}>
-            <PlaceResult place={p} />
-          </li>
+          <PlaceResult key={p.id} place={p} />
         ))}
-      </ul>
+      </PlaceList>
     </section>
   );
   const areas = result.areas.length > 0 && (
     <section>
-      <SectionHeader title="Cities and countries" />
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <h2 className="mb-3 text-heading text-text">Cities and countries</h2>
+      <PlaceList>
         {result.areas.map((a) => (
           <li key={`${a.type}/${a.name}/${a.country ?? ""}`}>
-            <Link
-              href={a.href}
-              data-result
-              className={cx(cardClass({ padding: "sm", interactive: true }), "flex items-center gap-3 focus-visible:border-primary")}
-            >
-              <IconTile icon={a.type === "city" ? Building2 : Earth} />
+            <Link href={a.href} data-result className={rowClass}>
+              <PlaceTile icon={a.type === "city" ? Building2 : Earth} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-label text-text">
                   {a.name}
                   {a.country && <span className="font-normal text-muted"> · {a.country}</span>}
                 </span>
                 <span className="mt-0.5 block truncate text-meta text-muted">
-                  {a.places} {a.places === 1 ? "place" : "places"} · {a.visits} {a.visits === 1 ? "visit" : "visits"}
+                  {a.places} {a.places === 1 ? "place" : "places"} · {visitsLabel(a.visits)}
                   {a.lastVisit ? ` · last ${formatDate(a.lastVisit.slice(0, 10))}` : ""}
                 </span>
               </span>
+              <ChevronRight size={16} strokeWidth={1.75} aria-hidden className="-mr-1 hidden shrink-0 text-muted sm:block" />
             </Link>
           </li>
         ))}
-      </ul>
+      </PlaceList>
     </section>
   );
   // "tallinn": the city itself before the places that are only in it.
@@ -261,62 +253,57 @@ function SearchResults({ result }: { result: SearchResult }) {
   );
 }
 
+/** A search hit: the place row, plus its latest days as links to the timeline (wider screens). */
 function PlaceResult({ place: p }: { place: PlaceHit }) {
   const name = placeTitle(p.name, p.category);
   const what = p.kind ? KIND_META[p.kind].label : placeCategoryLine(p.name, p.category);
-  const locale = [p.city, p.country].filter(Boolean).join(", ");
-  const sub = [what, locale].filter(Boolean).join(" · ");
+  const meta = [
+    what,
+    p.city,
+    p.lastVisitDate ? `last ${formatDate(p.lastVisitDate)}` : "no visits yet",
+    p.lastVisitDate ? visitsLabel(p.visitCount) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <div
-      className={cx(
-        cardClass({ padding: "sm", interactive: true }),
-        "flex flex-col gap-2 focus-within:border-primary sm:flex-row sm:items-center sm:gap-4",
-      )}
-    >
-      <Link href={`/places/${p.id}`} data-result className="group flex min-w-0 flex-1 items-center gap-3 outline-none">
-        <IconTile icon={placeIconFor(p.kind, p.category)} tone={p.kind ? "primary" : "neutral"} />
+    <li className="flex items-center">
+      <Link href={`/places/${p.id}`} data-result className={cx(rowClass, "min-w-0 flex-1")}>
+        <PlaceTile icon={placeIconFor(p.kind, p.category)} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-label text-text group-hover:text-primary group-focus-visible:text-primary">{name}</span>
-          {sub && <span className="mt-0.5 block truncate text-meta text-muted">{sub}</span>}
-          <span className="mt-1 block text-meta">
-            {p.lastVisitDate ? (
-              <>
-                <span className="text-muted">Last visit </span>
-                <span className="font-medium text-text">{formatDate(p.lastVisitDate, true)}</span>
-                <span className="text-muted">
-                  {" "}
-                  · {p.visitCount} {p.visitCount === 1 ? "visit" : "visits"} · {formatTimeSpent(p.totalTime)}
-                </span>
-              </>
-            ) : (
-              <span className="text-muted">No visits yet</span>
-            )}
-          </span>
+          <span className="block truncate text-label text-text">{name}</span>
+          <span className="mt-0.5 block truncate text-meta text-muted">{meta}</span>
         </span>
+        <span className="shrink-0 text-right text-meta tabular-nums text-secondary">{formatLongDuration(p.totalTime)}</span>
       </Link>
       {p.recentDates.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pl-12 sm:max-w-[45%] sm:justify-end sm:pl-0" aria-label="Recent visits">
-          {p.recentDates.map((d) => (
+        <div className="hidden shrink-0 gap-1.5 pr-4 md:flex" aria-label="Recent visits">
+          {p.recentDates.slice(0, 3).map((d) => (
             <Link
               key={d}
               href={`/timeline?date=${d}`}
               className="inline-flex h-6 items-center rounded-full border border-border px-2.5 text-caption tabular-nums text-secondary transition-colors hover:border-strong hover:bg-surface-2 hover:text-text"
-              title={`Open ${d} on the timeline`}
+              title={`Open ${formatDate(d)} on the timeline`}
             >
               {formatDate(d)}
             </Link>
           ))}
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
 function SearchSkeleton() {
   return (
-    <div className="flex flex-col gap-2" aria-label="Searching">
+    <div className="overflow-hidden rounded-card border border-border bg-surface" aria-label="Searching">
       {[0, 1, 2].map((i) => (
-        <Skeleton key={i} className="h-[66px] rounded-card" />
+        <div key={i} className="flex h-16 items-center gap-3 border-b border-border px-4 last:border-b-0 sm:px-5">
+          <Skeleton className="h-8 w-8" />
+          <div className="flex-1">
+            <Skeleton className="h-4 w-48" />
+            <Skeleton className="mt-1.5 h-3 w-32" />
+          </div>
+        </div>
       ))}
     </div>
   );

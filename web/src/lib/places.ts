@@ -12,6 +12,9 @@ type Row = {
   visit_count: string;
   total_time: string | null;
   last_visit: Date | null;
+  lat: number;
+  lon: number;
+  street: string | null;
 };
 
 export interface PlaceListItem {
@@ -30,6 +33,10 @@ export interface PlaceListItem {
   kind: PlaceKind | null;
   /** A saved place's own radius in metres, or null. */
   radius: number | null;
+  lat: number;
+  lon: number;
+  /** "Pikk 16" from the geocoder, when it found an address (for unnamed places). */
+  street?: string | null;
 }
 
 /**
@@ -51,6 +58,8 @@ export const PLACE_CATEGORY_SQL = `CASE WHEN p.custom_name IS NOT NULL AND p.cus
 export async function getPlaces(userId: string): Promise<PlaceListItem[]> {
   const rows = await q<Row>(
     `SELECT p.id, ${PLACE_NAME_SQL} AS name, p.city, p.country, ${PLACE_CATEGORY_SQL} AS category, p.kind, p.radius_m,
+            ST_Y(p.geom::geometry) AS lat, ST_X(p.geom::geometry) AS lon,
+            NULLIF(trim(concat_ws(' ', p.geodata->>'street', p.geodata->>'housenumber')), '') AS street,
             count(v.id) AS visit_count,
             COALESCE(sum(extract(epoch FROM v.ended_at - v.started_at)), 0) AS total_time,
             max(v.ended_at) AS last_visit
@@ -79,6 +88,9 @@ export async function getPlaces(userId: string): Promise<PlaceListItem[]> {
     lastVisit: r.last_visit ? new Date(r.last_visit).toISOString() : null,
     kind: r.kind,
     radius: r.radius_m,
+    lat: Number(r.lat),
+    lon: Number(r.lon),
+    street: r.street,
   }));
 }
 

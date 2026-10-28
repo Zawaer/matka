@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ModeKey } from "@/lib/modes";
 import type { TimelineItem } from "@/lib/types";
-import { bboxOf, clusterPoints, dayHasMap, dayStops, dayTracks, dayWindow, nextStopKey, stopLabel } from "./dayMap";
+import { bboxOf, clusterLabel, clusterPoints, dayHasMap, dayStops, dayTracks, dayWindow, nextStopKey, stopLabel } from "./dayMap";
 
 const visit = (id: number, placeId: number, lat = 60, lon = 25, placeName: string | null = "Home"): TimelineItem => ({
   kind: "visit",
@@ -123,5 +123,14 @@ describe("clusterPoints", () => {
   it("groups points that would overlap", () => {
     const groups = clusterPoints([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 10, y: 12 }, { x: 0, y: 50 }], 38);
     expect(groups).toEqual([[0, 2], [1], [3]]);
+  });
+});
+
+describe("clusterLabel", () => {
+  it("shows runs as ranges", () => {
+    expect(clusterLabel([1, 2, 3, 4])).toBe("1–4");
+    expect(clusterLabel([2, 5])).toBe("2·5");
+    expect(clusterLabel([7, 1, 2, 3])).toBe("1–3·7");
+    expect(clusterLabel([1, 3, 5, 7, 9, 11])).toBe("1–11");
   });
 });

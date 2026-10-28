@@ -15,6 +15,9 @@ export type WorldEntry = {
   lastVisit: string | null;
   /** Countries only: number of distinct cities. */
   cities?: number;
+  /** The mean position of its places (for map dots). */
+  lat: number;
+  lon: number;
 };
 
 export type World = {
@@ -38,7 +41,10 @@ function later(a: string | null, b: string | null): string | null {
 }
 
 function add(map: Map<string, WorldEntry>, key: string, name: string, country: string | null, p: PlaceListItem) {
-  const e = map.get(key) ?? { name, country, places: 0, visits: 0, duration: 0, lastVisit: null };
+  const e = map.get(key) ?? { name, country, places: 0, visits: 0, duration: 0, lastVisit: null, lat: 0, lon: 0 };
+  // Running mean of the places' positions.
+  e.lat += (p.lat - e.lat) / (e.places + 1);
+  e.lon += (p.lon - e.lon) / (e.places + 1);
   e.places++;
   e.visits += p.visitCount;
   e.duration += p.totalTime;
@@ -93,4 +99,35 @@ export function cityPlaces(places: PlaceListItem[], city: string, country: strin
   return places
     .filter((p) => p.city === city && (country == null || p.country === country) && p.visitCount > 0)
     .sort((a, b) => b.visitCount - a.visitCount || b.totalTime - a.totalTime);
+}
+
+let regionCodes: Map<string, string> | null = null;
+/** Withdrawn or non-country codes that share a name with a current one ("DD" East Germany is "Germany"). */
+const RETIRED = new Set(["DD", "FX", "CS", "YU", "SU", "BU", "TP", "ZR", "NT", "YD", "VD", "DY", "HV", "RH", "NH", "AN", "QO", "EU", "EZ", "UN", "UK"]);
+
+/**
+ * A country's two-letter ISO code from its name ("Finland" → "FI", also
+ * "Suomi", "Deutschland"), via Intl's region names; null when unknown.
+ */
+export function countryCode(name: string): string | null {
+  if (!regionCodes) {
+    regionCodes = new Map();
+    const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const names = ["en", "fi", "sv", "de", "et"].map((l) => new Intl.DisplayNames([l], { type: "region", fallback: "none" }));
+    for (const a of A)
+      for (const b of A) {
+        const code = a + b;
+        if (RETIRED.has(code)) continue;
+        for (const dn of names) {
+          let n: string | undefined;
+          try {
+            n = dn.of(code);
+          } catch {
+            n = undefined;
+          }
+          if (n && !regionCodes.has(n.toLowerCase())) regionCodes.set(n.toLowerCase(), code);
+        }
+      }
+  }
+  return regionCodes.get(name.trim().toLowerCase()) ?? null;
 }

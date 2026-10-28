@@ -21,12 +21,13 @@ const fetcher = (url: string): Promise<DaySummary> =>
  * `travelled` is the timeline's own hint that the day has trips, so the strip's
  * height is held while its numbers load and nothing below it jumps.
  */
-export function DaySummaryStrip({ date, travelled }: { date: string; travelled: boolean }) {
+export function DaySummaryStrip({ date, travelled, loading = false }: { date: string; travelled: boolean; loading?: boolean }) {
   const { data, error } = useSWR<DaySummary>(date ? `/api/day-summary?date=${date}` : null, fetcher, {
     revalidateOnFocus: false,
   });
   // A fresh "+N" state per day.
-  return <Strip key={date} summary={data} failed={!!error} travelled={travelled} />;
+  // While the day itself is loading, the strip is a skeleton too: one loading state for the page.
+  return <Strip key={date} summary={loading ? undefined : data} failed={!!error} travelled={travelled || loading} />;
 }
 
 function Strip({
@@ -49,17 +50,14 @@ function Strip({
     : [];
 
   return (
-    <section aria-label="Day summary" aria-busy={!summary} className="mt-4 h-[60px]">
+    <section aria-label="Day summary" aria-busy={!summary} className="mt-4 min-h-[60px]">
       {summary ? (
         <>
           <p className="truncate text-sm text-muted">
             <span className="font-semibold text-text tabular-nums">{total[0]}</span>
             {total[1] && <span className="tabular-nums"> · {total[1]}</span>} on the move
           </p>
-          <ul
-            className="-mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:mx-0 md:px-0"
-            style={{ scrollbarWidth: "none" }}
-          >
+          <ul className="mt-2 flex flex-wrap gap-1.5">
             {shown.map((m) => (
               <ModeChip key={m.mode} m={m} />
             ))}
@@ -98,7 +96,7 @@ function ModeChip({ m }: { m: StripMode }) {
   const time = m.duration > 0 ? formatDuration(m.duration) : null;
   return (
     <li
-      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface pl-2.5 pr-3 text-meta shadow-card"
+      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface pl-2.5 pr-3 text-meta"
       title={[meta.label, dist, time].filter(Boolean).join(" · ")}
     >
       <span className="flex items-center" style={{ color: meta.color }} aria-hidden>

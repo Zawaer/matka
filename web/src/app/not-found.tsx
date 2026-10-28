@@ -10,7 +10,7 @@ export default function NotFound() {
       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-muted">
         <Compass size={24} strokeWidth={1.75} aria-hidden />
       </span>
-      <p className="mt-5 text-caption font-medium uppercase tracking-wide text-muted">Error 404</p>
+      <p className="mt-5 text-meta text-muted">Error 404</p>
       <h1 className="mt-1 text-title text-text">Nothing here</h1>
       <p className="mt-2 max-w-xs text-sm text-muted">
         This page doesn&apos;t exist, or what it showed has gone: places and trips are recomputed as new locations come

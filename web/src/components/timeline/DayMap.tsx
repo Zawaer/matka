@@ -13,11 +13,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { Maximize } from "lucide-react";
 import { PLACE_GROUP_ICONS } from "@/components/ui/icons";
 import type { LngLatBoundsLike, Map as MlMap, Marker } from "maplibre-gl";
-import { computeDark, modeColorExpression, resolveColor, styleUrl } from "@/components/map/mapStyle";
+import { computeDark, modeColorExpression, resolveColor, styleUrl, tameBasemap } from "@/components/map/mapStyle";
 import type { TimelineDay } from "@/lib/types";
 import type { PhotoPoint } from "@/lib/dayPhotos";
 import { PLACE_ICONS } from "@/lib/placeIcons";
-import { bboxOf, clusterPoints, dayStops, dayTracks, dayWindow, nextStopKey, stopLabel, type Stop } from "./dayMap";
+import { bboxOf, clusterLabel, clusterPoints, dayStops, dayTracks, dayWindow, nextStopKey, stopLabel, type Stop } from "./dayMap";
 
 type FC = GeoJSON.FeatureCollection;
 type BBox = [number, number, number, number];
@@ -130,13 +130,16 @@ const LABEL_CLASS =
  * A stop's marker: MapLibre positions the outer element with `transform`, so
  * the look (and the scale-up when selected) lives on the inner button.
  */
-function markerElement(stop: Stop): { root: HTMLElement; button: HTMLElement; glyph: Root } {
+function markerElement(stop: Stop, cluster = false): { root: HTMLElement; button: HTMLElement; glyph: Root } {
   const root = document.createElement("div");
   const el = document.createElement("button");
   el.type = "button";
   el.className = MARKER_CLASS;
   const icon = PLACE_ICONS[stop.icon];
-  el.setAttribute("aria-label", `${stop.numbers.join(", ")}. ${stop.name} (${icon.label})`);
+  el.setAttribute(
+    "aria-label",
+    cluster ? `Stops ${clusterLabel(stop.numbers)}: zoom in` : `${stop.numbers.join(", ")}. ${stop.name} (${icon.label})`,
+  );
   const glyph = document.createElement("span");
   glyph.setAttribute("aria-hidden", "true");
   glyph.className = "flex";
@@ -147,7 +150,7 @@ function markerElement(stop: Stop): { root: HTMLElement; button: HTMLElement; gl
   el.appendChild(glyph);
   const badge = document.createElement("span");
   badge.className = BADGE_CLASS;
-  badge.textContent = stopLabel(stop.numbers);
+  badge.textContent = cluster ? clusterLabel(stop.numbers) : stopLabel(stop.numbers);
   el.appendChild(badge);
   const label = document.createElement("span");
   label.className = LABEL_CLASS;
@@ -157,6 +160,9 @@ function markerElement(stop: Stop): { root: HTMLElement; button: HTMLElement; gl
   return { root, button: el, glyph: glyphRoot };
 }
 
+/** Stop markers closer than this (px) are drawn as one marker: "1–4", zoom in on click. */
+const STOP_CELL = 36;
+
 /** Unmounts a marker's icon root after the current render (React can't unmount mid-commit). */
 const dropGlyph = (r: Root) => setTimeout(() => r.unmount(), 0);
 
@@ -164,7 +170,7 @@ const dropGlyph = (r: Root) => setTimeout(() => r.unmount(), 0);
  * Fills the selected stop's marker and lifts it above its neighbours; its
  * name goes on whichever side of it has more room.
  */
-function markSelected(m: MlMap, markers: { marker: Marker; el: HTMLElement; stop: Stop; glyph: Root }[], key: string | null) {
+function markSelected(m: MlMap, markers: { marker: Marker; el: HTMLElement; stop: Stop; glyph: Root; members: Stop[] }[], key: string | null) {
   const w = m.getContainer().clientWidth;
   for (const mk of markers) {
     const on = key != null && mk.stop.keys.includes(key);
@@ -227,6 +233,7 @@ export default function DayMap({
   onSelect,
   photos,
   fill = false,
+  split = false,
 }: {
   day: TimelineDay;
   /** The day's GPS-tagged photos (GET /api/timeline/photos), drawn as thumbnails. */
@@ -236,11 +243,13 @@ export default function DayMap({
   onSelect: (key: string) => void;
   /** Fill the parent (embed) instead of the card heights used on /timeline. */
   fill?: boolean;
+  /** On /timeline: a card above the list, and the full-height right column of the split view from 1200 px. */
+  split?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
   const mlRef = useRef<typeof import("maplibre-gl") | null>(null);
-  const markersRef = useRef<{ marker: Marker; el: HTMLElement; stop: Stop; glyph: Root }[]>([]);
+  const markersRef = useRef<{ marker: Marker; el: HTMLElement; stop: Stop; glyph: Root; members: Stop[] }[]>([]);
   const photoMarkersRef = useRef<Marker[]>([]);
   const shownRef = useRef<Shown | null>(null);
   const fittedRef = useRef<string | null>(null);
@@ -280,7 +289,7 @@ export default function DayMap({
         style: styleUrl(computeDark()),
         center: [25.5, 64.5],
         zoom: 4.3,
-        attributionControl: { compact: true },
+        attributionControl: { compact: false },
         dragRotate: false,
         pitchWithRotate: false,
         touchPitch: false,
@@ -303,7 +312,7 @@ export default function DayMap({
 
       m.on("load", () => {
         if (cancelled) return;
-        container.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+        tameBasemap(m);
         ensureLayers(m, shownRef.current?.tracks ?? EMPTY);
         paintSelection(m, selectedRef.current);
         setReady(true);
@@ -313,6 +322,7 @@ export default function DayMap({
         m.setStyle(styleUrl(computeDark()));
         m.once("styledata", () => {
           if (cancelled) return;
+          tameBasemap(m);
           ensureLayers(m, shownRef.current?.tracks ?? EMPTY);
           paintSelection(m, selectedRef.current);
         });
@@ -369,25 +379,42 @@ export default function DayMap({
     ensureLayers(m, shown.tracks);
     (m.getSource("day-tracks") as { setData?: (d: FC) => void } | undefined)?.setData?.(shown.tracks);
 
-    for (const mk of markersRef.current) {
-      mk.marker.remove();
-      dropGlyph(mk.glyph);
-    }
-    markersRef.current = shown.stops.map((stop) => {
-      const { root, button, glyph } = markerElement(stop);
-      button.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onSelectRef.current(nextStopKey(stop, selectedRef.current));
-      });
-      const marker = new ml.Marker({ element: root, anchor: "center" }).setLngLat([stop.lon, stop.lat]).addTo(m);
-      return { marker, el: button, stop, glyph };
-    });
-
-    // Fit once per day; a refetch of the same day leaves the view alone.
+    // Fit first, so the stops cluster at the zoom they'll be seen at.
     if (fittedRef.current !== shown.date) {
       fit(m, bboxOf(shown.tracks, shown.stops), fittedRef.current != null);
       fittedRef.current = shown.date;
     }
+    const stops = shown.stops;
+    const draw = () => {
+      for (const mk of markersRef.current) {
+        mk.marker.remove();
+        dropGlyph(mk.glyph);
+      }
+      const xy = stops.map((st) => m.project([st.lon, st.lat]));
+      markersRef.current = clusterPoints(xy, STOP_CELL).map((group) => {
+        const members = group.map((i) => stops[i]);
+        const cluster = members.length > 1;
+        const stop: Stop = cluster
+          ? { ...members[0], numbers: members.flatMap((x) => x.numbers), keys: members.flatMap((x) => x.keys) }
+          : members[0];
+        const { root, button, glyph } = markerElement(stop, cluster);
+        button.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (cluster) {
+            const b = bboxOf(EMPTY, members);
+            if (b) m.fitBounds(b as LngLatBoundsLike, { padding: padding(m), maxZoom: 18, duration: 500 });
+          } else onSelectRef.current(nextStopKey(stop, selectedRef.current));
+        });
+        const marker = new ml.Marker({ element: root, anchor: "center" }).setLngLat([stop.lon, stop.lat]).addTo(m);
+        return { marker, el: button, stop, glyph, members };
+      });
+      markSelected(m, markersRef.current, selectedRef.current);
+    };
+    draw();
+    m.on("zoomend", draw);
+    return () => {
+      m.off("zoomend", draw);
+    };
   }, [shown, ready]);
 
   // Selection: thicken the line or fill the marker, and pan to it when it
@@ -401,7 +428,7 @@ export default function DayMap({
     markSelected(m, markersRef.current, selKey);
     if (!selKey || selFrom !== "list") return;
     if (selKey.startsWith("v-")) {
-      const stop = markersRef.current.find((mk) => mk.stop.keys.includes(selKey))?.stop;
+      const stop = shownRef.current?.stops.find((st) => st.keys.includes(selKey));
       if (!stop) return;
       m.easeTo({ center: [stop.lon, stop.lat], zoom: Math.max(m.getZoom(), 14), duration: 600 });
       // Centred now: its name fits on the right again.
@@ -458,7 +485,9 @@ export default function DayMap({
       className={
         fill
           ? "relative h-full w-full overflow-hidden"
-          : "relative h-[260px] w-full overflow-hidden rounded-card border border-border bg-surface-2 shadow-card md:h-[340px]"
+          : `relative h-[260px] w-full overflow-hidden rounded-card border border-border bg-surface-2 shadow-card md:h-[340px] ${
+              split ? "split:h-full split:rounded-none split:border-0" : ""
+            }`
       }
     >
       <div ref={containerRef} className="h-full w-full" />
@@ -475,7 +504,7 @@ export default function DayMap({
             const m = mapRef.current;
             if (m && shownRef.current) fit(m, bboxOf(shownRef.current.tracks, shownRef.current.stops), true);
           }}
-          className="absolute left-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-control border border-border bg-surface/95 text-secondary shadow-card backdrop-blur transition-colors hover:text-text"
+          className="mk-map-btn absolute right-2.5 top-2.5 sm:top-[84px]"
         >
           <Maximize size={16} strokeWidth={1.75} aria-hidden />
         </button>
