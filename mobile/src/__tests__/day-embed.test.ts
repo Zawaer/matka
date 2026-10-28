@@ -43,7 +43,10 @@ describe("injected calls", () => {
 describe("parseDayMessage", () => {
   const msg = (o: object) => JSON.stringify({ type: "matka-day", ...o });
   it("reads the page's events", () => {
-    expect(parseDayMessage(msg({ event: "ready" }))).toEqual({ event: "ready" });
+    expect(parseDayMessage(msg({ event: "ready" }))).toEqual({ event: "ready", drawn: false });
+    expect(parseDayMessage(msg({ event: "ready", drawn: true }))).toEqual({ event: "ready", drawn: true });
+    expect(parseDayMessage(msg({ event: "drawn", date: "2026-10-27" }))).toEqual({ event: "drawn", date: "2026-10-27" });
+    expect(parseDayMessage(msg({ event: "drawn", date: "yesterday" }))).toBeNull();
     expect(parseDayMessage(msg({ event: "day", date: "2026-05-01", hasMap: true }))).toEqual({
       event: "day",
       date: "2026-05-01",

@@ -7,7 +7,7 @@ import type { Map as MlMap, LngLatBoundsLike, Marker } from "maplibre-gl";
 import { createSavedPlace } from "@/app/places/actions";
 import { KindPicker, SizePicker } from "@/components/places/SavedFields";
 import { MODE_META, type ModeKey } from "@/lib/modes";
-import { computeDark, extendBounds, fitPadding, loadStyle, modeColorExpression, resolveColor, tameBasemap } from "./mapStyle";
+import { computeDark, extendBounds, fitPadding, loadStyle, modeColorExpression, resolveColor, tameBasemap, workerUrl } from "./mapStyle";
 import { PLACE_SIZES } from "@/lib/savedPlaces";
 import { Check, CircleCheck, Crosshair, Flame, type LucideIcon, MapPinPlus, Route as RouteIcon, Smartphone, X } from "lucide-react";
 import { Button, ButtonLink, Callout, cx, IconButton, Input, Segmented } from "@/components/ui";
@@ -136,7 +136,7 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
       const maplibregl = await import("maplibre-gl");
       // Our own copy of the worker (scripts/copy-maplibre-worker.mjs): the
       // bundler can't serve the one MapLibre looks for next to its module.
-      maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
+      maplibregl.setWorkerUrl(workerUrl(maplibregl.getVersion()));
       if (cancelled) return;
       mlRef.current = maplibregl;
 

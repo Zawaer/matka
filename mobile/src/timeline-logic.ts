@@ -2,7 +2,9 @@
 // __tests__/timeline-logic.test.ts). Same rules as the web timeline
 // (web/src/components/timeline/Timeline.tsx).
 
-import type { LatLon, Leg, Move, TimelineItem } from "./viewer";
+import { categoryLabel } from "./design/categories";
+import { KIND_META } from "./insights-logic";
+import type { LatLon, Leg, Move, SavedKind, TimelineItem } from "./viewer";
 
 /** Shorter silences are the phone lying still or a short tunnel, not worth a row. */
 export const MIN_GAP_S = 30 * 60;
@@ -139,4 +141,15 @@ export function addedMove(m: MissingTravel): Move {
     from: m.fromPos,
     to: m.toPos,
   };
+}
+
+/**
+ * What kind of place a visit's meta line names: a saved kind wins over the
+ * place's category ("School", never the geocoder's "Library"); a place saved
+ * as "Other" names nothing. Null as well when it would only repeat `title`.
+ * Same precedence as the web (Timeline.tsx shows the kind, places/category.ts).
+ */
+export function visitTypeLabel(kind: SavedKind | null | undefined, category: string | null | undefined, title: string): string | null {
+  const label = kind ? (kind === "other" ? null : KIND_META[kind].label) : category ? categoryLabel(category) : null;
+  return label && label !== title ? label : null;
 }

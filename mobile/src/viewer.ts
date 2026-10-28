@@ -103,6 +103,8 @@ export type Move = {
   /** Where the move started and ended, when known. */
   from?: LatLon | null;
   to?: LatLon | null;
+  /** The move's line, simplified to a few dozen points (for the day map's sketch); null from an older server. */
+  path?: LatLon[] | null;
 };
 
 export type TimelineItem = { kind: "visit"; visit: Visit } | { kind: "move"; track: Move };
@@ -207,6 +209,18 @@ const latLon = (v: unknown): LatLon | null =>
     ? { lat: v.lat, lon: v.lon }
     : null;
 
+/** The server's simplified `path` ([lon, lat] pairs), when it has two or more good points. */
+function parsePath(v: unknown): LatLon[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: LatLon[] = [];
+  for (const p of v) {
+    if (!Array.isArray(p) || typeof p[0] !== "number" || typeof p[1] !== "number") continue;
+    const [lon, lat] = p as [number, number];
+    if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) out.push({ lat, lon });
+  }
+  return out.length >= 2 ? out : null;
+}
+
 function parseCandidates(raw: unknown): PlaceCandidate[] | null {
   if (!Array.isArray(raw)) return null;
   const out = objs(raw).flatMap((c) =>
@@ -256,6 +270,7 @@ function parseItem(it: Obj): TimelineItem | null {
         added: t.added === true,
         from: latLon(t.from),
         to: latLon(t.to),
+        path: parsePath(t.path),
       },
     };
   }

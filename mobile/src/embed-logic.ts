@@ -134,7 +134,10 @@ export function selectDayJs(key: string | null): string {
 }
 
 export type DayPageEvent =
-  | { event: "ready" }
+  /** `drawn`: the page will say "drawn" when the map is on screen (older pages don't). */
+  | { event: "ready"; drawn: boolean }
+  /** The day's lines and the basemap under them are on screen. */
+  | { event: "drawn"; date: string }
   | { event: "day"; date: string; hasMap: boolean }
   | { event: "select"; key: string }
   | { event: "error" }
@@ -153,6 +156,9 @@ export function parseDayMessage(data: string): DayPageEvent | null {
   if (m.type !== DAY_MESSAGE) return null;
   switch (m.event) {
     case "ready":
+      return { event: "ready", drawn: m.drawn === true };
+    case "drawn":
+      return typeof m.date === "string" && DATE_RE.test(m.date) ? { event: "drawn", date: m.date } : null;
     case "error":
     case "expired":
       return { event: m.event };

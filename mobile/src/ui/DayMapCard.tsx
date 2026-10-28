@@ -4,9 +4,16 @@
 // window.matkaDay, and taps on the map come back as "matka-day" messages.
 // Collapsible (remembered in kv); when the page can't be shown it shrinks to
 // a one-line "Map unavailable" and the list carries on without it.
+//
+// Speed (docs/redesign/daymap-perf.md): the card mounts with the Timeline
+// (which App.tsx mounts early, hidden), asks for its ticket while the
+// timeline itself loads, and until the page says the map is on screen it
+// shows a sketch of the day's lines drawn here from the timeline, framed like
+// the map, which then fades in over it.
 
-import { useCallback, useEffect, useRef, useState, type ComponentRef } from "react";
-import { AppState, Linking, Pressable, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { Animated, AppState, Linking, Pressable, View } from "react-native";
+import Svg, { Circle, Path } from "react-native-svg";
 import { WebView } from "react-native-webview";
 import type {
   ShouldStartLoadRequest,
@@ -16,6 +23,7 @@ import type {
   WebViewNavigationEvent,
 } from "react-native-webview/lib/WebViewTypes";
 import * as db from "../db";
+import { daySketch, svgPath } from "../day-sketch";
 import { useStyles, useTheme } from "../design/theme";
 import {
   INJECTED_JS,
@@ -31,7 +39,7 @@ import {
   selectDayJs,
   setDayJs,
 } from "../embed-logic";
-import { getEmbedTicket } from "../viewer";
+import { getEmbedTicket, type TimelineItem } from "../viewer";
 import { Icon } from "./Icon";
 import { useSession } from "./session";
 import { Text } from "./Text";
@@ -52,12 +60,15 @@ type Phase =
 
 export function DayMapCard({
   date,
+  items,
   visible,
   selected,
   onSelect,
 }: {
-  /** The day the list shows (YYYY-MM-DD). */
+  /** The day the list shows (YYYY-MM-DD); null until the timeline has answered (the page then opens on the latest day). */
   date: string | null;
+  /** The day's rows, for the sketch shown until the map is on screen; null while loading. */
+  items: TimelineItem[] | null;
   /** The day has something to draw; otherwise the card hides (the page stays loaded). */
   visible: boolean;
   selected: DayMapSelection;
@@ -71,6 +82,11 @@ export function DayMapCard({
   const [collapsed, setCollapsed] = useState<boolean | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [shown, setShown] = useState(false); // the page has drawn a day
+  // The page will say "drawn" once the map is on screen; older pages only say "day".
+  const saysDrawn = useRef(false);
+  const [fade] = useState(() => new Animated.Value(1));
+  const [covered, setCovered] = useState(true); // the cover is (still) there
+  const [width, setWidth] = useState(0);
   const web = useRef<ComponentRef<typeof WebView>>(null);
   const seq = useRef(0);
   const lastAutoRenew = useRef<number | null>(null);
@@ -109,6 +125,7 @@ export function DayMapCard({
       }
       const n = ++seq.current;
       ready.current = false;
+      saysDrawn.current = false;
       setShown(false);
       setPhase({ kind: "ticket" });
       const r = await getEmbedTicket(pairing);
@@ -123,14 +140,26 @@ export function DayMapCard({
     [pairing, onUnauthorized, scheme],
   );
 
-  // Load when expanded with a day to show, and again after re-pairing or a
-  // theme flip; deferred a tick so the effect itself doesn't set state.
-  const hasDate = date != null;
+  // Load when expanded (straight away, alongside the timeline's own request),
+  // and again after re-pairing or a theme flip; deferred a tick so the effect
+  // itself doesn't set state.
   useEffect(() => {
-    if (collapsed !== false || !hasDate || authLost) return;
+    if (collapsed !== false || authLost) return;
     const id = setTimeout(() => renew(false), 0);
     return () => clearTimeout(id);
-  }, [collapsed, hasDate, authLost, renew]);
+  }, [collapsed, authLost, renew]);
+
+  // The map fades in over the sketch once it's drawn; a reload covers it again.
+  useEffect(() => {
+    if (!shown) {
+      fade.setValue(1);
+      const id = setTimeout(() => setCovered(true), 0);
+      return () => clearTimeout(id);
+    }
+    const anim = Animated.timing(fade, { toValue: 0, duration: 220, useNativeDriver: true });
+    anim.start(({ finished }) => finished && setCovered(false));
+    return () => anim.stop();
+  }, [shown, fade]);
 
   // Renew before the 12 h cookie runs out (see MapScreen).
   const at = phase.kind === "web" ? phase.at : null;
@@ -181,10 +210,14 @@ export function DayMapCard({
       switch (m.event) {
         case "ready":
           ready.current = true;
+          saysDrawn.current = m.drawn;
           if (dateRef.current) inject(setDayJs(dateRef.current));
           if (selRef.current?.from === "list") inject(selectDayJs(selRef.current.key));
           break;
         case "day":
+          if (!saysDrawn.current) setShown(true);
+          break;
+        case "drawn":
           setShown(true);
           break;
         case "select":
@@ -238,6 +271,7 @@ export function DayMapCard({
       // Collapsed: drop the page (and its memory); expanding loads it again.
       ++seq.current;
       ready.current = false;
+      saysDrawn.current = false;
       setShown(false);
       setPhase({ kind: "idle" });
     }
@@ -263,7 +297,10 @@ export function DayMapCard({
     },
   }));
 
-  if (collapsed == null || authLost || !date) return null;
+  // The day's lines, framed like the map (the card is full-bleed: the screen's width).
+  const sketch = useMemo(() => (items && width > 0 ? daySketch(items, width, MAP_HEIGHT) : null), [items, width]);
+
+  if (collapsed == null || authLost || (collapsed && !date)) return null;
 
   const failed = phase.kind === "failed";
   if (collapsed || failed) {
@@ -284,7 +321,7 @@ export function DayMapCard({
   }
   return (
     <View style={[s.bleed, visible ? null : { display: "none" }]}>
-      <View style={s.frame}>
+      <View style={s.frame} onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}>
         {phase.kind === "web" ? (
           <WebView
             ref={web}
@@ -310,13 +347,40 @@ export function DayMapCard({
             bounces={false}
             setSupportMultipleWindows={false}
             webviewDebuggingEnabled={__DEV__}
+            // The defaults, spelled out: the page's scripts, worker, style,
+            // sprites, glyphs and tiles come from the HTTP cache next time.
+            cacheEnabled
+            cacheMode="LOAD_DEFAULT"
           />
         ) : null}
-        {shown ? null : (
-          <View style={s.cover} pointerEvents="none">
-            <Icon name="tabMap" size={24} color={t.c.textMuted} />
-          </View>
-        )}
+        {covered ? (
+          <Animated.View style={[s.cover, { opacity: fade }]} pointerEvents="none">
+            {sketch ? (
+              <Svg width={width} height={MAP_HEIGHT} accessible={false}>
+                {sketch.lines.map((l) => (
+                  <Path key={`c${l.key}`} d={svgPath(l.points)} stroke={t.c.surface} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                ))}
+                {sketch.lines.map((l) => (
+                  <Path
+                    key={l.key}
+                    d={svgPath(l.points)}
+                    stroke={t.mode(l.mode)}
+                    strokeWidth={l.added ? 3 : 4}
+                    strokeDasharray={l.added ? [6, 4.5] : undefined}
+                    strokeLinecap={l.added ? "butt" : "round"}
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                ))}
+                {sketch.stops.map((st) => (
+                  <Circle key={st.key} cx={st.x} cy={st.y} r={6} fill={t.c.surface} stroke={t.c.textSecondary} strokeWidth={2} />
+                ))}
+              </Svg>
+            ) : (
+              <Icon name="tabMap" size={24} color={t.c.textMuted} />
+            )}
+          </Animated.View>
+        ) : null}
         <Pressable onPress={toggle} accessibilityRole="button" accessibilityLabel="Hide the day's map" hitSlop={4} style={({ pressed }) => [s.hide, pressed ? { opacity: 0.7 } : null]}>
           <Icon name="collapse" size={20} color={t.c.text} />
         </Pressable>

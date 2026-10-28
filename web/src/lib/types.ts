@@ -58,6 +58,8 @@ export interface TrackSummary {
   /** Where the trip started and ended, when known. */
   from?: LatLon;
   to?: LatLon;
+  /** The trip's line, simplified to a few dozen [lon, lat] points (a sketch, not for drawing on a map). */
+  path?: [number, number][];
 }
 
 /** One ordered day on the timeline: visits + the moves between them. */

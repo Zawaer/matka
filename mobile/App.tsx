@@ -21,6 +21,9 @@ import { markPairingLost, refreshServerStatus, uploadNow } from "./src/uploader"
 import { runWatchdog, sendHeartbeat } from "./src/watchdog";
 
 
+/** How long after the tabs appear the Timeline starts loading out of sight (the first screen goes first). */
+const PREWARM_DELAY_MS = 1500;
+
 const TABS: { key: Tab; label: string; icon: IconName }[] = [
   { key: "overview", label: "Overview", icon: "tabOverview" },
   { key: "map", label: "Map", icon: "tabMap" },
@@ -167,6 +170,15 @@ function Tabs({
   // Screens mount on first visit and then stay mounted (hidden), so lists keep
   // their state and the map WebView isn't reloaded on every tab switch.
   const [visited, setVisited] = useState<Set<Tab>>(() => new Set(["overview"]));
+  // The Timeline mounts a moment after the app opens, out of sight, so its day
+  // map (a WebView) is loaded and drawn by the time the tab is first opened.
+  // Kept laid out at full size (not display: none), or the map would have no
+  // size to draw at (docs/redesign/daymap-perf.md).
+  const [prewarm, setPrewarm] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setPrewarm(true), PREWARM_DELAY_MS);
+    return () => clearTimeout(id);
+  }, []);
   const [recorderView, setRecorderView] = useState<"status" | "settings">("status");
   const [insightsSegment, setInsightsSegment] = useState<InsightsSegment>("travel");
   const [timelineDate, setTimelineDate] = useState<{ date: string; n: number } | null>(null);
@@ -223,8 +235,8 @@ function Tabs({
       case "overview":
         return <OverviewScreen collector={state} refreshCollector={refresh} />;
       case "timeline":
-        // Remounted for each "open this day" request (Insights → trip → day), so it starts there.
-        return <TimelineScreen key={timelineDate?.n ?? 0} />;
+        // Follows each "open this day" request (Insights → trip → day) itself, without a remount.
+        return <TimelineScreen />;
       case "insights":
         return <InsightsScreen segment={insightsSegment} onSegment={setInsightsSegment} active={active === "insights"} />;
       case "map":
@@ -237,11 +249,24 @@ function Tabs({
   return (
     <SessionContext.Provider value={session}>
       <View style={{ flex: 1 }}>
-        {TABS.filter((tab) => visited.has(tab.key)).map((tab) => (
-          <View key={tab.key} style={{ flex: 1, display: active === tab.key ? "flex" : "none" }}>
-            {screen(tab.key)}
-          </View>
-        ))}
+        {TABS.filter((tab) => visited.has(tab.key) || (tab.key === "timeline" && prewarm)).map((tab) =>
+          visited.has(tab.key) ? (
+            <View key={tab.key} style={{ flex: 1, display: active === tab.key ? "flex" : "none" }}>
+              {screen(tab.key)}
+            </View>
+          ) : (
+            // Warming up: full size behind the shown tab, invisible, untouchable and hidden from screen readers.
+            <View
+              key={tab.key}
+              style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, opacity: 0, zIndex: -1 }}
+              pointerEvents="none"
+              importantForAccessibility="no-hide-descendants"
+              accessibilityElementsHidden
+            >
+              {screen(tab.key)}
+            </View>
+          ),
+        )}
       </View>
       <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, t.space.sm) }]} accessibilityRole="tablist">
         {TABS.map((tab) => {

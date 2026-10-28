@@ -184,8 +184,11 @@ describe("parsing", () => {
     const move = TIMELINE.day.items[1] as { kind: "move"; track: object };
     expect(t.day.items[1]).toEqual({
       ...move,
-      track: { ...move.track, legs: [], waits: [], correctionId: null, added: false, from: null, to: null },
+      track: { ...move.track, legs: [], waits: [], correctionId: null, added: false, from: null, to: null, path: null },
     });
+    // The simplified line arrives as [lon, lat] pairs; junk points are dropped.
+    const withPath = parseTimeline({ day: { date: "2026-10-18", items: [{ kind: "move", track: { ...move.track, path: [[24.7, 60.1], ["x", 1], [24.8, 60.2]] } }] } })!;
+    expect((withPath.day.items[0] as { track: { path: unknown } }).track.path).toEqual([{ lat: 60.1, lon: 24.7 }, { lat: 60.2, lon: 24.8 }]);
     expect(t.day.items[2]).toMatchObject({ kind: "move", track: { id: 3, mode: "unknown" } });
     expect(t.dates).toEqual(["2026-10-17", "2026-10-18"]);
     expect(t.minDate).toBe("2026-10-17");

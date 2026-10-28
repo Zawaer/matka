@@ -1,4 +1,4 @@
-import { adjacentDays, gapBetween, subRows } from "../timeline-logic";
+import { adjacentDays, gapBetween, subRows, visitTypeLabel } from "../timeline-logic";
 import type { Leg, TimelineItem, Wait } from "../viewer";
 
 const T = (hm: string) => `2026-10-18T${hm}:00.000Z`;
@@ -71,5 +71,17 @@ describe("adjacentDays", () => {
   it("has nowhere to go without a day", () => {
     expect(adjacentDays([], null)).toEqual({ prev: null, next: null });
     expect(adjacentDays(dates, null)).toEqual({ prev: null, next: null });
+  });
+});
+
+describe("visitTypeLabel", () => {
+  it("names the saved kind, not the OSM category", () => {
+    expect(visitTypeLabel("school", "library", "Otaniemen lukio")).toBe("School");
+    expect(visitTypeLabel("other", "library", "Mökki")).toBeNull();
+  });
+  it("falls back to the category, and says nothing that repeats the title", () => {
+    expect(visitTypeLabel(null, "fast_food", "Hesburger")).toBe("Fast food");
+    expect(visitTypeLabel(undefined, null, "Hesburger")).toBeNull();
+    expect(visitTypeLabel("home", null, "Home")).toBeNull();
   });
 });

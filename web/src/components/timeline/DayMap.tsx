@@ -8,12 +8,15 @@
 // as the component does; switching days swaps its data.
 
 import "maplibre-gl/dist/maplibre-gl.css";
+// Static, not import(): on /embed/day MapLibre then loads with the page's
+// own scripts instead of after them (on /timeline DayMap itself is lazy).
+import * as maplibre from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Maximize } from "lucide-react";
 import { PLACE_GROUP_ICONS } from "@/components/ui/icons";
 import type { LngLatBoundsLike, Map as MlMap, Marker } from "maplibre-gl";
-import { computeDark, modeColorExpression, resolveColor, fitPadding, loadStyle, tameBasemap } from "@/components/map/mapStyle";
+import { computeDark, modeColorExpression, resolveColor, fitPadding, loadStyle, tameBasemap, workerUrl } from "@/components/map/mapStyle";
 import type { TimelineDay } from "@/lib/types";
 import type { PhotoPoint } from "@/lib/dayPhotos";
 import { PLACE_ICONS } from "@/lib/placeIcons";
@@ -27,7 +30,29 @@ export type DayMapSelection = { key: string; from: "list" | "map" } | null;
 
 type Shown = { date: string; tracks: FC; stops: Stop[] };
 
+/**
+ * What /embed/day's server already has for the first day: its lines (null:
+ * fetch them) and the tamed basemap style for a theme (null: fetch it).
+ */
+export type DayMapStart = { tracks: FC | null; style: { dark: boolean; json: unknown } | null };
+
 const EMPTY: FC = { type: "FeatureCollection", features: [] };
+
+// Start MapLibre's worker as soon as this module runs, while the page is
+// still hydrating: fetching and booting it otherwise waits for the first map.
+if (typeof window !== "undefined") {
+  maplibre.setWorkerUrl(workerUrl(maplibre.getVersion()));
+  maplibre.prewarm();
+}
+
+/** A User Timing mark ("matka:…"), once per page, for measuring the map's start. */
+function mark(name: string) {
+  try {
+    if (!performance.getEntriesByName(`matka:${name}`).length) performance.mark(`matka:${name}`);
+  } catch {
+    // no User Timing: nothing to measure
+  }
+}
 
 /* ---------------- Tracks, one request per day ---------------- */
 
@@ -213,12 +238,15 @@ function photoElement(p: PhotoPoint, count: number): HTMLElement {
 
 function padding(m: MlMap) {
   const el = m.getContainer();
-  const w = el.clientWidth;
+  return paddingFor(el.clientWidth, el.clientHeight);
+}
+
+function paddingFor(w: number, h: number) {
   // Clear of the zoom / full-screen buttons (top-right, desktop) and the
   // attribution; markers stick out ~14 px past their point.
   return w < 640
-    ? fitPadding(w, el.clientHeight, { top: 40, right: 32, bottom: 32, left: 28 })
-    : fitPadding(w, el.clientHeight, { top: 56, right: 80, bottom: 48, left: 40 });
+    ? fitPadding(w, h, { top: 40, right: 32, bottom: 32, left: 28 })
+    : fitPadding(w, h, { top: 56, right: 80, bottom: 48, left: 40 });
 }
 
 function fit(m: MlMap, b: BBox | null, animate: boolean) {
@@ -237,10 +265,16 @@ export default function DayMap({
   selected,
   onSelect,
   photos,
+  start = null,
+  onDrawn,
   fill = false,
   split = false,
 }: {
   day: TimelineDay;
+  /** The first day's lines and style, from the server (/embed/day). */
+  start?: DayMapStart | null;
+  /** The shown day's lines and the basemap under them are on screen. */
+  onDrawn?: (date: string) => void;
   /** The day's GPS-tagged photos (GET /api/timeline/photos), drawn as thumbnails. */
   photos?: PhotoPoint[];
   selected: DayMapSelection;
@@ -260,12 +294,19 @@ export default function DayMap({
   const fittedRef = useRef<string | null>(null);
   const selectedRef = useRef<string | null>(null);
   const onSelectRef = useRef(onSelect);
+  const onDrawnRef = useRef(onDrawn);
+  const dayRef = useRef(day);
+  // The first day's lines as the server sent them: used once, instead of a request.
+  const seedRef = useRef<{ date: string; fc: FC } | null>(start?.tracks ? { date: day.date, fc: start.tracks } : null);
+  const startStyle = useRef(start?.style ?? null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [shown, setShown] = useState<Shown | null>(null);
 
   useEffect(() => {
     onSelectRef.current = onSelect;
+    onDrawnRef.current = onDrawn;
+    dayRef.current = day;
     selectedRef.current = selected?.key ?? null;
   });
 
@@ -279,30 +320,53 @@ export default function DayMap({
     (async () => {
       const container = containerRef.current;
       if (!container) return;
-      let ml: typeof import("maplibre-gl");
+      const ml = maplibre;
+      mlRef.current = ml;
+      // Open on the day itself (not on Finland, then jump): no tiles for a
+      // view nobody sees. Exact when its lines came with the page.
+      const first = dayRef.current;
+      const seed = seedRef.current?.date === first.date ? seedRef.current.fc : null;
+      // The server's copy of the style when it's for this theme; else fetch it.
+      const dark = computeDark();
+      const given = startStyle.current?.dark === dark ? startStyle.current.json : null;
+      const style = given ? structuredClone(given) : await loadStyle(dark);
+      if (cancelled) return;
+      const hasMoves = first.items.some((it) => it.kind === "move" && it.track.mode !== "stationary");
+      const b = bboxOf(seed ? dayTracks(seed, first.items) : EMPTY, dayStops(first.items));
+      const camera: Partial<maplibre.MapOptions> = !b
+        ? { center: [25.5, 64.5], zoom: 4.3 }
+        : b[0] === b[2] && b[1] === b[3]
+          ? { center: [b[0], b[1]], zoom: 14 }
+          : { bounds: b as LngLatBoundsLike, fitBoundsOptions: { padding: paddingFor(container.clientWidth, container.clientHeight), maxZoom: 16 } };
+      if (b && (seed || !hasMoves) && container.clientWidth > 0) fittedRef.current = first.date;
+      let m: MlMap;
       try {
-        ml = await import("maplibre-gl");
-      } catch {
-        if (!cancelled) setFailed(true);
+        m = new ml.Map({
+          container,
+          style: style as never,
+          ...camera,
+          attributionControl: { compact: false },
+          dragRotate: false,
+          pitchWithRotate: false,
+          touchPitch: false,
+        });
+      } catch (err) {
+        // No WebGL, most likely.
+        console.warn("[DayMap] couldn't start the map", err);
+        setFailed(true);
         return;
       }
-      if (cancelled) return;
-      ml.setWorkerUrl("/maplibre-gl-worker.mjs");
-      mlRef.current = ml;
-      const style = await loadStyle(computeDark());
-      if (cancelled) return;
-      const m = new ml.Map({
-        container,
-        style: style as never,
-        center: [25.5, 64.5],
-        zoom: 4.3,
-        attributionControl: { compact: false },
-        dragRotate: false,
-        pitchWithRotate: false,
-        touchPitch: false,
-      });
       map = m;
       mapRef.current = m;
+      mark("map-created");
+      // The first basemap tile on screen (for docs/redesign/daymap-perf.md).
+      const onTile = (e: { tile?: unknown; sourceId?: string }) => {
+        if (!e.tile || e.sourceId === "day-tracks") return;
+        m.off("sourcedata", onTile);
+        m.once("render", () => mark("first-tile"));
+      };
+      m.on("sourcedata", onTile);
+      m.once("idle", () => mark("idle"));
       m.touchZoomRotate.disableRotation();
       m.setMissingStyleImageResolver((id) => {
         if (!m.hasImage(id)) m.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
@@ -317,8 +381,11 @@ export default function DayMap({
       m.on("mouseenter", "day-hit", () => (m.getCanvas().style.cursor = "pointer"));
       m.on("mouseleave", "day-hit", () => (m.getCanvas().style.cursor = ""));
 
-      m.on("load", () => {
+      // Lines and stops go on as soon as the style is in, not after the
+      // first tiles ("load").
+      m.once("style.load", () => {
         if (cancelled) return;
+        mark("style-loaded");
         tameBasemap(m);
         ensureLayers(m, shownRef.current?.tracks ?? EMPTY);
         paintSelection(m, selectedRef.current);
@@ -367,7 +434,11 @@ export default function DayMap({
       if (ctrl.signal.aborted) return;
       setShown({ date: day.date, tracks: dayTracks(fc, items), stops });
     };
-    if (!win || !hasMoves) {
+    const seed = seedRef.current;
+    seedRef.current = null;
+    if (seed && seed.date === day.date) {
+      Promise.resolve(seed.fc).then(done);
+    } else if (!win || !hasMoves) {
       // Nothing to fetch; still answer asynchronously, like the fetch would.
       Promise.resolve(null).then(done);
     } else {
@@ -388,6 +459,18 @@ export default function DayMap({
     if (!ready || !m || !ml || !shown) return;
     ensureLayers(m, shown.tracks);
     (m.getSource("day-tracks") as { setData?: (d: FC) => void } | undefined)?.setData?.(shown.tracks);
+    if (shown.tracks.features.length) m.once("render", () => mark("route-drawn"));
+    // Tell the page's host once the day is on screen with its basemap
+    // (the map going idle), or after a few seconds whatever the tiles do.
+    let told = false;
+    const tell = () => {
+      if (told) return;
+      told = true;
+      clearTimeout(timer);
+      onDrawnRef.current?.(shown.date);
+    };
+    const timer = setTimeout(tell, 3000);
+    m.once("idle", tell);
 
     // Fit first, so the stops cluster at the zoom they'll be seen at.
     if (fittedRef.current !== shown.date) {
@@ -424,6 +507,8 @@ export default function DayMap({
     m.on("zoomend", draw);
     return () => {
       m.off("zoomend", draw);
+      m.off("idle", tell);
+      clearTimeout(timer);
     };
   }, [shown, ready]);
 

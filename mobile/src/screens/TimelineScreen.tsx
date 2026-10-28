@@ -1,6 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
-import { categoryMeta } from "../design/categories";
 import { useStyles, useTheme } from "../design/theme";
 import { fmtDateShort, fmtDayHeading, fmtDistance, fmtDuration, fmtTime, fmtVisitRange, isLikelyDrift, isNamed, localDay, displayName } from "../format";
 import type { Pairing } from "../pairing";
@@ -18,8 +17,8 @@ import { modeMeta } from "../design/modes";
 import { legBadgeText } from "../design/transit";
 import { LineBadge } from "../ui/LineBadge";
 import { TripFixSheet } from "../ui/TripFixSheet";
-import { addedMove, adjacentDays, dayHasMap, gapBetween, missingTravel, selectionKey, subRows, type Gap } from "../timeline-logic";
-import { DayMapCard, MAP_HEIGHT, type DayMapSelection } from "../ui/DayMapCard";
+import { addedMove, adjacentDays, dayHasMap, gapBetween, missingTravel, selectionKey, subRows, visitTypeLabel, type Gap } from "../timeline-logic";
+import { DayMapCard, type DayMapSelection } from "../ui/DayMapCard";
 
 /** The rail column: glyphs centre on it; every row's text starts after it. */
 const RAIL = 40;
@@ -85,16 +84,13 @@ function GapRow({ gap }: { gap: Gap }) {
 }
 
 /**
- * The loading shape, as loaded: the full-bleed map block at the map's height,
+ * The loading shape, as loaded (under the day map, which loads alongside):
  * the day's stats card, then a rail with stops on it and lines of text.
  */
 function TimelineSkeleton() {
   const t = useTheme();
   return (
     <View style={{ gap: t.space.lg }}>
-      <View style={{ height: MAP_HEIGHT, marginHorizontal: -t.layout.gutter, marginTop: -t.space.sm, backgroundColor: t.c.surfaceAlt, alignItems: "center", justifyContent: "center" }}>
-        <Icon name="tabMap" size={24} color={t.c.textMuted} />
-      </View>
       <Card style={{ gap: t.space.md }}>
         <Skeleton height={18} width="70%" radius={6} />
         <Skeleton height={10} radius={5} />
@@ -126,6 +122,13 @@ export default function TimelineScreen() {
   const { authLost, timelineDate, goTab } = useSession();
   // null = latest day with data (server default); another tab may open a given day.
   const [want, setWant] = useState<string | null>(() => timelineDate?.date ?? null);
+  // Another tab asked for a day (Insights → trip → day): go there. Not a
+  // remount, so the day map's page stays loaded.
+  const [openedN, setOpenedN] = useState(() => timelineDate?.n ?? 0);
+  if (timelineDate && timelineDate.n !== openedN) {
+    setOpenedN(timelineDate.n);
+    setWant(timelineDate.date);
+  }
   const fetcher = useCallback((p: Pairing) => getTimeline(p, want), [want]);
   const { data: resp, error: err, loading, reload } = useViewerQuery<Timeline>(fetcher);
   const [picking, setPicking] = useState(false);
@@ -253,9 +256,14 @@ export default function TimelineScreen() {
     >
       {authLost ? <PairingLost /> : null}
 
-      {resp && date ? (
-        <DayMapCard date={date} visible={hasMap} selected={selected} onSelect={(key) => setSel({ key, from: "map", date })} />
-      ) : null}
+      {/* Mounted from the start: it fetches its ticket while the timeline loads. */}
+      <DayMapCard
+        date={date}
+        items={resp ? resp.day.items : null}
+        visible={resp ? !!date && hasMap : !(err || authLost)}
+        selected={selected}
+        onSelect={(key) => date && setSel({ key, from: "map", date })}
+      />
 
       {authLost && !resp ? null : err && !resp ? (
         <ErrorState message={err} onRetry={reload} />
@@ -345,16 +353,17 @@ export default function TimelineScreen() {
     if (it.kind === "visit") {
       const v = it.visit;
       const named = isNamed(v.placeName);
-      const cat = v.category ? categoryMeta(v.category).label : null;
       const icon = placeIcon(v.placeKind, v.category, v.osmKey);
-      const title = named ? displayName(v.placeName!) : (cat ?? "Unnamed place");
+      // A saved kind ("School") wins over the place's category ("Library").
+      const type = visitTypeLabel(v.placeKind, v.category, "");
+      const title = named ? displayName(v.placeName!) : (type ?? "Unnamed place");
       // "Were you here?": the name is a guess among several.
       const asking = !!v.candidates?.length;
       const set = photoSets.get(key);
       const on = selected?.key === key;
       // Across midnight the times say which day ("Since 22:05 yesterday, until 08:20").
       const times = fmtVisitRange(v.startedAt, v.endedAt, date);
-      const meta = [times, fmtDuration(v.duration), named && cat ? cat : null].filter(Boolean).join(" · ");
+      const meta = [times, fmtDuration(v.duration), named ? visitTypeLabel(v.placeKind, v.category, title) : null].filter(Boolean).join(" · ");
       return (
         <View style={s.row}>
           <View style={s.rail}>
@@ -375,7 +384,7 @@ export default function TimelineScreen() {
               accessibilityState={hasMap ? { selected: on } : undefined}
               style={{ gap: 2, paddingTop: t.space.md + 2, paddingBottom: asking || set ? 0 : t.space.md, minHeight: 64 }}
             >
-              <Text variant="headline" numberOfLines={2} color={named || cat ? "text" : "textSecondary"}>
+              <Text variant="headline" numberOfLines={2} color={named || type ? "text" : "textSecondary"}>
                 {title}
               </Text>
               <Text variant="callout" color="textSecondary" tabular numberOfLines={2}>

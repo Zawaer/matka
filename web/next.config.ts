@@ -16,7 +16,17 @@ const nextConfig: NextConfig = {
   // directory; it has to stay a real node_modules package, not be bundled.
   serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // MapLibre's worker, asked for as ?v=<maplibre version> (mapStyle.ts
+      // workerUrl): a new version is a new URL, so this one never changes.
+      // Without it, public/ files are revalidated on every page load.
+      {
+        source: "/maplibre-gl-worker.mjs",
+        has: [{ type: "query", key: "v" }],
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+    ];
   },
   devIndicators: false,
 };

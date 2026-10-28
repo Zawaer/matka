@@ -14,6 +14,13 @@ export function computeDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+/**
+ * MapLibre's worker, our own copy (scripts/copy-maplibre-worker.mjs: the
+ * bundler can't serve the one MapLibre looks for next to its module). The
+ * version in the query makes it cacheable for good (next.config.ts).
+ */
+export const workerUrl = (version: string) => `/maplibre-gl-worker.mjs?v=${encodeURIComponent(version)}`;
+
 // Key-free OpenFreeMap vector basemaps (CARTO raster now requires an API key).
 export function styleUrl(dark: boolean): string {
   return dark

@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { createRoot } from "react-dom/client";
 import { MapPin } from "lucide-react";
 import type { LngLatBoundsLike, Map as MlMap } from "maplibre-gl";
-import { computeDark, extendBounds, modeColorExpression, resolveColor, fitPadding, loadStyle, tameBasemap } from "./mapStyle";
+import { computeDark, extendBounds, modeColorExpression, resolveColor, fitPadding, loadStyle, tameBasemap, workerUrl } from "./mapStyle";
 
 type FC = GeoJSON.FeatureCollection;
 
@@ -105,7 +105,7 @@ export default function GeoMap({ window: win, points = [], circle, countries, pa
         return;
       }
       if (cancelled) return;
-      ml.setWorkerUrl("/maplibre-gl-worker.mjs");
+      ml.setWorkerUrl(workerUrl(ml.getVersion()));
       const dark = computeDark();
       const tracks = win
         ? fetch(`/api/tracks/geojson?from=${Math.floor(win.from)}&to=${Math.ceil(win.to)}`)

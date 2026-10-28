@@ -5,22 +5,26 @@
 //
 //   app → page:  window.matkaDay.setDate("YYYY-MM-DD"), window.matkaDay.select(key | null)
 //   page → app:  ReactNativeWebView.postMessage(JSON) with type "matka-day" and
-//                event "ready" | "day" { date, hasMap } | "select" { key } |
-//                "error" | "expired"
+//                event "ready" { drawn: true } | "day" { date, hasMap } |
+//                "drawn" { date } | "select" { key } | "error" | "expired"
 //
+// "drawn" comes once the day's lines and the basemap under them are on
+// screen ("ready" says it will come; older pages never send it).
 // Keys are the timeline's: "v-<visit id>" or "m-<trip id>".
+//
+// The page arrives with its first day (and the basemap style) inside, and
+// DayMap with MapLibre is part of the page's own scripts, not a lazy chunk:
+// everything the first map needs starts loading with the HTML
+// (docs/redesign/daymap-perf.md).
 
-import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import type { TimelineDay } from "@/lib/types";
 import type { DayPhotosAnswer, PhotoPoint } from "@/lib/dayPhotos";
 import { dayHasMap } from "./dayMap";
-import type { DayMapSelection } from "./DayMap";
+import DayMap, { type DayMapSelection, type DayMapStart } from "./DayMap";
 
-const DayMap = dynamic(() => import("./DayMap"), {
-  ssr: false,
-  loading: () => <div className="h-full w-full animate-pulse bg-surface-2/60" aria-hidden />,
-});
+/** The first day as the server rendered it, with its lines and the basemap style when known. */
+export type DayEmbedStart = DayMapStart & { day: TimelineDay };
 
 export const DAY_MESSAGE = "matka-day";
 
@@ -43,12 +47,14 @@ function post(event: string, extra: Record<string, unknown> = {}) {
 
 const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
-export function DayEmbed({ initialDate }: { initialDate: string | null }) {
-  const [date, setDate] = useState<string | null>(initialDate);
-  const [day, setDay] = useState<TimelineDay | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+export function DayEmbed({ initialDate, start = null }: { initialDate: string | null; start?: DayEmbedStart | null }) {
+  const [date, setDate] = useState<string | null>(start?.day.date ?? initialDate);
+  const [day, setDay] = useState<TimelineDay | null>(start?.day ?? null);
+  const [state, setState] = useState<"loading" | "ready" | "error">(start ? "ready" : "loading");
   const [sel, setSel] = useState<(DayMapSelection & { date: string }) | null>(null);
-  const dayRef = useRef<TimelineDay | null>(null);
+  const dayRef = useRef<TimelineDay | null>(start?.day ?? null);
+  // The day that came with the page needs no request.
+  const given = useRef<string | null>(start?.day.date ?? null);
 
   // The app's handle on the page.
   useEffect(() => {
@@ -61,7 +67,9 @@ export function DayEmbed({ initialDate }: { initialDate: string | null }) {
         setSel(key && cur ? { key, from: "list", date: cur.date } : null);
       },
     };
-    post("ready");
+    post("ready", { drawn: true });
+    const first = dayRef.current;
+    if (first && given.current === first.date) post("day", { date: first.date, hasMap: dayHasMap(first.items) });
     return () => {
       delete window.matkaDay;
     };
@@ -69,6 +77,8 @@ export function DayEmbed({ initialDate }: { initialDate: string | null }) {
 
   // One timeline request per day; switching again drops the older one.
   useEffect(() => {
+    if (date != null && date === given.current) return;
+    given.current = null;
     const ctrl = new AbortController();
     fetch(date ? `/api/timeline?date=${date}` : "/api/timeline", { signal: ctrl.signal })
       .then(async (r) => {
@@ -118,7 +128,7 @@ export function DayEmbed({ initialDate }: { initialDate: string | null }) {
 
   const selected: DayMapSelection = sel && day && sel.date === day.date ? sel : null;
   const hasMap = !!day && dayHasMap(day.items);
-  const [mapMounted, setMapMounted] = useState(false);
+  const [mapMounted, setMapMounted] = useState(() => !!start && dayHasMap(start.day.items));
   if (hasMap && !mapMounted) setMapMounted(true);
 
   return (
@@ -128,6 +138,8 @@ export function DayEmbed({ initialDate }: { initialDate: string | null }) {
         <div className={hasMap ? "h-full w-full" : "hidden"}>
           <DayMap
             day={day}
+            start={start}
+            onDrawn={(d) => post("drawn", { date: d })}
             fill
             photos={photos && photos.date === day.date ? photos.points : undefined}
             selected={selected}
