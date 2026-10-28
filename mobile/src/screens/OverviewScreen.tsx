@@ -165,15 +165,18 @@ export default function OverviewScreen({
 
       <View style={{ gap: 2 }}>
         <Text variant="title1">{greeting()}</Text>
-        <Text variant="callout" color="textSecondary">
-          {!data
-            ? loadErr
+        {!data && !loadErr ? (
+          // Same height as the line it stands in for, so nothing jumps.
+          <Skeleton height={18} width="62%" radius={6} style={{ marginTop: 3, marginBottom: 1 }} />
+        ) : (
+          <Text variant="callout" color="textSecondary">
+            {!data
               ? "We couldn't load your journeys"
-              : "Loading your journeys…"
-            : totals!.days > 0
-              ? `${totals!.days.toLocaleString()} days of journeys so far`
-              : "Here is where your travels will show up"}
-        </Text>
+              : totals!.days > 0
+                ? `${totals!.days.toLocaleString()} days of journeys so far`
+                : "Here is where your travels will show up"}
+          </Text>
+        )}
       </View>
 
       {authLost ? <PairingLost /> : null}

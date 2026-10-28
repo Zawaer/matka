@@ -40,7 +40,8 @@ export type Preset = {
 
 const FOREGROUND_SERVICE: Location.LocationTaskOptions["foregroundService"] = {
   notificationTitle: "Matka is recording",
-  notificationBody: "Saving your location on the phone and uploading it in batches.",
+  // Title only: the body adds a line and nothing the user needs to know.
+  notificationBody: "",
   // No notificationColor: expo-location then colorizes the whole card with it.
   killServiceOnDestroy: false,
 };

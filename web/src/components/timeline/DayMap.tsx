@@ -361,9 +361,7 @@ export default function DayMap({
         </button>
       ) : null}
       {ready && loading ? (
-        <div className="pointer-events-none absolute bottom-2.5 left-2.5 rounded-full border border-border bg-surface/90 px-2.5 py-1 text-xs text-muted shadow-md backdrop-blur">
-          Loading…
-        </div>
+        <div className="pointer-events-none absolute inset-0 animate-pulse bg-surface-2/40" aria-hidden />
       ) : null}
     </div>
   );

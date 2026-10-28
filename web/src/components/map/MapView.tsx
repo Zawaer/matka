@@ -475,9 +475,7 @@ export default function MapView({ initialSave = false }: { initialSave?: boolean
       )}
 
       {status === "loading" && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-bg/40 backdrop-blur-sm">
-          <div className="mk-card px-4 py-2 text-sm text-muted">Loading map…</div>
-        </div>
+        <div className="absolute inset-0 z-10 animate-pulse bg-surface-2" aria-busy="true" aria-label="Loading map" />
       )}
       {status === "error" && (
         <div className="absolute inset-x-0 top-16 z-10 mx-auto w-fit max-w-[90%]">
