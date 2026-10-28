@@ -110,6 +110,15 @@ export async function saveImmich(_prev: FormResult, form: FormData): Promise<For
       return { ok: false, message: "That URL doesn't look like an Immich server." };
     }
   } catch {
+    // *.internal / *.local / *.ts.net names resolve on your devices (DNS,
+    // Tailscale), not inside the server's container network.
+    const host = new URL(base).hostname;
+    if (/\.(internal|local|lan|home|ts\.net)$/i.test(host)) {
+      return {
+        ok: false,
+        message: `The Matka server can't see ${host}: that name only works on your devices. If Immich runs on the same server, use its container address, e.g. http://immich_server:2283.`,
+      };
+    }
     return { ok: false, message: "Couldn't reach Immich at that URL from the Matka server." };
   }
 
