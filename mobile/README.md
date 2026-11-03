@@ -197,6 +197,9 @@ deletes the token from the phone; also revoke the device on the web Devices page
 - **Vendor battery savers** (Samsung "Sleeping apps", Xiaomi "Autostart" /
   "No restrictions", Huawei, OnePlus …) can kill the service anyway; see
   <https://dontkillmyapp.com> for your phone and set Matka to unrestricted.
+  On OnePlus (OxygenOS 14 and later): Settings → Apps → Matka → Battery usage →
+  *Allow background activity* on; optionally lock Matka in Recents. The
+  separate "Auto launch" switch no longer exists there.
 - Don't swipe Matka away from Recents on phones that treat that as force-stop.
 - **After a reboot** recording comes back by itself: expo-task-manager's boot
   receiver re-registers the location task natively (no JS needed), and the
