@@ -82,13 +82,13 @@ would have used all 7 hours.
 
 ## Reproducing
 
-With the phone on adb (`fi.otamaps.matka`):
+With the phone on adb (`fi.matka.app`; builds before 2026-11-03 were `fi.otamaps.matka`):
 
 ```sh
 # per-app totals since the last full charge (look for gnss= under Matka's UID)
 adb shell dumpsys batterystats --charged
 # Matka's UID
-adb shell cmd package list packages -U fi.otamaps.matka
+adb shell cmd package list packages -U fi.matka.app
 # minute-by-minute history: +gps/-gps, +screen/-screen, battery level
 adb shell dumpsys batterystats --history
 ```

@@ -10,7 +10,7 @@
     "backgroundColor": "#0b1020",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "fi.otamaps.matka",
+      "bundleIdentifier": "fi.matka.app",
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Matka records your location to build your timeline on your own Matka server.",
@@ -19,7 +19,7 @@
       }
     },
     "android": {
-      "package": "fi.otamaps.matka",
+      "package": "fi.matka.app",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#9c8fff",

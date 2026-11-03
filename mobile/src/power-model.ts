@@ -8,7 +8,7 @@
 // No imports, so the file works in both projects.
 //
 // Recalibrating, with a new measurement on the phone (adb, one charge cycle):
-//   adb shell dumpsys batterystats --charged     (Matka's UID: `cmd package list packages -U fi.otamaps.matka`)
+//   adb shell dumpsys batterystats --charged     (Matka's UID: `cmd package list packages -U fi.matka.app`)
 // From Matka's UID block take: the GNSS time and its mAh ("gnss=" / "GNSS"),
 // the app total, CPU and wakelock mAh, and the time on battery. From the server
 // take, for the same cycle, the recorder's GPS-active minutes and fixes
