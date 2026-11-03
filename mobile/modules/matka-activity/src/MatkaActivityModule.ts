@@ -25,6 +25,8 @@ type Native = {
   locationServiceState?(): LocationServiceState;
   /** Lifts (true) or restores (false) expo-location's foreground guard; true: lifted and Android should allow the start. */
   allowLocationServiceStart?(allow: boolean): boolean;
+  /** Builds from 2026-11-03 on (Android): a logcat line, tag MatkaActivity. */
+  log?(message: string): void;
   /** "onActivity" fires for each new reading (builds from 2026-10 on; older builds never fire it). */
   addListener(event: "onActivity", listener: (a: NativeActivity) => void): { remove(): void };
 };

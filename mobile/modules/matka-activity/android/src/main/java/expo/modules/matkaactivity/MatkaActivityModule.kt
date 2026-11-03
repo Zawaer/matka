@@ -161,6 +161,11 @@ class MatkaActivityModule : Module() {
       allow && set && exempt
     }
 
+    /** A line in logcat (tag MatkaActivity): release builds drop JS console output. */
+    Function("log") { message: String ->
+      Log.i(TAG, message)
+    }
+
     /** The latest reading, or null: { type, confidence (0-100), at (epoch ms) }. */
     Function("latest") {
       ActivityReceiver.latest(context)

@@ -17,6 +17,7 @@ import {
   currentActivity,
   latestActivity,
   locationServiceState,
+  nativeLog,
   startActivityUpdates,
   stopActivityUpdates,
 } from "../modules/matka-activity";
@@ -224,7 +225,7 @@ TaskManager.defineTask<{ locations?: Location.LocationObject[] }>(TASK, async ({
       ),
     ).catch((e) => db.setKv("last_task_error", `${new Date().toISOString()} smart: ${String(e)}`));
     // A fix while the service is gone means we're running throttled: try to bring it back.
-    await repairForegroundService().catch(() => undefined);
+    await repairForegroundService().catch((e) => nativeLog(`fg repair threw: ${String(e)}`));
     await maybeUploadFromTask();
   } catch (e) {
     // Never let an exception escape the task; the fixes already queued are safe.
@@ -440,19 +441,27 @@ const FG_SETTLE_MS = 3_000;
  * next app open restart properly if it failed.
  */
 export function repairForegroundService(): Promise<"ok" | "failed" | "skipped"> {
+  const skip = (why: string) => {
+    nativeLog(`fg repair skipped: ${why}`);
+    return "skipped" as const;
+  };
   return serialSmart(async () => {
-    if (Platform.OS !== "android" || AppState.currentState === "active") return "skipped";
-    if (foregroundServiceMissing() !== true) return "skipped";
-    if (!(await isTrackingEnabled()) || !(await isTrackingRunning())) return "skipped";
+    if (Platform.OS !== "android") return "skipped";
+    if (AppState.currentState === "active") return skip("app is active");
+    const missing = foregroundServiceMissing();
+    if (missing !== true) return skip(missing === false ? "service is up" : "can't tell");
+    if (!(await isTrackingEnabled())) return skip("recording is off");
+    if (!(await isTrackingRunning())) return skip("updates not registered");
     const now = Date.now();
     const last = await db.getNum("fg_repair_at");
-    if (last != null && now - last >= 0 && now - last < FG_REPAIR_GAP_MS) return "skipped";
+    if (last != null && now - last >= 0 && now - last < FG_REPAIR_GAP_MS) return skip("tried moments ago");
     await db.setNum("fg_repair_at", now);
 
     const preset = await getPreset();
     const mode = await wantedMode(preset);
     const { options } = await presetOptions(preset);
     let error: string | null = null;
+    nativeLog(`fg repair: AppState=${AppState.currentState}`);
     if (!allowLocationServiceStart(true)) {
       error = "not exempt from battery optimisation";
     } else {
@@ -470,6 +479,7 @@ export function repairForegroundService(): Promise<"ok" | "failed" | "skipped"> 
     }
     await db.setKv("applied_fg", error ? "0" : "1");
     await db.setKv("fg_repair", JSON.stringify({ at: now, ok: !error, ...(error ? { error } : {}) }));
+    nativeLog(error ? `fg repair failed: ${error}` : "fg repair ok");
     return error ? "failed" : "ok";
   });
 }

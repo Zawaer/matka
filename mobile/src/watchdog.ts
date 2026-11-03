@@ -17,7 +17,7 @@ import * as TaskManager from "expo-task-manager";
 import * as api from "./api";
 import { loadPairing } from "./credentials";
 import * as db from "./db";
-import { addActivityListener, latestActivity, startActivityUpdates } from "../modules/matka-activity";
+import { addActivityListener, latestActivity, nativeLog, startActivityUpdates } from "../modules/matka-activity";
 import { MIN_CONFIDENCE } from "./smart-logic";
 import {
   getCustom,
@@ -136,7 +136,9 @@ async function doRun(trigger: Trigger): Promise<Decision | null> {
   }
 
   // Running without the foreground service (process was killed and relaunched): restore it.
-  if (trigger !== "foreground" && !recovered && runningNow) await repairForegroundService().catch(() => undefined);
+  if (trigger !== "foreground" && !recovered && runningNow) {
+    await repairForegroundService().catch((e) => nativeLog(`fg repair threw: ${String(e)}`));
+  }
 
   // The foreground path uploads and sends its own heartbeat afterwards (App.tsx).
   if (trigger === "background") await uploadNow("task").catch(() => null);

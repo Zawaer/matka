@@ -68,6 +68,15 @@ export function allowLocationServiceStart(allow: boolean): boolean {
   }
 }
 
+/** A logcat line (tag MatkaActivity) on Android builds that have it; otherwise nothing. Never throws. */
+export function nativeLog(message: string): void {
+  try {
+    Native?.log?.(message);
+  } catch {
+    // logging is best effort
+  }
+}
+
 /** The latest raw reading, whatever its age or confidence (smart tracking judges it itself). */
 export function latestActivity(): NativeActivity | null {
   try {
