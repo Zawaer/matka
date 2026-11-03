@@ -11,6 +11,8 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    // Keeps expo-location's foreground flag, set by reflection (MatkaActivityModule).
+    consumerProguardFiles 'consumer-rules.pro'
   }
   lintOptions {
     abortOnError false
@@ -20,7 +22,4 @@ android {
 dependencies {
   // Activity Recognition. Same version expo-location already brings in.
   implementation 'com.google.android.gms:play-services-location:21.0.1'
-  // Location service repair (see MatkaActivityModule): reads and sets expo-location's
-  // foreground flag. A compile-time reference, so R8 renames it consistently.
-  implementation project(':expo-location')
 }

@@ -19,7 +19,6 @@ import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import expo.modules.location.AppForegroundedSingleton
 
 /**
  * The phone's own motion classification (walking, running, cycling, in a
@@ -150,14 +149,27 @@ class MatkaActivityModule : Module() {
      * between keeps counting as foreground. Returns whether the guard was lifted.
      */
     Function("allowLocationServiceStart") { allow: Boolean ->
-      AppForegroundedSingleton.isForegrounded = allow || appInFront()
-      allow && canStartFromBackground()
+      val set = setExpoForegrounded(allow || appInFront())
+      allow && set && canStartFromBackground()
     }
 
     /** The latest reading, or null: { type, confidence (0-100), at (epoch ms) }. */
     Function("latest") {
       ActivityReceiver.latest(context)
     }
+  }
+
+  /**
+   * expo-location's AppForegroundedSingleton.isForegrounded, by reflection (no
+   * Gradle dependency on expo-location; consumer-rules.pro keeps it through R8).
+   * False when the class or setter is missing, e.g. after an expo-location upgrade.
+   */
+  private fun setExpoForegrounded(value: Boolean): Boolean = try {
+    val cls = Class.forName("expo.modules.location.AppForegroundedSingleton")
+    cls.getMethod("setForegrounded", Boolean::class.javaPrimitiveType).invoke(cls.getField("INSTANCE").get(null), value)
+    true
+  } catch (e: ReflectiveOperationException) {
+    false
   }
 
   /** An activity of ours is in front (an FGS alone ranks lower, IMPORTANCE_FOREGROUND_SERVICE). */
