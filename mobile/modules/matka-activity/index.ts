@@ -1,7 +1,12 @@
-import Native, { type NativeActivity, type PermissionResponse, type RawBattery } from "./src/MatkaActivityModule";
+import Native, {
+  type LocationServiceState,
+  type NativeActivity,
+  type PermissionResponse,
+  type RawBattery,
+} from "./src/MatkaActivityModule";
 
 export type Activity = "still" | "walking" | "running" | "on_bicycle" | "in_vehicle";
-export type { NativeActivity, PermissionResponse, RawBattery };
+export type { LocationServiceState, NativeActivity, PermissionResponse, RawBattery };
 
 const KNOWN: readonly string[] = ["still", "walking", "running", "on_bicycle", "in_vehicle"];
 /**
@@ -42,6 +47,24 @@ export function batterySnapshot(): RawBattery | null {
     return Native?.batterySnapshot?.() ?? null;
   } catch {
     return null;
+  }
+}
+
+/** expo-location's foreground service state, or null when unknown (iOS, older builds, no React context). */
+export function locationServiceState(): LocationServiceState | null {
+  try {
+    return Native?.locationServiceState?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** See allowLocationServiceStart in MatkaActivityModule.kt. Never throws; false when not lifted. */
+export function allowLocationServiceStart(allow: boolean): boolean {
+  try {
+    return Native?.allowLocationServiceStart?.(allow) ?? false;
+  } catch {
+    return false;
   }
 }
 

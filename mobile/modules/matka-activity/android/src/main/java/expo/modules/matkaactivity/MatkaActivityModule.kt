@@ -1,6 +1,7 @@
 package expo.modules.matkaactivity
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -18,6 +19,7 @@ import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.location.AppForegroundedSingleton
 
 /**
  * The phone's own motion classification (walking, running, cycling, in a
@@ -116,14 +118,65 @@ class MatkaActivityModule : Module() {
       )
     }
 
+    /**
+     * expo-location's LocationTaskService right now: "foreground" (notification
+     * up, full-rate location), "background" (running but not in the foreground,
+     * so Android throttles location to a few fixes an hour) or "none".
+     */
+    Function("locationServiceState") {
+      val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+      // getRunningServices is deprecated for other apps' services but still lists our own.
+      @Suppress("DEPRECATION")
+      val own = am?.getRunningServices(Int.MAX_VALUE)?.filter {
+        it.service.packageName == context.packageName && it.service.className == LOCATION_SERVICE
+      }.orEmpty()
+      when {
+        own.any { it.foreground } -> "foreground"
+        own.isNotEmpty() -> "background"
+        else -> "none"
+      }
+    }
+
+    /**
+     * expo-location only (re)starts its foreground service while it thinks an
+     * activity is in front, and refuses startLocationUpdatesAsync with the
+     * foregroundService option otherwise. After Android kills and relaunches
+     * the process in the background, the restored task therefore runs without
+     * the service until the app is opened, and Android throttles it. Android
+     * itself lets an app that is exempt from battery optimisation start a
+     * foreground service from the background, so the watchdog lifts expo's
+     * guard (true) around one re-register and puts it back (false) after.
+     * "Back" means the real state, so an activity that came to the front in
+     * between keeps counting as foreground. Returns whether the guard was lifted.
+     */
+    Function("allowLocationServiceStart") { allow: Boolean ->
+      AppForegroundedSingleton.isForegrounded = allow || appInFront()
+      allow && canStartFromBackground()
+    }
+
     /** The latest reading, or null: { type, confidence (0-100), at (epoch ms) }. */
     Function("latest") {
       ActivityReceiver.latest(context)
     }
   }
 
+  /** An activity of ours is in front (an FGS alone ranks lower, IMPORTANCE_FOREGROUND_SERVICE). */
+  private fun appInFront(): Boolean {
+    val info = ActivityManager.RunningAppProcessInfo()
+    ActivityManager.getMyMemoryState(info)
+    return info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+  }
+
+  /** Android 12+ only lets exempt apps start a foreground service from the background. */
+  private fun canStartFromBackground(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+    val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    return pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+  }
+
   companion object {
     private const val REQUEST_CODE = 7311
+    private const val LOCATION_SERVICE = "expo.modules.location.services.LocationTaskService"
   }
 }
 

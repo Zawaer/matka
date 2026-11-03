@@ -13,8 +13,10 @@ import * as db from "./db";
 import { batteryPercent, fixToPoint, type QueuedPoint } from "./points";
 import {
   addActivityListener,
+  allowLocationServiceStart,
   currentActivity,
   latestActivity,
+  locationServiceState,
   startActivityUpdates,
   stopActivityUpdates,
 } from "../modules/matka-activity";
@@ -221,6 +223,8 @@ TaskManager.defineTask<{ locations?: Location.LocationObject[] }>(TASK, async ({
         }),
       ),
     ).catch((e) => db.setKv("last_task_error", `${new Date().toISOString()} smart: ${String(e)}`));
+    // A fix while the service is gone means we're running throttled: try to bring it back.
+    await repairForegroundService().catch(() => undefined);
     await maybeUploadFromTask();
   } catch (e) {
     // Never let an exception escape the task; the fixes already queued are safe.
@@ -407,6 +411,69 @@ export function recoverUpdates(action: "start" | "reregister" | "restart"): Prom
   });
 }
 
+// ---- Foreground service repair (Android) --------------------------------------
+
+/**
+ * Android: true when the task is registered but expo-location's foreground
+ * service is not up, so location runs throttled (a rough fix every ~10 min
+ * whatever the preset). null when it can't tell (older build, no context).
+ */
+export function foregroundServiceMissing(): boolean | null {
+  if (Platform.OS !== "android") return false;
+  const state = locationServiceState();
+  return state == null ? null : state !== "foreground";
+}
+
+/** Background repair attempts at most this often. */
+const FG_REPAIR_GAP_MS = 10 * 60_000;
+/** startForeground() happens once the service binds; give it this long before checking. */
+const FG_SETTLE_MS = 3_000;
+
+/**
+ * When Android kills Matka's process in the background and relaunches it (a
+ * WorkManager job, an alarm), expo-location restores the task but not its
+ * foreground service, and nothing brought it back until the app was opened:
+ * "Precise" quietly ran at ~10-minute fixes for days. From the background
+ * (watchdog, location task) this re-registers the task with expo's foreground
+ * guard lifted, which Android allows for apps exempt from battery
+ * optimisation. The outcome is kept in "fg_repair"; applied_fg "0" makes the
+ * next app open restart properly if it failed.
+ */
+export function repairForegroundService(): Promise<"ok" | "failed" | "skipped"> {
+  return serialSmart(async () => {
+    if (Platform.OS !== "android" || AppState.currentState === "active") return "skipped";
+    if (foregroundServiceMissing() !== true) return "skipped";
+    if (!(await isTrackingEnabled()) || !(await isTrackingRunning())) return "skipped";
+    const now = Date.now();
+    const last = await db.getNum("fg_repair_at");
+    if (last != null && now - last >= 0 && now - last < FG_REPAIR_GAP_MS) return "skipped";
+    await db.setNum("fg_repair_at", now);
+
+    const preset = await getPreset();
+    const mode = await wantedMode(preset);
+    const { options } = await presetOptions(preset);
+    let error: string | null = null;
+    if (!allowLocationServiceStart(true)) {
+      error = "not exempt from battery optimisation";
+    } else {
+      try {
+        await Location.startLocationUpdatesAsync(TASK, mode === "standby" ? STANDBY_OPTIONS : options);
+      } catch (e) {
+        error = String(e);
+      } finally {
+        allowLocationServiceStart(false);
+      }
+    }
+    if (!error) {
+      await new Promise((r) => setTimeout(r, FG_SETTLE_MS));
+      if (foregroundServiceMissing() === true) error = "Android didn't start the foreground service";
+    }
+    await db.setKv("applied_fg", error ? "0" : "1");
+    await db.setKv("fg_repair", JSON.stringify({ at: now, ok: !error, ...(error ? { error } : {}) }));
+    return error ? "failed" : "ok";
+  });
+}
+
 // ---- Smart tracking --------------------------------------------------------
 
 // The task, the activity listener and the Settings screen can all touch the
@@ -551,7 +618,10 @@ export async function resumeTracking(): Promise<string | null> {
   const { key } = await presetOptions(preset);
   const mode = await wantedMode(preset);
   // applied_fg "0": a background switch had to drop the foreground-service option; re-add it.
-  if (!running || applied !== key || (appliedMode ?? "active") !== mode || appliedFg === "0") {
+  // The service can also be gone with applied_fg "1": after Android killed the
+  // process, the task is restored without it. Ask the system rather than trust the flag.
+  const fgMissing = appliedFg === "0" || foregroundServiceMissing() === true;
+  if (!running || applied !== key || (appliedMode ?? "active") !== mode || fgMissing) {
     const lastFixAt = await db.getNum("last_fix_at");
     try {
       await startUpdates(preset);

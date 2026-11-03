@@ -8,6 +8,8 @@ export type RawBattery = {
   plugged: boolean | null;
   interactive: boolean | null;
 };
+/** expo-location's foreground service: notification up, running throttled, or gone. */
+export type LocationServiceState = "foreground" | "background" | "none";
 export type PermissionResponse = { status: "granted" | "denied" | "undetermined"; granted: boolean; canAskAgain: boolean };
 
 type Native = {
@@ -19,6 +21,10 @@ type Native = {
   latest(): NativeActivity | null;
   /** Builds from 2026-10-28 on (Android); iOS returns null. Missing in older builds. */
   batterySnapshot?(): RawBattery | null;
+  /** Builds from 2026-11-03 on (Android). Missing in older builds and on iOS. */
+  locationServiceState?(): LocationServiceState;
+  /** Lifts (true) or restores (false) expo-location's foreground guard; true: lifted and Android should allow the start. */
+  allowLocationServiceStart?(allow: boolean): boolean;
   /** "onActivity" fires for each new reading (builds from 2026-10 on; older builds never fire it). */
   addListener(event: "onActivity", listener: (a: NativeActivity) => void): { remove(): void };
 };

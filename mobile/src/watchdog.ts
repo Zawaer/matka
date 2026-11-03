@@ -29,6 +29,7 @@ import {
   isTrackingRunning,
   recordRecovery,
   recoverUpdates,
+  repairForegroundService,
   unregisterWatchdog,
   WATCHDOG_TASK,
 } from "./tracking";
@@ -133,6 +134,9 @@ async function doRun(trigger: Trigger): Promise<Decision | null> {
     await recordRecovery({ at: now, reason: decision.reason, action: decision.action, lastFixAt, ok: !error, ...(error ? { error } : {}) });
     recovered = true;
   }
+
+  // Running without the foreground service (process was killed and relaunched): restore it.
+  if (trigger !== "foreground" && !recovered && runningNow) await repairForegroundService().catch(() => undefined);
 
   // The foreground path uploads and sends its own heartbeat afterwards (App.tsx).
   if (trigger === "background") await uploadNow("task").catch(() => null);
