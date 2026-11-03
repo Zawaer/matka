@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.tasks.Tasks
@@ -123,17 +124,20 @@ class MatkaActivityModule : Module() {
      * so Android throttles location to a few fixes an hour) or "none".
      */
     Function("locationServiceState") {
-      val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+      val ctx = anyContext() ?: return@Function null
+      val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
       // getRunningServices is deprecated for other apps' services but still lists our own.
       @Suppress("DEPRECATION")
       val own = am?.getRunningServices(Int.MAX_VALUE)?.filter {
-        it.service.packageName == context.packageName && it.service.className == LOCATION_SERVICE
+        it.service.packageName == ctx.packageName && it.service.className == LOCATION_SERVICE
       }.orEmpty()
-      when {
+      val state = when {
         own.any { it.foreground } -> "foreground"
         own.isNotEmpty() -> "background"
         else -> "none"
       }
+      Log.i(TAG, "location service: $state")
+      state
     }
 
     /**
@@ -149,8 +153,12 @@ class MatkaActivityModule : Module() {
      * between keeps counting as foreground. Returns whether the guard was lifted.
      */
     Function("allowLocationServiceStart") { allow: Boolean ->
-      val set = setExpoForegrounded(allow || appInFront())
-      allow && set && canStartFromBackground()
+      val ctx = anyContext()
+      val front = appInFront()
+      val set = setExpoForegrounded(allow || front)
+      val exempt = ctx != null && canStartFromBackground(ctx)
+      Log.i(TAG, "allowLocationServiceStart($allow): flag set=$set inFront=$front exempt=$exempt")
+      allow && set && exempt
     }
 
     /** The latest reading, or null: { type, confidence (0-100), at (epoch ms) }. */
@@ -169,6 +177,7 @@ class MatkaActivityModule : Module() {
     cls.getMethod("setForegrounded", Boolean::class.javaPrimitiveType).invoke(cls.getField("INSTANCE").get(null), value)
     true
   } catch (e: ReflectiveOperationException) {
+    Log.w(TAG, "can't reach expo-location's foreground flag", e)
     false
   }
 
@@ -180,14 +189,25 @@ class MatkaActivityModule : Module() {
   }
 
   /** Android 12+ only lets exempt apps start a foreground service from the background. */
-  private fun canStartFromBackground(): Boolean {
+  private fun canStartFromBackground(ctx: Context): Boolean {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
-    val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-    return pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+    val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    return pm?.isIgnoringBatteryOptimizations(ctx.packageName) == true
+  }
+
+  /**
+   * The React context, or in a headless background launch (no React context)
+   * the Application, which is all these system-service lookups need.
+   */
+  private fun anyContext(): Context? = appContext.reactContext ?: try {
+    Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as? Context
+  } catch (e: ReflectiveOperationException) {
+    null
   }
 
   companion object {
     private const val REQUEST_CODE = 7311
+    private const val TAG = "MatkaActivity"
     private const val LOCATION_SERVICE = "expo.modules.location.services.LocationTaskService"
   }
 }
