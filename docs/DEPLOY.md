@@ -6,7 +6,7 @@ people sign in and how the app is reached.
 | | Homelab (`compose.yml`) | Cluster (`deploy/k8s/`) |
 | --- | --- | --- |
 | Runs with | Docker Compose, `docker compose up -d --build matka` | k3s, image from GHCR |
-| Reached at | `https://matka.lan` via Caddy, Tailscale only | public host via ingress-nginx |
+| Reached at | `MATKA_APP_URL` via your reverse proxy (e.g. Caddy over Tailscale) | public host via ingress-nginx |
 | TLS | Caddy's private CA (installed on your devices) | public certificate |
 | Sign-in | `MATKA_AUTH=key`: one owner, a login key | OIDC (Authentik) + allowlist |
 | Place names | own Photon container (`matka_photon`) | own Photon (`photon.yaml`) |
@@ -14,11 +14,13 @@ people sign in and how the app is reached.
 ## Homelab
 
 `compose.yml` starts Matka, its PostGIS and its Photon. Non-secret settings are in the
-compose file; put the three secrets in `~/matka/.env`:
+compose file; put the three secrets and two settings in `.env` next to `compose.yml`:
 
 ```bash
 cd ~/matka
 cat >> .env <<EOF
+MATKA_APP_URL=https://matka.example.com
+MATKA_PROXY_NETWORK=proxy_net
 MATKA_DB_PASSWORD=$(openssl rand -hex 24)
 MATKA_SECRET=$(openssl rand -base64 48 | tr -d '\n')
 MATKA_LOGIN_KEY=$(openssl rand -base64 36 | tr -d '\n')
@@ -27,9 +29,12 @@ chmod 600 .env
 grep MATKA_LOGIN_KEY .env   # the key you sign in with; keep it in your password manager
 ```
 
+`MATKA_PROXY_NETWORK` is the existing Docker network your reverse proxy is on (created
+outside this file); the proxy forwards `MATKA_APP_URL` to `matka:3000`.
+
 Then run `docker compose up -d --build matka`. On first start the worker copies your Dawarich history by
 itself (see "Import your Dawarich history" below), and Photon indexes Finland (a few
-minutes). Open `https://matka.lan`, paste the login key once per browser, then pair
+minutes). Open your `MATKA_APP_URL`, paste the login key once per browser, then pair
 the phone under **Devices**.
 
 The login key works like a password: anyone with it can sign in. To rotate it, change

@@ -1,10 +1,12 @@
-# Matka on the homelab: `docker compose up -d --build matka`
-# in ~/matka (dependencies start with it). Reached at https://matka.lan
-# through Caddy on proxy_net. Every variable is documented in web/.env.example and
-# docs/DEPLOY.md; the k3s setup lives in deploy/k8s/ instead.
+# Matka with Docker Compose: `docker compose up -d --build matka` in the directory
+# holding this file (dependencies start with it). A reverse proxy on an existing
+# Docker network reaches matka:3000 by name. Every variable is documented in
+# web/.env.example and docs/DEPLOY.md; the k3s setup lives in deploy/k8s/ instead.
 #
-# Secrets go in ~/matka/.env (gitignored):
-#   MATKA_DB_PASSWORD, MATKA_SECRET, MATKA_LOGIN_KEY
+# Put these in .env next to this file (gitignored):
+#   MATKA_DB_PASSWORD, MATKA_SECRET, MATKA_LOGIN_KEY   secrets
+#   MATKA_APP_URL        the public URL, e.g. https://matka.example.com
+#   MATKA_PROXY_NETWORK  your reverse proxy's Docker network (default: proxy_net)
 services:
   matka:
     build: ./web
@@ -13,14 +15,14 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://matka:${MATKA_DB_PASSWORD:?set MATKA_DB_PASSWORD in .env}@matka_db:5432/matka
-      APP_URL: https://matka.lan
+      APP_URL: ${MATKA_APP_URL:?set MATKA_APP_URL in .env}
       # No identity provider here: sign in with MATKA_LOGIN_KEY (see docs/DEPLOY.md).
       MATKA_AUTH: key
       PHOTON_URL: http://matka_photon:2322
       # Dawarich was retired on 2026-10-28 after its history was imported (and topped
       # up); DAWARICH_IMPORT_URL is no longer set. See docs/DEPLOY.md to import from a
       # Dawarich database elsewhere.
-      # Optional AI place picker (Settings, opt-in per user) on the homelab's shared Claude
+      # Optional AI place picker (Settings, opt-in per user) on a shared claude-accounts
       # accounts. Off while CLAUDE_ACCOUNTS_TOKEN is unset; see docs/DEPLOY.md.
       CLAUDE_ACCOUNTS_URL: http://claude-accounts:8080
       CLAUDE_ACCOUNTS_TOKEN: ${CLAUDE_ACCOUNTS_TOKEN:-}
@@ -77,4 +79,5 @@ volumes:
 networks:
   matka_internal: {}
   proxy_net:
+    name: ${MATKA_PROXY_NETWORK:-proxy_net}
     external: true
