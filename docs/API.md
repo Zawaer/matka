@@ -227,6 +227,10 @@ Never put the token in a URL. Instead:
      loading), `drawn` (`date`: its lines and the basemap under them are on screen),
      `select` (`key`: a stop or line was tapped), `error`, or `expired` (the cookie died).
      A client keeps its own placeholder up until `drawn`, or until `day` when `ready` didn't say `drawn`.
+   - In an `<iframe>` on a site allowed by `MATKA_FRAME_ANCESTORS` (docs/DEPLOY.md), the same
+     bridge runs over `window.postMessage`, as objects and only to and from those origins:
+     parent → page `{ "type": "matka-day", "command": "setDate", "date" }` or
+     `{ "type": "matka-day", "command": "select", "key" }`; page → parent `{ "type": "matka-day", "event", … }`.
 
    Keys are `v-<visit id>` and `m-<trip id>` from `GET /api/timeline`.
 3. Expiry looks like this:

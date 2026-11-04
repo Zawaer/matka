@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { appUrl } from "@/lib/appUrl";
 import { EMBED_COOKIE, EMBED_MAX_AGE, signEmbed, verifyTicket } from "@/lib/embed";
-import { cookieOptions } from "@/lib/session";
+import { embedCookieOptions } from "@/lib/frameAncestors";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   if (to === "day" && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) query.set("date", date);
   const qs = query.size ? `?${query}` : "";
   const res = NextResponse.redirect(`${appUrl()}/embed/${to}${qs}`, 303);
-  res.cookies.set(EMBED_COOKIE, await signEmbed(claims), cookieOptions(EMBED_MAX_AGE));
+  res.cookies.set(EMBED_COOKIE, await signEmbed(claims), embedCookieOptions(EMBED_MAX_AGE));
   res.headers.set("referrer-policy", "no-referrer");
   return res;
 }

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { appUrl } from "@/lib/appUrl";
 import { EMBED_COOKIE } from "@/lib/embed";
+import { EMBED_FRAMEABLE, frameHeaders } from "@/lib/frameAncestors";
 import { SESSION_COOKIE, authDisabled, isLiveSession } from "@/lib/session";
 
 // Outer gate: everything requires a live browser session except the device
@@ -33,6 +34,14 @@ const DEVICE_READABLE = [
 const DEVICE_WRITABLE = [/^\/api\/corrections(\/\d+)?$/, /^\/api\/places\/\d+\/confirm$/];
 
 export async function proxy(req: NextRequest) {
+  const res = await gate(req);
+  // The embed routes' anti-framing header (next.config.ts sends DENY everywhere else).
+  const { pathname } = req.nextUrl;
+  if (EMBED_FRAMEABLE.test(pathname)) res.headers.set(...frameHeaders(pathname));
+  return res;
+}
+
+async function gate(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   if (authDisabled() || PUBLIC.some((re) => re.test(pathname))) return NextResponse.next();
 

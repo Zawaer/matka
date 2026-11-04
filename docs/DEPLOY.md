@@ -79,7 +79,8 @@ Every variable is documented in `web/.env.example`. Required in production:
 
 Optional: `PHOTON_URL` (self-hosted Photon for place names), `MATKA_DEFAULT_TIMEZONE`,
 `MATKA_WORKER=off` (disable the worker on a replica), `MATKA_WORKER_INTERVAL_MS`,
-`CLAUDE_ACCOUNTS_URL` and `CLAUDE_ACCOUNTS_TOKEN` (the AI place picker, below).
+`CLAUDE_ACCOUNTS_URL` and `CLAUDE_ACCOUNTS_TOKEN` (the AI place picker, below),
+`MATKA_FRAME_ANCESTORS` (another site showing the map in an `<iframe>`, below).
 
 ### AI place picker (optional)
 
@@ -115,6 +116,43 @@ docker compose up -d --build matka
 Limits: one request (up to 20 places) per worker tick, `MATKA_AI_REQUESTS_PER_DAY`
 (default 40), a 60 s timeout (`MATKA_AI_TIMEOUT_MS`), and a pause until the reset after a
 rate limit. Model: `MATKA_AI_MODEL` (default `claude-haiku-5-5`).
+
+### Embedding the map in another site (optional)
+
+By default nothing can frame Matka: every page sends `X-Frame-Options: DENY`, and the map
+embed's cookie is `SameSite=Lax`. A web app of your own that is already a paired device (it
+has a device token and gets embed tickets, docs/API.md → "Map in a WebView") can show the
+map and the day map in an `<iframe>` once you allow its origin:
+
+```bash
+# space-separated origins: scheme, host and port only (no paths or wildcards)
+MATKA_FRAME_ANCESTORS=https://app.example.com
+```
+
+Then only the embed routes (`/embed/start`, `/embed/map`, `/embed/day`) send
+`Content-Security-Policy: frame-ancestors https://app.example.com` instead of
+`X-Frame-Options: DENY`, and the embed cookie (read-only, 12 h, dies with the device) is
+`SameSite=None; Secure; Partitioned`, so the browser sends it from inside the cross-site
+frame. Every other page, and the signed-in browser session, keeps its defaults. Invalid
+entries are ignored with a warning in the log. Leave it empty to turn it off again.
+
+The site embeds it like the phone app's WebView: get a ticket with the device token
+(server-side, so the token stays out of the browser if you can), then
+`<iframe src="<ticket url>&to=day&date=YYYY-MM-DD&theme=dark">`. In a frame the day map's
+bridge runs over `postMessage`, only to and from the allowed origins:
+
+- parent → frame: `{ "type": "matka-day", "command": "setDate", "date": "YYYY-MM-DD" }` or
+  `{ "type": "matka-day", "command": "select", "key": "v-12" | null }`;
+- frame → parent: `{ "type": "matka-day", "event": … }` with the same events as the app
+  (`ready`, `day`, `drawn`, `select`, `error`, `expired`). On `expired`, get a new ticket and
+  set the frame's `src` again.
+
+The parent sizes the frame; the maps fill it. Browsers that block third-party cookies
+outright (and don't support partitioned ones) show "Session expired" in the frame, so keep a
+link that opens the map in a new tab as a fallback.
+
+Behind a reverse proxy, make sure it doesn't add its own `X-Frame-Options` or
+`Content-Security-Policy` on these paths.
 
 ## 3. Reverse proxy
 
