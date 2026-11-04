@@ -8,6 +8,13 @@
 //                event "ready" { drawn: true } | "day" { date, hasMap } |
 //                "drawn" { date } | "select" { key } | "error" | "expired"
 //
+// In an <iframe> on a site allowed by MATKA_FRAME_ANCESTORS, the same bridge
+// runs over window.postMessage, only to and from those origins:
+//
+//   parent → page: { type: "matka-day", command: "setDate", date: "YYYY-MM-DD" }
+//                  { type: "matka-day", command: "select", key: string | null }
+//   page → parent: { type: "matka-day", event, ... } (the events above, as an object)
+//
 // "drawn" comes once the day's lines and the basemap under them are on
 // screen ("ready" says it will come; older pages never send it).
 // Keys are the timeline's: "v-<visit id>" or "m-<trip id>".
@@ -37,17 +44,39 @@ declare global {
   }
 }
 
+/** The origins allowed to frame this page (MATKA_FRAME_ANCESTORS); empty unless set. */
+let parentOrigins: readonly string[] = [];
+
 function post(event: string, extra: Record<string, unknown> = {}) {
+  const msg = { type: DAY_MESSAGE, event, ...extra };
   try {
-    window.ReactNativeWebView?.postMessage(JSON.stringify({ type: DAY_MESSAGE, event, ...extra }));
+    window.ReactNativeWebView?.postMessage(JSON.stringify(msg));
   } catch {
     // Not in the app (a plain browser): nobody to tell.
+  }
+  if (window.parent === window) return;
+  // The browser delivers it only when the parent is on that origin.
+  for (const origin of parentOrigins) {
+    try {
+      window.parent.postMessage(msg, origin);
+    } catch {
+      // ignore
+    }
   }
 }
 
 const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
-export function DayEmbed({ initialDate, start = null }: { initialDate: string | null; start?: DayEmbedStart | null }) {
+export function DayEmbed({
+  initialDate,
+  start = null,
+  frameOrigins = [],
+}: {
+  initialDate: string | null;
+  start?: DayEmbedStart | null;
+  /** Origins that may frame the page and drive it with postMessage. */
+  frameOrigins?: readonly string[];
+}) {
   const [date, setDate] = useState<string | null>(start?.day.date ?? initialDate);
   const [day, setDay] = useState<TimelineDay | null>(start?.day ?? null);
   const [state, setState] = useState<"loading" | "ready" | "error">(start ? "ready" : "loading");
@@ -56,9 +85,14 @@ export function DayEmbed({ initialDate, start = null }: { initialDate: string | 
   // The day that came with the page needs no request.
   const given = useRef<string | null>(start?.day.date ?? null);
 
+  // Before the bridge below says "ready".
+  useEffect(() => {
+    parentOrigins = frameOrigins;
+  }, [frameOrigins]);
+
   // The app's handle on the page.
   useEffect(() => {
-    window.matkaDay = {
+    const bridge: Bridge = {
       setDate: (d) => {
         if (isDate(d)) setDate(d);
       },
@@ -67,11 +101,21 @@ export function DayEmbed({ initialDate, start = null }: { initialDate: string | 
         setSel(key && cur ? { key, from: "list", date: cur.date } : null);
       },
     };
+    window.matkaDay = bridge;
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== window.parent || !parentOrigins.includes(e.origin)) return;
+      const d = e.data as { type?: unknown; command?: unknown; date?: unknown; key?: unknown } | null;
+      if (!d || d.type !== DAY_MESSAGE) return;
+      if (d.command === "setDate") bridge.setDate(d.date as string);
+      else if (d.command === "select") bridge.select(typeof d.key === "string" ? d.key : null);
+    };
+    window.addEventListener("message", onMessage);
     post("ready", { drawn: true });
     const first = dayRef.current;
     if (first && given.current === first.date) post("day", { date: first.date, hasMap: dayHasMap(first.items) });
     return () => {
       delete window.matkaDay;
+      window.removeEventListener("message", onMessage);
     };
   }, []);
 

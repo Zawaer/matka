@@ -3,6 +3,7 @@ import { DayEmbed, type DayEmbedStart } from "@/components/timeline/DayEmbed";
 import { dayHasMap, dayWindow } from "@/components/timeline/dayMap";
 import { viewerUser } from "@/lib/auth";
 import { basemapStyle, glyphUrls } from "@/lib/basemap";
+import { frameAncestors } from "@/lib/frameAncestors";
 import { isDate, loadTimeline } from "@/lib/timeline";
 import { tracksGeoJson } from "@/lib/tracks";
 
@@ -56,7 +57,7 @@ export default async function EmbedDayPage({
   }
   return (
     <div className="map-shell relative h-[100dvh] w-full touch-none overflow-hidden overscroll-none">
-      <DayEmbed initialDate={initial} start={start} />
+      <DayEmbed initialDate={initial} start={start} frameOrigins={frameAncestors()} />
     </div>
   );
 }

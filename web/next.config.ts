@@ -3,7 +3,6 @@ import type { NextConfig } from "next";
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "X-Frame-Options", value: "DENY" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
   { key: "Strict-Transport-Security", value: "max-age=31536000" },
 ];
@@ -18,6 +17,10 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
+      // Not framable, except the embed routes: proxy.ts sends their header
+      // (DENY too, unless MATKA_FRAME_ANCESTORS allows a site; this file is
+      // read at build time, the env at run time).
+      { source: "/:path((?!embed/(?:start|map|day)$).*)", headers: [{ key: "X-Frame-Options", value: "DENY" }] },
       // MapLibre's worker, asked for as ?v=<maplibre version> (mapStyle.ts
       // workerUrl): a new version is a new URL, so this one never changes.
       // Without it, public/ files are revalidated on every page load.
